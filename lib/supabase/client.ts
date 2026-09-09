@@ -5,6 +5,8 @@ import { createBrowserClient } from "@supabase/ssr";
  * 컴포넌트 렌더링마다 새로 만들지 말고, 필요한 곳에서 매번 호출해 사용하세요.
  * (내부적으로 가벼운 객체이며, 인증 세션은 쿠키를 통해 공유됩니다.)
  */
+// Netlify 환경 변수 수정 후 재배포 트리거용 주석 (NEXT_PUBLIC_* 은 빌드 시점에
+// 고정되므로, 값만 바꾸고 재빌드하지 않으면 이전 빌드가 계속 서빙된다).
 export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabasePublishableKey =
