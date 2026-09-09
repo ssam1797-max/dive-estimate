@@ -11,8 +11,14 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabasePublishableKey) {
+    const missing = [
+      !supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
+      !supabasePublishableKey && "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    ].filter((v): v is string => Boolean(v));
+    console.error("Supabase 서버 클라이언트 환경 변수 누락:", missing);
     throw new Error(
-      "Supabase 환경 변수가 설정되지 않았습니다. .env.local 파일에 NEXT_PUBLIC_SUPABASE_URL 과 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 를 설정해주세요."
+      `Supabase 환경 변수가 설정되지 않았습니다: ${missing.join(", ")}. ` +
+        "배포 환경(예: Netlify)의 Site configuration > Environment variables 설정을 확인하세요."
     );
   }
 
@@ -47,8 +53,14 @@ export async function createAdminClient() {
   const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl || !supabaseSecretKey) {
+    const missing = [
+      !supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
+      !supabaseSecretKey && "SUPABASE_SECRET_KEY",
+    ].filter((v): v is string => Boolean(v));
+    console.error("Supabase 관리자 클라이언트 환경 변수 누락:", missing);
     throw new Error(
-      "Supabase 관리자 환경 변수가 설정되지 않았습니다. .env.local 파일에 NEXT_PUBLIC_SUPABASE_URL 과 SUPABASE_SECRET_KEY 를 설정해주세요."
+      `Supabase 관리자 환경 변수가 설정되지 않았습니다: ${missing.join(", ")}. ` +
+        "배포 환경(예: Netlify)의 Site configuration > Environment variables 설정을 확인하세요."
     );
   }
 

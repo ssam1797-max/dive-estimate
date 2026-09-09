@@ -59,32 +59,40 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
-  const rows = await fetchAllPages<{
-    id: string;
-    brand: string;
-    category: string;
-    name: string;
-    price_retail: number | string;
-    colors: string[] | null;
-    sizes: string[] | null;
-  }>((from, to) =>
-    supabase
-      .from("equipment")
-      .select("id, brand, category, name, price_retail, colors, sizes")
-      .order("brand")
-      .order("category")
-      .order("name")
-      .range(from, to)
-  );
-  return rows.map((row) => ({
-    id: row.id,
-    brand: row.brand,
-    category: row.category,
-    name: row.name,
-    price_retail: Number(row.price_retail),
-    colors: row.colors ?? [],
-    sizes: row.sizes ?? [],
-  }));
+  try {
+    const rows = await fetchAllPages<{
+      id: string;
+      brand: string;
+      category: string;
+      name: string;
+      price_retail: number | string;
+      colors: string[] | null;
+      sizes: string[] | null;
+    }>((from, to) =>
+      supabase
+        .from("equipment")
+        .select("id, brand, category, name, price_retail, colors, sizes")
+        .order("brand")
+        .order("category")
+        .order("name")
+        .range(from, to)
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      brand: row.brand,
+      category: row.category,
+      name: row.name,
+      price_retail: Number(row.price_retail),
+      colors: row.colors ?? [],
+      sizes: row.sizes ?? [],
+    }));
+  } catch (error) {
+    console.error(
+      "getAllEquipment 조회 실패:",
+      error instanceof Error ? error.message : error
+    );
+    throw error;
+  }
 }
 
 // ── 키워드 통합 검색 (견적서 작성 화면 상단 빠른 검색용) ───────────────────────

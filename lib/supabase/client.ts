@@ -11,8 +11,15 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabasePublishableKey) {
+    const missing = [
+      !supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
+      !supabasePublishableKey && "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    ].filter((v): v is string => Boolean(v));
+    console.error("Supabase 브라우저 클라이언트 환경 변수 누락:", missing);
     throw new Error(
-      "Supabase 환경 변수가 설정되지 않았습니다. .env.local 파일에 NEXT_PUBLIC_SUPABASE_URL 과 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 를 설정해주세요."
+      `Supabase 환경 변수가 설정되지 않았습니다: ${missing.join(", ")}. ` +
+        "빌드 환경(예: Netlify)에 NEXT_PUBLIC_* 변수가 설정되어 있는지 확인하세요 " +
+        "(NEXT_PUBLIC_ 변수는 런타임이 아니라 빌드 시점에 값이 주입됩니다)."
     );
   }
 
