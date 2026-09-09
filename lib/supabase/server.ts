@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { ensureHttpsScheme } from "@/lib/supabase/normalize-url";
 
 /**
  * 서버 컴포넌트 / 서버 액션 / 라우트 핸들러에서 사용하는 Supabase 클라이언트를 생성합니다.
@@ -25,7 +26,7 @@ export async function createClient() {
 
   const cookieStore = await cookies();
 
-  return createServerClient(supabaseUrl, supabasePublishableKey, {
+  return createServerClient(ensureHttpsScheme(supabaseUrl), supabasePublishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -65,7 +66,7 @@ export async function createAdminClient() {
     );
   }
 
-  return createServerClient(supabaseUrl, supabaseSecretKey, {
+  return createServerClient(ensureHttpsScheme(supabaseUrl), supabaseSecretKey, {
     cookies: {
       getAll() {
         return [];

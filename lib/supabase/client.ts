@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { ensureHttpsScheme } from "@/lib/supabase/normalize-url";
 
 /**
  * 브라우저(클라이언트 컴포넌트)에서 사용하는 Supabase 클라이언트를 생성합니다.
@@ -25,5 +26,5 @@ export function createClient() {
     );
   }
 
-  return createBrowserClient(supabaseUrl, supabasePublishableKey);
+  return createBrowserClient(ensureHttpsScheme(supabaseUrl), supabasePublishableKey);
 }
