@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
  * 서버 컴포넌트 / 서버 액션 / 라우트 핸들러에서 사용하는 Supabase 클라이언트를 생성합니다.
  * 요청마다(호출마다) 새로 생성해서 사용하세요.
  */
+// Netlify 환경 변수 갱신을 새 빌드에 반영시키기 위한 재배포 트리거용 주석.
 export async function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabasePublishableKey =
