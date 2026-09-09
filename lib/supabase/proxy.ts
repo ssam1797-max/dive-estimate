@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ensureHttpsScheme } from "@/lib/supabase/normalize-url";
 
 /**
  * 매 요청마다 Supabase 인증 세션(쿠키)을 갱신합니다.
@@ -21,7 +22,7 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
+  const supabase = createServerClient(ensureHttpsScheme(supabaseUrl), supabasePublishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -40,7 +41,15 @@ export async function updateSession(request: NextRequest) {
 
   // 세션을 갱신하기 위해 사용자 정보를 조회합니다. (getUser 는 매번 서버에
   // 토큰 유효성을 검증하므로 getSession 보다 안전합니다.)
-  await supabase.auth.getUser();
+  // 이 proxy 는 "/" 를 포함한 거의 모든 요청에서 실행되므로, 여기서 던진
+  // 예외를 잡지 않으면 Supabase 호출 하나가 실패했을 때 사이트 전체가
+  // Unhandled Server Error 로 죽는다 — 세션 갱신은 부가 기능이니 실패해도
+  // 요청은 그대로 통과시킨다.
+  try {
+    await supabase.auth.getUser();
+  } catch (error) {
+    console.error("proxy: Supabase 세션 갱신 실패:", error);
+  }
 
   return supabaseResponse;
 }
