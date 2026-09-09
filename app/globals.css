@@ -1,0 +1,198 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* 모바일 터치 최적화: 브라우저가 더블탭 확대 여부를 판단하려고 탭마다
+       넣는 약 300ms 지연을 없애 버튼/링크 반응이 즉각적으로 느껴지게 한다.
+       핀치 확대(접근성)는 이 속성과 무관하게 계속 동작한다. */
+    touch-action: manipulation;
+  }
+}
+
+/*
+ * 견적서 인쇄 화면(app/estimates/[id]/print) 전용 — A4 세로.
+ * 여백은 @page 에 직접 둔다(상하 8mm, 좌우 10mm — 상하를 좁혀 콘텐츠가
+ * 쓸 수 있는 세로 공간을 4mm 더 번다). body 자체 margin/padding 은 0 으로
+ * 눌러서 @page 여백과 이중으로 겹쳐 쌓이지 않게 한다.
+ * (브라우저가 그리는 자체 머리글/바닥글(URL·날짜·페이지 번호) 텍스트는
+ * CSS 로 없앨 수 없다 — 인쇄창의 "머리글 및 바닥글" 체크 해제는 사용자가
+ * 직접 해야 한다.)
+ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm 8mm 10mm;
+  }
+  html,
+  body {
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/*
+ * 견적서 1건을 감싸는 A4 한 장 틀(estimate-print-view.tsx 에서 사용).
+ * 화면에서는 A4 한 장처럼 보이도록 뷰포트 높이(100vh)를 최소 높이로 둔다.
+ *
+ * 인쇄 시에는 반대로 "최소 높이를 강제하지 않는다"(min-height:0) — 예전에
+ * min-height:270mm 같은 강제 최소 높이를 뒀더니, 실제 콘텐츠는 1페이지
+ * (비고란까지) 안에 완전히 들어가는데도 그 강제 높이 + 아래 설명한
+ * estimate-print-view.tsx 의 남는 padding-bottom 이 합쳐져 미묘하게 한
+ * 페이지를 넘겨버려, 내용 없이 헤더만 있는 빈 2페이지가 함께 출력되는
+ * 원인이 됐다. 인쇄 시에는 실제 콘텐츠가 필요로 하는 높이만큼만 차지하게
+ * 두고, 대신 불필요한 페이지 나눔 자체를 강하게 억제하는 쪽
+ * (break-after/break-inside: avoid) 으로 방향을 바꿨다 — 이 둘은
+ * "가능하면" 피하라는 힌트라서, 품목이 정말 많아 실제로 여러 장이 필요한
+ * 긴 견적서는 브라우저가 필요하면 그래도 알아서 다음 페이지로 나눠
+ * 찍는다(내용이 잘려서 사라지지 않는다).
+ *
+ * html/body 에 overflow:hidden, 이 요소에 height:100%+max-height 를 거는
+ * 방식은 일부러 쓰지 않았다 — height 를 auto 가 아닌 고정값으로 강제하지
+ * 않는 한(위에서 그렇게 하지 않는다) overflow:hidden 은 실제로 아무것도
+ * 자르지 않아 눈에 보이는 효과가 없고, 반대로 만약 fixed height 와
+ * 같이 걸면 긴 견적서의 뒷부분 품목이 인쇄물에서 통째로 잘려 사라지는
+ * 훨씬 심각한 문제가 생긴다 — 빈 페이지 하나보다 실제 데이터 유실이 더
+ * 나쁘다.
+ */
+.estimate-a4-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 100vh;
+}
+
+@media print {
+  .estimate-a4-page {
+    min-height: 0;
+    margin: 0;
+    page-break-after: avoid;
+    break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
