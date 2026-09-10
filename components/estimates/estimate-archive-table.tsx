@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Loader2, PackageOpen, Pencil, Printer, Trash2 } from "lucide-react";
+import { Copy, Loader2, PackageOpen, Pencil, Printer, Search, Trash2 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -14,13 +15,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { PriceTierSelect } from "@/components/estimates/price-tier-select";
+import { matchesKoreanSearch } from "@/lib/hangul";
 import type {
   SavedEstimateDetail,
-  SavedEstimateItemDetail,
   SavedEstimateSummary,
 } from "@/lib/estimates/types";
-import type { PriceTier } from "@/lib/estimates/pricing";
+import { tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 
 interface EstimateArchiveTableProps {
   initialEstimates: SavedEstimateSummary[];
@@ -38,20 +40,6 @@ async function deleteEstimate(id: string): Promise<void> {
   }
 }
 
-/**
- * 선택된 등급의 단가를 돌려준다. 저장 시점 4개 등급 스냅샷이 있으면 그 값을
- * 쓰고, 이 기능 추가 이전에 저장된 견적서(스냅샷 없음)는 단일 unitPrice 로
- * 폴백한다 — estimate-print-view.tsx 와 동일한 규칙.
- */
-function tierPriceOf(item: SavedEstimateItemDetail, tier: PriceTier): number {
-  const snapshot: Record<PriceTier, number | null> = {
-    RETAIL: item.priceRetail,
-    INSTRUCTOR: item.priceInstructor,
-    CENTER: item.priceCenter,
-    COST: item.priceCost,
-  };
-  return snapshot[tier] ?? item.unitPrice;
-}
 
 function EstimateDetailDialog({
   estimateId,
@@ -66,7 +54,7 @@ function EstimateDetailDialog({
 }) {
   const [detail, setDetail] = React.useState<SavedEstimateDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -96,20 +84,9 @@ function EstimateDetailDialog({
   }, [estimateId]);
 
   const handleDelete = async () => {
-    if (!window.confirm("이 견적서를 삭제할까요? 삭제하면 되돌릴 수 없습니다.")) {
-      return;
-    }
-    setIsDeleting(true);
-    try {
-      await deleteEstimate(estimateId);
-      onDeleted(estimateId);
-      onOpenChange(false);
-    } catch (deleteError) {
-      setError(
-        deleteError instanceof Error ? deleteError.message : "삭제에 실패했습니다."
-      );
-      setIsDeleting(false);
-    }
+    await deleteEstimate(estimateId);
+    onDeleted(estimateId);
+    onOpenChange(false);
   };
 
   return (
@@ -152,7 +129,7 @@ function EstimateDetailDialog({
                 </thead>
                 <tbody>
                   {detail.items.map((item, index) => {
-                    const unitPrice = tierPriceOf(item, tier);
+                    const unitPrice = tierPriceOfSnapshot(item, tier);
                     return (
                       <tr key={index} className="border-b last:border-0">
                         <td className="py-2 pr-2 align-top text-muted-foreground">
@@ -190,17 +167,19 @@ function EstimateDetailDialog({
               <Button
                 type="button"
                 variant="ghost"
-                disabled={isDeleting}
-                onClick={handleDelete}
+                onClick={() => setConfirmDeleteOpen(true)}
                 className="mr-auto text-muted-foreground hover:text-destructive"
               >
-                {isDeleting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                )}
+                <Trash2 className="size-4" />
                 삭제
               </Button>
+              <Link
+                href={`/estimates/new?duplicateFrom=${detail.id}`}
+                className={buttonVariants({ variant: "outline" })}
+              >
+                <Copy className="size-4" />
+                복제
+              </Link>
               <Link
                 href={`/estimates/${detail.id}/edit`}
                 className={buttonVariants({ variant: "outline" })}
@@ -220,6 +199,13 @@ function EstimateDetailDialog({
           </>
         )}
       </DialogContent>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="이 견적서를 삭제할까요?"
+        description="삭제하면 되돌릴 수 없습니다."
+        onConfirm={handleDelete}
+      />
     </Dialog>
   );
 }
@@ -228,16 +214,33 @@ function EstimateDetailDialog({
 export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableProps) {
   const [estimates, setEstimates] = React.useState(initialEstimates);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [rowDeleteTarget, setRowDeleteTarget] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [tier, setTier] = React.useState<PriceTier>("RETAIL");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
 
-  const handleRowDelete = async (id: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    if (!window.confirm("이 견적서를 삭제할까요? 삭제하면 되돌릴 수 없습니다.")) {
-      return;
-    }
-    setDeletingId(id);
+  // 공급받는자명 또는 견적서 번호로 검색하고, 발행일 범위로 좁힌다. 목록을
+  // 전부 미리 불러온 상태(initialEstimates)에서 클라이언트 쪽에서만
+  // 걸러내면 되므로 서버 요청 없이 즉시 반영된다.
+  const filteredEstimates = React.useMemo(() => {
+    const query = searchQuery.trim();
+    return estimates.filter((estimate) => {
+      if (
+        query &&
+        !matchesKoreanSearch(estimate.receiverName, query) &&
+        !matchesKoreanSearch(estimate.estimateNumber, query)
+      ) {
+        return false;
+      }
+      if (dateFrom && estimate.date < dateFrom) return false;
+      if (dateTo && estimate.date > dateTo) return false;
+      return true;
+    });
+  }, [estimates, searchQuery, dateFrom, dateTo]);
+
+  const handleRowDelete = async (id: string) => {
     setRowError(null);
     try {
       await deleteEstimate(id);
@@ -246,8 +249,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
       setRowError(
         deleteError instanceof Error ? deleteError.message : "삭제에 실패했습니다."
       );
-    } finally {
-      setDeletingId(null);
+      throw deleteError;
     }
   };
 
@@ -271,8 +273,46 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
     <>
       <PriceTierSelect value={tier} onChange={setTier} />
 
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="공급받는자명 또는 견적서 번호로 검색"
+            className="pl-9"
+            aria-label="견적서 검색"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+            aria-label="시작일"
+            className="w-[9.5rem]"
+          />
+          <span className="text-sm text-muted-foreground">~</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+            aria-label="종료일"
+            className="w-[9.5rem]"
+          />
+        </div>
+      </div>
+
       {rowError && <p className="text-sm text-destructive">{rowError}</p>}
 
+      {filteredEstimates.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
+            <PackageOpen className="size-8" />
+            검색 조건과 일치하는 견적서가 없습니다.
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
@@ -287,7 +327,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
               </tr>
             </thead>
             <tbody>
-              {estimates.map((estimate) => (
+              {filteredEstimates.map((estimate) => (
                 <tr
                   key={estimate.id}
                   onClick={() => setSelectedId(estimate.id)}
@@ -306,6 +346,18 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/estimates/new?duplicateFrom=${estimate.id}`}
+                        aria-label={`${estimate.estimateNumber} 복제`}
+                        onClick={(event) => event.stopPropagation()}
+                        className={buttonVariants({
+                          variant: "ghost",
+                          size: "icon",
+                          className: "size-7 text-muted-foreground hover:text-foreground",
+                        })}
+                      >
+                        <Copy className="size-3.5" />
+                      </Link>
                       <Link
                         href={`/estimates/${estimate.id}/edit`}
                         aria-label={`${estimate.estimateNumber} 이어서 수정`}
@@ -336,15 +388,13 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
                         variant="ghost"
                         size="icon"
                         className="size-7 text-muted-foreground hover:text-destructive"
-                        disabled={deletingId === estimate.id}
-                        onClick={(event) => handleRowDelete(estimate.id, event)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setRowDeleteTarget(estimate.id);
+                        }}
                         aria-label={`${estimate.estimateNumber} 삭제`}
                       >
-                        {deletingId === estimate.id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
+                        <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   </td>
@@ -354,6 +404,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
           </table>
         </CardContent>
       </Card>
+      )}
 
       {selectedId && (
         <EstimateDetailDialog
@@ -365,6 +416,18 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
           onDeleted={handleDetailDeleted}
         />
       )}
+
+      <ConfirmDialog
+        open={rowDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRowDeleteTarget(null);
+        }}
+        title="이 견적서를 삭제할까요?"
+        description="삭제하면 되돌릴 수 없습니다."
+        onConfirm={() => {
+          if (rowDeleteTarget) return handleRowDelete(rowDeleteTarget);
+        }}
+      />
     </>
   );
 }

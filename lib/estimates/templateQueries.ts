@@ -1,4 +1,9 @@
 import "server-only";
-import { listTemplateSummaries, getTemplateWithItems } from "@/lib/db/estimate-repo";
+import {
+  listTemplateSummaries,
+  getTemplateWithItems,
+  deleteTemplate,
+  renameTemplate,
+} from "@/lib/db/estimate-repo";
 
-export { listTemplateSummaries, getTemplateWithItems };
+export { listTemplateSummaries, getTemplateWithItems, deleteTemplate, renameTemplate };

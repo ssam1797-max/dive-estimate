@@ -4,13 +4,16 @@ import {
   getDiscountPolicyMap,
 } from "@/lib/estimates/pageData";
 import { listTemplateSummaries } from "@/lib/estimates/templateQueries";
+import { getSavedEstimateDetail } from "@/lib/db/estimate-repo";
 import { EstimateBuilder } from "@/components/estimates/estimate-builder";
 import type {
   EquipmentCatalogItem,
+  EstimateItemDraft,
   ProfileOption,
   TemplateSummary,
 } from "@/lib/estimates/types";
-import type { DiscountPolicyMap } from "@/lib/estimates/pricing";
+import { tierPriceOfSnapshot, type DiscountPolicyMap } from "@/lib/estimates/pricing";
+import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 
 export const metadata = {
   title: "견적서 작성",
@@ -28,6 +31,56 @@ interface PageData {
   templates: TemplateSummary[];
   discountPolicies: DiscountPolicyMap;
   loadError: string | null;
+}
+
+/** 서버 시간대와 무관하게 이 앱을 쓰는 다이빙샵 기준(한국) 오늘 날짜를 얻는다. */
+function todayInSeoul(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+/**
+ * "이 견적서 복제" 진입 시(?duplicateFrom=id) 원본 견적서를 불러와 새 견적서
+ * 작성 화면의 초기값으로 변환한다. 날짜는 원본 그대로가 아니라 오늘 날짜로,
+ * 견적서 번호는 새로 발급받도록 비워둔다(estimate-builder.tsx 의
+ * regenerateEstimateNumber 가 처리) — 공급자/공급받는자/품목/비고/가격
+ * 등급만 그대로 가져온다. 원본을 찾지 못하거나 조회에 실패해도 복제 없이
+ * 빈 새 견적서로 진행한다(에러로 화면 전체를 막지 않음).
+ */
+async function loadDuplicateSource(
+  id: string
+): Promise<EstimateBuilderInitialData | null> {
+  try {
+    const estimate = await getSavedEstimateDetail(id);
+    if (!estimate) return null;
+
+    const priceTier = estimate.priceTier ?? "RETAIL";
+    const items: EstimateItemDraft[] = estimate.items.map((item) => ({
+      clientId: crypto.randomUUID(),
+      equipmentId: item.equipmentId ?? "",
+      brand: item.brand,
+      category: item.category,
+      name: item.name,
+      color: item.color,
+      size: item.size,
+      quantity: item.quantity,
+      priceRetail: item.priceRetail ?? item.unitPrice,
+      unitPrice: tierPriceOfSnapshot(item, priceTier),
+      itemRemarks: item.itemRemarks,
+    }));
+
+    return {
+      date: todayInSeoul(),
+      estimateNumber: "",
+      providerId: estimate.provider?.id ?? "",
+      receiverId: estimate.receiver?.id ?? "",
+      remarks: estimate.remarks,
+      priceTier,
+      items,
+    };
+  } catch (error) {
+    console.error("견적서 복제용 원본 조회 실패:", error);
+    return null;
+  }
 }
 
 /**
@@ -96,9 +149,17 @@ async function loadPageData(): Promise<PageData> {
   }
 }
 
-export default async function NewEstimatePage() {
+export default async function NewEstimatePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ duplicateFrom?: string }>;
+}) {
   const { catalog, providers, receivers, templates, discountPolicies, loadError } =
     await loadPageData();
+  const { duplicateFrom: duplicateFromId } = await searchParams;
+  const duplicateFrom = duplicateFromId
+    ? await loadDuplicateSource(duplicateFromId)
+    : null;
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 sm:p-8">
@@ -121,6 +182,7 @@ export default async function NewEstimatePage() {
           receivers={receivers}
           initialTemplates={templates}
           discountPolicies={discountPolicies}
+          duplicateFrom={duplicateFrom ?? undefined}
         />
       )}
     </main>

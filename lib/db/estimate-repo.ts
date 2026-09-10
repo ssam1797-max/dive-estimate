@@ -697,3 +697,59 @@ export async function deleteSavedEstimate(id: string): Promise<boolean> {
 
   return (count ?? 0) > 0;
 }
+
+// ── 템플릿 삭제/이름 변경 ─────────────────────────────────────────────────────
+// deleteSavedEstimate 와 반대로, 이 두 함수는 template_name 이 있는 행만
+// 대상으로 한다 — 실제 견적서(보관함)를 잘못 건드리지 않도록.
+
+/** 템플릿 1건을 삭제한다(항목도 함께 정리). 존재하지 않거나 템플릿이 아니면 false. */
+export async function deleteTemplate(id: string): Promise<boolean> {
+  if (isMockMode()) {
+    const idx = mockStore.estimates.findIndex((e) => e.id === id && e.template_name);
+    if (idx === -1) return false;
+    mockStore.estimates.splice(idx, 1);
+    mockStore.estimateItems = mockStore.estimateItems.filter((i) => i.estimate_id !== id);
+    return true;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const { error: itemsError } = await supabase
+    .from("estimate_items")
+    .delete()
+    .eq("estimate_id", id);
+  if (itemsError) throw new Error("템플릿 항목 삭제 중 오류가 발생했습니다.");
+
+  const { error, count } = await supabase
+    .from("estimates")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .not("template_name", "is", null);
+  if (error) throw new Error("템플릿 삭제 중 오류가 발생했습니다.");
+
+  return (count ?? 0) > 0;
+}
+
+/** 템플릿 1건의 이름을 바꾼다. 존재하지 않거나 템플릿이 아니면 false. */
+export async function renameTemplate(id: string, templateName: string): Promise<boolean> {
+  if (isMockMode()) {
+    const row = mockStore.estimates.find((e) => e.id === id && e.template_name);
+    if (!row) return false;
+    row.template_name = templateName;
+    row.updated_at = new Date().toISOString();
+    return true;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const { error, count } = await supabase
+    .from("estimates")
+    .update({ template_name: templateName }, { count: "exact" })
+    .eq("id", id)
+    .not("template_name", "is", null);
+  if (error) throw new Error("템플릿 이름 변경 중 오류가 발생했습니다.");
+
+  return (count ?? 0) > 0;
+}

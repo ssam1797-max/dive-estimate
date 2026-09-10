@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2, Plus, Search, Trash2, XCircle } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { matchesKoreanSearch } from "@/lib/hangul";
 
@@ -105,6 +106,7 @@ export function DiscountPolicyTable({
   const [addStatus, setAddStatus] = React.useState<RowStatus>("idle");
   const [addError, setAddError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null);
 
   const existingBrands = new Set(rows.map((r) => r.values.brand));
   const suggestedBrands = allBrands.filter((b) => !existingBrands.has(b));
@@ -205,6 +207,7 @@ export function DiscountPolicyTable({
             : r
         )
       );
+      throw error;
     }
   };
 
@@ -305,7 +308,7 @@ export function DiscountPolicyTable({
                 size="icon"
                 className="size-7 text-muted-foreground hover:text-destructive"
                 disabled={row.status === "saving"}
-                onClick={() => deleteRow(row.values.brand)}
+                onClick={() => setDeleteTarget(row.values.brand)}
                 aria-label={`${row.values.brand} 삭제`}
               >
                 <Trash2 className="size-3.5" />
@@ -430,6 +433,18 @@ export function DiscountPolicyTable({
           브랜드 추가
         </Button>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`"${deleteTarget ?? ""}" 할인율 정책을 삭제할까요?`}
+        description="삭제하면 이 브랜드의 할인율 설정이 모두 사라집니다."
+        onConfirm={() => {
+          if (deleteTarget) return deleteRow(deleteTarget);
+        }}
+      />
     </div>
   );
 }

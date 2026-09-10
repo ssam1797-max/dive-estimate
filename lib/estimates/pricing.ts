@@ -144,3 +144,28 @@ export function calculateDiscountRate(listPrice: number, unitPrice: number): num
 export function formatDiscountRate(rate: number): string {
   return Number.isInteger(rate) ? `${rate}` : rate.toFixed(1);
 }
+
+/**
+ * 저장된 견적서 항목의 등급별 단가 스냅샷 중 원하는 등급의 값을 돌려준다.
+ * 이 스냅샷 기능이 추가되기 전에 저장된 견적서(전부 null)는 저장 당시의
+ * 단일 unitPrice 로 폴백한다 — 인쇄/수정/보관함/복제 화면이 전부 같은
+ * 규칙을 따라야 등급 탭을 바꿔도 금액이 일관된다.
+ */
+export function tierPriceOfSnapshot(
+  item: {
+    unitPrice: number;
+    priceRetail: number | null;
+    priceInstructor: number | null;
+    priceCenter: number | null;
+    priceCost: number | null;
+  },
+  tier: PriceTier
+): number {
+  const snapshot: Record<PriceTier, number | null> = {
+    RETAIL: item.priceRetail,
+    INSTRUCTOR: item.priceInstructor,
+    CENTER: item.priceCenter,
+    COST: item.priceCost,
+  };
+  return snapshot[tier] ?? item.unitPrice;
+}

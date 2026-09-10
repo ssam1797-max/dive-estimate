@@ -179,7 +179,15 @@ function reducer(
  */
 export function useEstimateBuilder(
   discountPolicies: DiscountPolicyMap,
-  initialData?: EstimateBuilderInitialData
+  initialData?: EstimateBuilderInitialData,
+  options?: {
+    /**
+     * "이 견적서 복제"처럼 항목/공급자 등은 그대로 가져오면서도 견적서
+     * 번호는 새로 발급받아야 하는 경우 true로 넘긴다. 기본값(false)은
+     * "이어서 수정" 세션과 동일하게 원본 번호를 그대로 유지한다.
+     */
+    regenerateEstimateNumber?: boolean;
+  }
 ) {
   const [state, dispatch] = React.useReducer(
     reducer,
@@ -188,6 +196,9 @@ export function useEstimateBuilder(
   );
 
   const isEditSessionRef = React.useRef(!!initialData);
+  const skipNumberFetchRef = React.useRef(
+    !!initialData && !options?.regenerateEstimateNumber
+  );
 
   const discountPoliciesRef = React.useRef(discountPolicies);
   React.useEffect(() => {
@@ -226,7 +237,9 @@ export function useEstimateBuilder(
     // "이어서 작성/수정" 세션에서는 이미 로드된 원본 견적서 번호를 그대로
     // 유지한다 — 이 effect 는 최초 마운트 시에도 실행되므로, 여기서 막지
     // 않으면 로드하자마자 원본 번호가 새로 발급된 번호로 조용히 바뀐다.
-    if (isEditSessionRef.current) return;
+    // (단, "견적서 복제"처럼 regenerateEstimateNumber 가 true면 새 번호를
+    // 발급받아야 하므로 건너뛰지 않는다.)
+    if (skipNumberFetchRef.current) return;
     fetchEstimateNumber(state.date);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.date]);

@@ -12,27 +12,12 @@ import type { SavedEstimateDetail } from "@/lib/estimates/types";
 import {
   calculateDiscountRate,
   calculateInclusiveVat,
+  tierPriceOfSnapshot,
   type PriceTier,
 } from "@/lib/estimates/pricing";
 
 function formatSpec(color: string, size: string): string {
   return [color, size].filter(Boolean).join(" / ") || "-";
-}
-
-/**
- * 선택된 등급의 단가를 돌려준다. 저장 시점 4개 등급 스냅샷이 있으면 그 값을
- * 그대로 쓰고(정책이 나중에 바뀌어도 과거 견적 금액은 안 바뀜), 이 기능이
- * 추가되기 전에 저장된 견적서(스냅샷이 전부 null)는 저장 당시의 단일
- * unitPrice 로 폴백한다 — 이 경우 탭을 바꿔도 같은 금액이 보인다.
- */
-function tierPriceOf(item: SavedEstimateDetail["items"][number], tier: PriceTier): number {
-  const snapshot: Record<PriceTier, number | null> = {
-    RETAIL: item.priceRetail,
-    INSTRUCTOR: item.priceInstructor,
-    CENTER: item.priceCenter,
-    COST: item.priceCost,
-  };
-  return snapshot[tier] ?? item.unitPrice;
 }
 
 interface EstimatePrintViewProps {
@@ -58,7 +43,7 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
   );
 
   const rows: EstimateDocumentRow[] = estimate.items.map((item, index) => {
-    const unitPrice = tierPriceOf(item, tier);
+    const unitPrice = tierPriceOfSnapshot(item, tier);
     const amount = unitPrice * item.quantity;
     const retailReference = item.priceRetail ?? item.unitPrice;
     return {
@@ -85,7 +70,7 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
     // 견적서는 이 padding 때문에 살짝 넘쳐 빈 2페이지가 따라 나왔다.
     // print:pb-0 으로 인쇄 시에만 없앤다(화면에서는 그대로 pb-10 유지).
     <main className="flex flex-col gap-4 pb-10 print:pb-0">
-      <PrintControls estimateId={estimate.id} />
+      <PrintControls estimateId={estimate.id} fileName={`견적서_${estimate.estimateNumber}`} />
 
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 print:hidden">
         <PriceTierSelect value={tier} onChange={setTier} />

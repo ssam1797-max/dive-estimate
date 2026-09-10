@@ -5,6 +5,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   ProfileFormDialog,
   type ProfileFormValues,
@@ -28,7 +29,7 @@ export function ProfileSection({
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingProfile, setEditingProfile] = React.useState<ProfileOption | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<ProfileOption | null>(null);
 
   const openCreateDialog = () => {
     setEditingProfile(null);
@@ -65,10 +66,7 @@ export function ProfileSection({
   };
 
   const handleDelete = async (profile: ProfileOption) => {
-    if (!window.confirm(`"${profile.name}"을(를) 삭제할까요?`)) return;
-
     setError(null);
-    setDeletingId(profile.id);
     try {
       const response = await fetch(`/api/profiles/${profile.id}`, {
         method: "DELETE",
@@ -79,11 +77,10 @@ export function ProfileSection({
       }
       setProfiles((prev) => prev.filter((p) => p.id !== profile.id));
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error ? deleteError.message : "삭제 중 오류가 발생했습니다."
-      );
-    } finally {
-      setDeletingId(null);
+      const message =
+        deleteError instanceof Error ? deleteError.message : "삭제 중 오류가 발생했습니다.";
+      setError(message);
+      throw deleteError;
     }
   };
 
@@ -136,8 +133,7 @@ export function ProfileSection({
                     variant="ghost"
                     size="icon"
                     aria-label={`${profile.name} 삭제`}
-                    disabled={deletingId === profile.id}
-                    onClick={() => handleDelete(profile)}
+                    onClick={() => setDeleteTarget(profile)}
                   >
                     <Trash2 className="size-4 text-destructive" />
                   </Button>
@@ -154,6 +150,17 @@ export function ProfileSection({
         type={type}
         editingProfile={editingProfile}
         onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`"${deleteTarget?.name ?? ""}"을(를) 삭제할까요?`}
+        onConfirm={() => {
+          if (deleteTarget) return handleDelete(deleteTarget);
+        }}
       />
     </Card>
   );

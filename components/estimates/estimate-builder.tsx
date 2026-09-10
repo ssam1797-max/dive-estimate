@@ -51,6 +51,12 @@ interface EstimateBuilderProps {
     estimateId: string;
     initialData: EstimateBuilderInitialData;
   };
+  /**
+   * 저장된 견적서를 "복제"해서 새 견적서 작성 화면을 시작하는 경우에만
+   * 전달한다. editContext 와 달리 새로 저장 시 항상 새 행이 만들어지고,
+   * 견적서 번호도 새로 발급받는다(날짜/공급자/품목 등은 그대로 가져옴).
+   */
+  duplicateFrom?: EstimateBuilderInitialData;
 }
 
 /**
@@ -140,11 +146,13 @@ export function EstimateBuilder({
   initialTemplates,
   discountPolicies,
   editContext,
+  duplicateFrom,
 }: EstimateBuilderProps) {
   const router = useRouter();
   const { state, totalAmount, actions } = useEstimateBuilder(
     discountPolicies,
-    editContext?.initialData
+    editContext?.initialData ?? duplicateFrom,
+    { regenerateEstimateNumber: !!duplicateFrom }
   );
 
   // 화면에서 "새로 입력 및 등록"으로 즉시 추가한 공급받는자를 목록에 반영하기 위해
@@ -381,6 +389,36 @@ export function EstimateBuilder({
     actions.loadItems(template.items);
   };
 
+  const handleDeleteTemplate = async (templateId: string) => {
+    const response = await fetch(`/api/estimates/templates/${templateId}`, {
+      method: "DELETE",
+    });
+    const body = await response.json();
+
+    if (!response.ok) {
+      throw new Error(body?.error ?? "템플릿 삭제에 실패했습니다.");
+    }
+
+    setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+  };
+
+  const handleRenameTemplate = async (templateId: string, newName: string) => {
+    const response = await fetch(`/api/estimates/templates/${templateId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateName: newName }),
+    });
+    const body = await response.json();
+
+    if (!response.ok) {
+      throw new Error(body?.error ?? "템플릿 이름 변경에 실패했습니다.");
+    }
+
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === templateId ? { ...t, templateName: newName } : t))
+    );
+  };
+
   const handleCreateReceiver = async (name: string): Promise<ProfileOption> => {
     const response = await fetch("/api/profiles", {
       method: "POST",
@@ -611,6 +649,8 @@ export function EstimateBuilder({
         onOpenChange={setTemplateLoadOpen}
         templates={templates}
         onSelect={handleLoadTemplate}
+        onDelete={handleDeleteTemplate}
+        onRename={handleRenameTemplate}
       />
 
       <ExcelPreviewDialog

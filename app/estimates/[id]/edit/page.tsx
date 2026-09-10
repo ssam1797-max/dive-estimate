@@ -7,28 +7,12 @@ import {
 import { listTemplateSummaries } from "@/lib/estimates/templateQueries";
 import { getSavedEstimateDetail } from "@/lib/db/estimate-repo";
 import { EstimateBuilder } from "@/components/estimates/estimate-builder";
-import type { EstimateItemDraft, SavedEstimateItemDetail } from "@/lib/estimates/types";
-import type { PriceTier } from "@/lib/estimates/pricing";
+import type { EstimateItemDraft } from "@/lib/estimates/types";
+import { tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 
 export const metadata = { title: "견적서 수정" };
 export const dynamic = "force-dynamic";
-
-/**
- * 저장 시점 4개 등급 스냅샷 중 초기 선택 등급에 해당하는 값을 단가로 쓴다.
- * 이 기능이 추가되기 전에 저장된 견적서(스냅샷 전부 null)는 저장 당시의
- * 단일 unitPrice 로 폴백한다 — app/estimates/[id]/print 의 EstimatePrintView
- * 와 동일한 폴백 규칙.
- */
-function tierPriceOf(item: SavedEstimateItemDetail, tier: PriceTier): number {
-  const snapshot: Record<PriceTier, number | null> = {
-    RETAIL: item.priceRetail,
-    INSTRUCTOR: item.priceInstructor,
-    CENTER: item.priceCenter,
-    COST: item.priceCost,
-  };
-  return snapshot[tier] ?? item.unitPrice;
-}
 
 export default async function EditEstimatePage({
   params,
@@ -76,7 +60,7 @@ export default async function EditEstimatePage({
       size: item.size,
       quantity: item.quantity,
       priceRetail: item.priceRetail ?? item.unitPrice,
-      unitPrice: tierPriceOf(item, priceTier),
+      unitPrice: tierPriceOfSnapshot(item, priceTier),
       itemRemarks: item.itemRemarks,
     }));
 

@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
 import { Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import type { EstimateItemDraft } from "@/lib/estimates/types";
 import { calculateDiscountRate, formatDiscountRate } from "@/lib/estimates/pricing";
@@ -31,13 +33,7 @@ export function EstimateItemsTable({
   onClearAll,
   disabled,
 }: EstimateItemsTableProps) {
-  const handleClearAll = () => {
-    if (items.length === 0) return;
-    if (!window.confirm("담아둔 견적 목록을 전부 비울까요? 임시 저장된 내용도 함께 삭제됩니다.")) {
-      return;
-    }
-    onClearAll();
-  };
+  const [confirmClearOpen, setConfirmClearOpen] = React.useState(false);
 
   return (
     <Card>
@@ -48,12 +44,20 @@ export function EstimateItemsTable({
           variant="ghost"
           size="sm"
           disabled={disabled || items.length === 0}
-          onClick={handleClearAll}
+          onClick={() => setConfirmClearOpen(true)}
           className="text-muted-foreground hover:text-destructive"
         >
           <X className="size-4" />
           전체 목록 비우기
         </Button>
+        <ConfirmDialog
+          open={confirmClearOpen}
+          onOpenChange={setConfirmClearOpen}
+          title="목록을 전부 비울까요?"
+          description="담아둔 견적 목록을 전부 비웁니다. 임시 저장된 내용도 함께 삭제됩니다."
+          confirmLabel="비우기"
+          onConfirm={onClearAll}
+        />
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
