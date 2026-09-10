@@ -3,8 +3,12 @@ import {
   getSavedEstimateDetail,
   deleteSavedEstimate,
   updateSavedEstimate,
+  updateEstimateStatus,
 } from "@/lib/db/estimate-repo";
 import { saveRealEstimateSchema } from "@/lib/estimates/schema";
+import type { EstimateStatus } from "@/lib/estimates/types";
+
+const VALID_STATUSES: EstimateStatus[] = ["draft", "sent", "approved", "cancelled"];
 
 /** GET /api/estimates/[id] - 견적서 보관함 상세(항목 포함) 조회 */
 export async function GET(
@@ -71,6 +75,41 @@ export async function PUT(
     return NextResponse.json({ id: updatedId }, { status: 200 });
   } catch (error) {
     console.error("견적서 수정 API 오류:", error);
+    const message =
+      error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/** PATCH /api/estimates/[id] - 견적서 진행 상태(작성중/발송됨/승인됨/취소됨)만 변경 */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json().catch(() => null);
+    const status = body?.status;
+
+    if (typeof status !== "string" || !VALID_STATUSES.includes(status as EstimateStatus)) {
+      return NextResponse.json(
+        { error: `status 는 ${VALID_STATUSES.join(", ")} 중 하나여야 합니다.` },
+        { status: 400 }
+      );
+    }
+
+    const updated = await updateEstimateStatus(id, status as EstimateStatus);
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "견적서를 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, status }, { status: 200 });
+  } catch (error) {
+    console.error("견적서 상태 변경 API 오류:", error);
     const message =
       error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     return NextResponse.json({ error: message }, { status: 500 });

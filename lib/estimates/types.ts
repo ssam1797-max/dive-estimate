@@ -111,6 +111,9 @@ export interface ExportEstimatePayload {
 }
 
 /** 견적서 보관함 목록 1건 (실제 저장된 견적서 — 템플릿 제외) */
+/** 견적서 진행 상태. 템플릿 행에는 의미 없음(기본값 그대로 방치). */
+export type EstimateStatus = "draft" | "sent" | "approved" | "cancelled";
+
 export interface SavedEstimateSummary {
   id: string;
   estimateNumber: string;
@@ -118,6 +121,7 @@ export interface SavedEstimateSummary {
   providerName: string;
   receiverName: string;
   itemCount: number;
+  status: EstimateStatus;
   /** 저장 시점 선택되어 있던 등급의 합계(레거시 호환용 — totalsByTier 폴백에도 쓰임). */
   totalAmount: number;
   /**

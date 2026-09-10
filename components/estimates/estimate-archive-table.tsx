@@ -16,9 +16,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { PriceTierSelect } from "@/components/estimates/price-tier-select";
 import { matchesKoreanSearch } from "@/lib/hangul";
 import type {
+  EstimateStatus,
   SavedEstimateDetail,
   SavedEstimateSummary,
 } from "@/lib/estimates/types";
@@ -26,6 +28,49 @@ import { tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 
 interface EstimateArchiveTableProps {
   initialEstimates: SavedEstimateSummary[];
+}
+
+const STATUS_LABELS: Record<EstimateStatus, string> = {
+  draft: "작성중",
+  sent: "발송됨",
+  approved: "승인됨",
+  cancelled: "취소됨",
+};
+
+const STATUS_TEXT_CLASS: Record<EstimateStatus, string> = {
+  draft: "text-muted-foreground",
+  sent: "text-blue-600 dark:text-blue-400",
+  approved: "text-emerald-600 dark:text-emerald-400",
+  cancelled: "text-destructive",
+};
+
+function StatusSelect({
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: EstimateStatus;
+  onChange: (status: EstimateStatus) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <Select
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value as EstimateStatus)}
+      onClick={(event) => event.stopPropagation()}
+      className={`h-7 text-xs font-medium ${STATUS_TEXT_CLASS[value]} ${className ?? ""}`}
+      aria-label="견적서 상태"
+    >
+      {(Object.keys(STATUS_LABELS) as EstimateStatus[]).map((status) => (
+        <option key={status} value={status}>
+          {STATUS_LABELS[status]}
+        </option>
+      ))}
+    </Select>
+  );
 }
 
 function formatCurrency(amount: number): string {
@@ -40,21 +85,36 @@ async function deleteEstimate(id: string): Promise<void> {
   }
 }
 
+async function updateEstimateStatus(id: string, status: EstimateStatus): Promise<void> {
+  const response = await fetch(`/api/estimates/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? "상태 변경에 실패했습니다.");
+  }
+}
+
 
 function EstimateDetailDialog({
   estimateId,
   tier,
   onOpenChange,
   onDeleted,
+  onStatusChanged,
 }: {
   estimateId: string;
   tier: PriceTier;
   onOpenChange: (open: boolean) => void;
   onDeleted: (id: string) => void;
+  onStatusChanged: (id: string, status: EstimateStatus) => void;
 }) {
   const [detail, setDetail] = React.useState<SavedEstimateDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
+  const [isChangingStatus, setIsChangingStatus] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -89,6 +149,23 @@ function EstimateDetailDialog({
     onOpenChange(false);
   };
 
+  const handleStatusChange = async (status: EstimateStatus) => {
+    if (!detail) return;
+    setIsChangingStatus(true);
+    setError(null);
+    try {
+      await updateEstimateStatus(estimateId, status);
+      setDetail({ ...detail, status });
+      onStatusChanged(estimateId, status);
+    } catch (statusError) {
+      setError(
+        statusError instanceof Error ? statusError.message : "상태 변경에 실패했습니다."
+      );
+    } finally {
+      setIsChangingStatus(false);
+    }
+  };
+
   return (
     <Dialog open onOpenChange={onOpenChange} widthClassName="max-w-2xl">
       <DialogContent onClose={() => onOpenChange(false)}>
@@ -102,7 +179,15 @@ function EstimateDetailDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>견적서 {detail.estimateNumber}</DialogTitle>
+              <div className="flex items-center justify-between gap-2 pr-6">
+                <DialogTitle>견적서 {detail.estimateNumber}</DialogTitle>
+                <StatusSelect
+                  value={detail.status}
+                  disabled={isChangingStatus}
+                  onChange={handleStatusChange}
+                  className="w-24"
+                />
+              </div>
               <DialogDescription>
                 {detail.date} · 공급자 {detail.providerName} · 공급받는자{" "}
                 {detail.receiverName}
@@ -220,9 +305,10 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
   const [searchQuery, setSearchQuery] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<EstimateStatus | "all">("all");
 
-  // 공급받는자명 또는 견적서 번호로 검색하고, 발행일 범위로 좁힌다. 목록을
-  // 전부 미리 불러온 상태(initialEstimates)에서 클라이언트 쪽에서만
+  // 공급받는자명 또는 견적서 번호로 검색하고, 발행일 범위/상태로 좁힌다.
+  // 목록을 전부 미리 불러온 상태(initialEstimates)에서 클라이언트 쪽에서만
   // 걸러내면 되므로 서버 요청 없이 즉시 반영된다.
   const filteredEstimates = React.useMemo(() => {
     const query = searchQuery.trim();
@@ -236,9 +322,26 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
       }
       if (dateFrom && estimate.date < dateFrom) return false;
       if (dateTo && estimate.date > dateTo) return false;
+      if (statusFilter !== "all" && estimate.status !== statusFilter) return false;
       return true;
     });
-  }, [estimates, searchQuery, dateFrom, dateTo]);
+  }, [estimates, searchQuery, dateFrom, dateTo, statusFilter]);
+
+  const handleStatusChange = (id: string, status: EstimateStatus) => {
+    setEstimates((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
+  };
+
+  const handleRowStatusChange = async (id: string, status: EstimateStatus) => {
+    setRowError(null);
+    try {
+      await updateEstimateStatus(id, status);
+      handleStatusChange(id, status);
+    } catch (statusError) {
+      setRowError(
+        statusError instanceof Error ? statusError.message : "상태 변경에 실패했습니다."
+      );
+    }
+  };
 
   const handleRowDelete = async (id: string) => {
     setRowError(null);
@@ -300,6 +403,21 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
             aria-label="종료일"
             className="w-[9.5rem]"
           />
+          <Select
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.target.value as EstimateStatus | "all")
+            }
+            aria-label="상태 필터"
+            className="w-28"
+          >
+            <option value="all">전체 상태</option>
+            {(Object.keys(STATUS_LABELS) as EstimateStatus[]).map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABELS[status]}
+              </option>
+            ))}
+          </Select>
         </div>
       </div>
 
@@ -322,6 +440,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
                 <th className="px-4 py-3 font-medium">날짜</th>
                 <th className="px-4 py-3 font-medium">공급받는자</th>
                 <th className="px-4 py-3 font-medium">품목</th>
+                <th className="px-4 py-3 font-medium">상태</th>
                 <th className="px-4 py-3 text-right font-medium">합계</th>
                 <th className="px-4 py-3 text-right font-medium">작업</th>
               </tr>
@@ -340,6 +459,13 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {estimate.itemCount}건
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusSelect
+                      value={estimate.status}
+                      onChange={(status) => handleRowStatusChange(estimate.id, status)}
+                      className="w-24"
+                    />
                   </td>
                   <td className="px-4 py-3 text-right font-medium">
                     {formatCurrency(estimate.totalsByTier[tier])}
@@ -414,6 +540,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
             if (!open) setSelectedId(null);
           }}
           onDeleted={handleDetailDeleted}
+          onStatusChanged={handleStatusChange}
         />
       )}
 

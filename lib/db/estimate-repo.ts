@@ -8,6 +8,7 @@ import type {
   TemplateDetail,
   SavedEstimateSummary,
   SavedEstimateDetail,
+  EstimateStatus,
 } from "@/lib/estimates/types";
 import type { SaveEstimateItemPayload } from "@/lib/estimates/types";
 import type { PriceTier } from "@/lib/estimates/pricing";
@@ -95,6 +96,7 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
       remarks: params.remarks,
       template_name: params.templateName,
       price_tier: params.priceTier,
+      status: "draft",
       created_at: now,
       updated_at: now,
     });
@@ -427,6 +429,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
           providerName: provider?.name ?? "-",
           receiverName: receiver?.name ?? "-",
           itemCount: items.length,
+          status: e.status as EstimateStatus,
           totalAmount: e.total_amount,
           totalsByTier: computeTotalsByTier(
             items.map((i) => ({
@@ -454,7 +457,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
   const { data, error } = await supabase
     .from("estimates")
     .select(
-      "id, estimate_number, date, total_amount, created_at, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
+      "id, estimate_number, date, total_amount, status, created_at, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
     )
     .is("template_name", null)
     .order("created_at", { ascending: false });
@@ -465,6 +468,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
     estimate_number: string;
     date: string;
     total_amount: number | string;
+    status: EstimateStatus;
     created_at: string;
     provider: { name: string }[] | { name: string } | null;
     receiver: { name: string }[] | { name: string } | null;
@@ -495,6 +499,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
       providerName: provider?.name ?? "-",
       receiverName: receiver?.name ?? "-",
       itemCount: items.length,
+      status: row.status,
       totalAmount,
       totalsByTier: computeTotalsByTier(items, totalAmount),
       createdAt: row.created_at,
@@ -548,6 +553,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       receiverName: receiver?.name ?? "-",
       remarks: estimate.remarks ?? "",
       itemCount: detailItems.length,
+      status: estimate.status as EstimateStatus,
       totalAmount: estimate.total_amount,
       totalsByTier: computeTotalsByTier(
         items.map((i) => ({
@@ -572,7 +578,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
   const supabase = await createAdminClient();
   const { data: estimate, error: estimateError } = await supabase
     .from("estimates")
-    .select("id, estimate_number, date, remarks, total_amount, created_at, provider_id, receiver_id, price_tier")
+    .select("id, estimate_number, date, remarks, total_amount, status, created_at, provider_id, receiver_id, price_tier")
     .eq("id", id)
     .is("template_name", null)
     .maybeSingle();
@@ -586,6 +592,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     date: string;
     remarks: string | null;
     total_amount: number | string;
+    status: EstimateStatus;
     created_at: string;
     provider_id: string;
     receiver_id: string;
@@ -647,6 +654,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     receiverName: receiver?.name ?? "-",
     remarks: row.remarks ?? "",
     itemCount: detailItems.length,
+    status: row.status,
     totalAmount: Number(row.total_amount),
     totalsByTier: computeTotalsByTier(
       detailItems.map((i) => ({
@@ -694,6 +702,32 @@ export async function deleteSavedEstimate(id: string): Promise<boolean> {
     .eq("id", id)
     .is("template_name", null);
   if (error) throw new Error("견적서 삭제 중 오류가 발생했습니다.");
+
+  return (count ?? 0) > 0;
+}
+
+/** 저장된 견적서 1건의 진행 상태(작성중/발송됨/승인됨/취소됨)를 바꾼다. 템플릿 행은 대상에서 제외한다. */
+export async function updateEstimateStatus(
+  id: string,
+  status: EstimateStatus
+): Promise<boolean> {
+  if (isMockMode()) {
+    const row = mockStore.estimates.find((e) => e.id === id && !e.template_name);
+    if (!row) return false;
+    row.status = status;
+    row.updated_at = new Date().toISOString();
+    return true;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const { error, count } = await supabase
+    .from("estimates")
+    .update({ status }, { count: "exact" })
+    .eq("id", id)
+    .is("template_name", null);
+  if (error) throw new Error("견적서 상태 변경 중 오류가 발생했습니다.");
 
   return (count ?? 0) > 0;
 }
