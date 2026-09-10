@@ -75,6 +75,7 @@ export async function POST(request: Request) {
         vat: calculateInclusiveVat(amount),
         itemRemarks: item.itemRemarks,
         discountRate: calculateDiscountRate(item.priceRetail, effectiveUnitPrice),
+        priceRetail: item.priceRetail,
       };
     });
 
