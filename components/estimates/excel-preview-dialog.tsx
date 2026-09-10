@@ -32,6 +32,8 @@ interface ExcelPreviewDialogProps {
   receiver: ProfileOption | null;
   remarks: string;
   priceTier: PriceTier;
+  /** 참고용으로 함께 표시할 등급들(0~4개, 체크박스 다중 선택). 총액 계산에는 영향 없음. */
+  referenceTiers: PriceTier[];
   items: EstimateItemDraft[];
   discountPolicies: DiscountPolicyMap;
 }
@@ -49,6 +51,7 @@ export function ExcelPreviewDialog({
   receiver,
   remarks,
   priceTier,
+  referenceTiers,
   items,
   discountPolicies,
 }: ExcelPreviewDialogProps) {
@@ -74,11 +77,15 @@ export function ExcelPreviewDialog({
           vat: calculateInclusiveVat(amount),
           itemRemarks: item.itemRemarks,
           discountRate: calculateDiscountRate(item.priceRetail, unitPrice),
-          priceRetail: item.priceRetail,
+          referenceValues: referenceTiers.map((tier) =>
+            calculateEffectiveUnitPrice(item.priceRetail, item.brand, tier, discountPolicies)
+          ),
         };
       }),
-    [items, priceTier, discountPolicies]
+    [items, priceTier, referenceTiers, discountPolicies]
   );
+
+  const referenceTierLabels = referenceTiers.map((tier) => PRICE_TIER_LABELS[tier]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} widthClassName="max-w-5xl">
@@ -100,6 +107,7 @@ export function ExcelPreviewDialog({
               receiver={receiver}
               remarks={remarks}
               rows={rows}
+              referenceTierLabels={referenceTierLabels}
             />
           </div>
         </div>

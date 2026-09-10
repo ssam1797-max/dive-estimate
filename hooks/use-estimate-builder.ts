@@ -24,6 +24,13 @@ export interface EstimateBuilderState {
   receiverId: string;
   remarks: string;
   priceTier: PriceTier;
+  /**
+   * 참고용으로 문서에 함께 노출할 등급들(0~4개, 체크박스 다중 선택).
+   * priceTier(기준 등급)와 별개이며 실제 결제 금액 계산에는 전혀 영향을
+   * 주지 않는다 — 세션 동안만 유지되는 화면 표시 옵션이라 저장/복제/이어서
+   * 수정 시에도 항상 빈 배열로 시작한다.
+   */
+  referenceTiers: PriceTier[];
   items: EstimateItemDraft[];
 }
 
@@ -33,6 +40,7 @@ type Action =
   | { type: "SET_RECEIVER"; receiverId: string }
   | { type: "SET_REMARKS"; remarks: string }
   | { type: "SET_PRICE_TIER"; tier: PriceTier; discountPolicies: DiscountPolicyMap }
+  | { type: "SET_REFERENCE_TIERS"; tiers: PriceTier[] }
   | { type: "ESTIMATE_NUMBER_LOADING" }
   | { type: "ESTIMATE_NUMBER_LOADED"; estimateNumber: string }
   | { type: "ESTIMATE_NUMBER_FAILED"; message: string }
@@ -40,6 +48,12 @@ type Action =
   | { type: "REMOVE_ITEM"; clientId: string }
   | { type: "UPDATE_ITEM_QUANTITY"; clientId: string; quantity: number }
   | { type: "UPDATE_ITEM_UNIT_PRICE"; clientId: string; unitPrice: number }
+  | {
+      type: "UPDATE_ITEM_PRICE_RETAIL";
+      clientId: string;
+      priceRetail: number;
+      discountPolicies: DiscountPolicyMap;
+    }
   | { type: "LOAD_ITEMS"; items: EstimateItemDraft[] }
   | { type: "RESET_AFTER_SAVE" };
 
@@ -73,6 +87,7 @@ function createInitialState(initialData?: EstimateBuilderInitialData): EstimateB
       receiverId: initialData.receiverId,
       remarks: initialData.remarks,
       priceTier: initialData.priceTier,
+      referenceTiers: [],
       items: initialData.items,
     };
   }
@@ -85,6 +100,7 @@ function createInitialState(initialData?: EstimateBuilderInitialData): EstimateB
     receiverId: "",
     remarks: "",
     priceTier: "RETAIL",
+    referenceTiers: [],
     items: [],
   };
 }
@@ -114,6 +130,8 @@ function reducer(
       }));
       return { ...state, priceTier: action.tier, items: recalculated };
     }
+    case "SET_REFERENCE_TIERS":
+      return { ...state, referenceTiers: action.tiers };
     case "ESTIMATE_NUMBER_LOADING":
       return {
         ...state,
@@ -155,6 +173,28 @@ function reducer(
         items: state.items.map((item) =>
           item.clientId === action.clientId
             ? { ...item, unitPrice: action.unitPrice }
+            : item
+        ),
+      };
+    case "UPDATE_ITEM_PRICE_RETAIL":
+      // 소비자가격(정가)을 고치면, 그 항목의 단가를 현재 기준 등급의 할인율로
+      // 즉시 다시 계산한다 — SET_PRICE_TIER 가 전체 목록에 하는 일을 이
+      // 항목 하나에만 적용하는 것과 같다. amount/vat/총합계는 파생값이라
+      // unitPrice 가 바뀌면 렌더링 시 자동으로 다시 계산된다.
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.clientId === action.clientId
+            ? {
+                ...item,
+                priceRetail: action.priceRetail,
+                unitPrice: calculateEffectiveUnitPrice(
+                  action.priceRetail,
+                  item.brand,
+                  state.priceTier,
+                  action.discountPolicies
+                ),
+              }
             : item
         ),
       };
@@ -301,6 +341,10 @@ export function useEstimateBuilder(
       dispatch({ type: "SET_PRICE_TIER", tier, discountPolicies: discountPoliciesRef.current }),
     []
   );
+  const setReferenceTiers = React.useCallback(
+    (tiers: PriceTier[]) => dispatch({ type: "SET_REFERENCE_TIERS", tiers }),
+    []
+  );
   const addItem = React.useCallback(
     (item: EstimateItemDraft) => dispatch({ type: "ADD_ITEM", item }),
     []
@@ -317,6 +361,16 @@ export function useEstimateBuilder(
   const updateItemUnitPrice = React.useCallback(
     (clientId: string, unitPrice: number) =>
       dispatch({ type: "UPDATE_ITEM_UNIT_PRICE", clientId, unitPrice }),
+    []
+  );
+  const updateItemPriceRetail = React.useCallback(
+    (clientId: string, priceRetail: number) =>
+      dispatch({
+        type: "UPDATE_ITEM_PRICE_RETAIL",
+        clientId,
+        priceRetail,
+        discountPolicies: discountPoliciesRef.current,
+      }),
     []
   );
   const loadItems = React.useCallback(
@@ -351,10 +405,12 @@ export function useEstimateBuilder(
       setReceiverId,
       setRemarks,
       setPriceTier,
+      setReferenceTiers,
       addItem,
       removeItem,
       updateItemQuantity,
       updateItemUnitPrice,
+      updateItemPriceRetail,
       loadItems,
       clearItems,
       resetAfterSave,

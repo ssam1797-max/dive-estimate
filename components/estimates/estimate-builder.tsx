@@ -19,7 +19,10 @@ import { EquipmentPicker } from "@/components/estimates/equipment-picker";
 import { EstimateItemsTable } from "@/components/estimates/estimate-items-table";
 import { TemplateSaveDialog } from "@/components/estimates/template-save-dialog";
 import { TemplateLoadDialog } from "@/components/estimates/template-load-dialog";
-import { PriceTierSelect } from "@/components/estimates/price-tier-select";
+import {
+  BasisTierSelect,
+  ReferenceTierCheckboxes,
+} from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
 import { useEstimateBuilder, type EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import type {
@@ -479,6 +482,7 @@ export function EstimateBuilder({
           receiverId: state.receiverId,
           remarks: state.remarks,
           priceTier: state.priceTier,
+          referenceTiers: state.referenceTiers,
           items: toExportItemPayloads(state.items),
         }),
       });
@@ -597,11 +601,18 @@ export function EstimateBuilder({
       )}
 
       <div className="flex flex-col gap-3">
-        <PriceTierSelect
-          value={state.priceTier}
-          onChange={actions.setPriceTier}
-          disabled={isSaving || isExporting}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+          <BasisTierSelect
+            value={state.priceTier}
+            onChange={actions.setPriceTier}
+            disabled={isSaving || isExporting}
+          />
+          <ReferenceTierCheckboxes
+            value={state.referenceTiers}
+            onChange={actions.setReferenceTiers}
+            disabled={isSaving || isExporting}
+          />
+        </div>
 
         <EstimateItemsTable
           items={state.items}
@@ -609,6 +620,7 @@ export function EstimateBuilder({
           onRemove={actions.removeItem}
           onQuantityChange={actions.updateItemQuantity}
           onUnitPriceChange={actions.updateItemUnitPrice}
+          onPriceRetailChange={actions.updateItemPriceRetail}
           onClearAll={actions.clearItems}
           disabled={isSaving}
         />
@@ -662,6 +674,7 @@ export function EstimateBuilder({
         receiver={selectedReceiver}
         remarks={state.remarks}
         priceTier={state.priceTier}
+        referenceTiers={state.referenceTiers}
         items={state.items}
         discountPolicies={discountPolicies}
       />

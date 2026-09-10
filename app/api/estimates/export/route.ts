@@ -5,6 +5,7 @@ import {
   calculateDiscountRate,
   calculateEffectiveUnitPrice,
   calculateInclusiveVat,
+  PRICE_TIER_LABELS,
 } from "@/lib/estimates/pricing";
 import {
   buildEstimateWorkbook,
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { estimateNumber, date, providerId, receiverId, remarks, priceTier, items } =
+    const { estimateNumber, date, providerId, receiverId, remarks, priceTier, referenceTiers, items } =
       parsed.data;
 
     const [provider, receiver, discountPolicies] = await Promise.all([
@@ -75,7 +76,9 @@ export async function POST(request: Request) {
         vat: calculateInclusiveVat(amount),
         itemRemarks: item.itemRemarks,
         discountRate: calculateDiscountRate(item.priceRetail, effectiveUnitPrice),
-        priceRetail: item.priceRetail,
+        referenceValues: referenceTiers.map((tier) =>
+          calculateEffectiveUnitPrice(item.priceRetail, item.brand, tier, discountPolicies)
+        ),
       };
     });
 
@@ -86,6 +89,7 @@ export async function POST(request: Request) {
       receiver,
       remarks,
       priceTier,
+      referenceTierLabels: referenceTiers.map((tier) => PRICE_TIER_LABELS[tier]),
       items: workbookItems,
     });
 

@@ -18,6 +18,7 @@ export interface EstimateDocumentRow {
   spec: string;
   unit: string;
   quantity: number;
+  /** "기준 등급" 기준 실제 단가 — 총 합계금액(실제 결제 금액) 계산에 쓰이는 유일한 값. */
   unitPrice: number;
   amount: number;
   vat: number;
@@ -25,11 +26,12 @@ export interface EstimateDocumentRow {
   /** 소비자가격 대비 할인율(%). 계산 기준(priceRetail)이 없는 호출부(보관함 인쇄 등)는 생략 가능 — 생략 시 표시 안 함. */
   discountRate?: number;
   /**
-   * 소비자가격(정가). 단순 참고용 표시 컬럼 — unitPrice/amount/vat 계산에는
-   * 전혀 관여하지 않는다. 값이 없는 호출부(옛 저장 데이터 등)는 생략 가능 —
-   * 생략 시 "-" 로 표시.
+   * 참고용으로 함께 노출할 등급들의 단가 목록. 테이블 props 의
+   * `referenceTierLabels` 와 같은 순서/길이여야 한다(길이가 다르면 부족한
+   * 자리는 "-" 로 채운다). 단순 참고 표시일 뿐 — 총 합계금액 계산에는
+   * 전혀 관여하지 않는다.
    */
-  priceRetail?: number;
+  referenceValues?: number[];
 }
 
 interface EstimateDocumentTableProps {
@@ -39,6 +41,8 @@ interface EstimateDocumentTableProps {
   receiver: ProfileOption | null;
   remarks: string;
   rows: EstimateDocumentRow[];
+  /** 체크된 참고 가격 등급들의 표시 이름(선택된 순서 그대로). 없으면 원본 13열 그대로. */
+  referenceTierLabels?: string[];
 }
 
 // ₩ 기호 없이 콤마만 (원본 견적서에 통화 기호가 전혀 없다)
@@ -60,12 +64,11 @@ function formatDisplayDate(date: string): string {
 }
 
 // 원본 13열 비율(실제 견적서 스크린샷을 픽셀 단위로 측정해서 맞춘 값, Excel
-// COL_WIDTHS 와 동일 — buildEstimateWorkbook.ts 참고)에, "수량"과 "단가" 사이에
-// 참고용 "소비자가격" 열 하나(7.0, 인덱스 7)를 추가해 14열로 확장했다. 이
-// 화면/미리보기 전용 표시 컬럼이며 Excel 다운로드 구조(buildEstimateWorkbook.ts)
-// 는 그대로 13열이라 맞출 필요가 없다.
-const COL_WIDTHS = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 7.0, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
-const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
+// COL_WIDTHS_BASE 와 동일 — buildEstimateWorkbook.ts 참고). "수량"과 "단가"
+// 사이에 체크된 참고 등급 수(N)만큼 열(각 7.0)을 끼워 넣어 13+N 열로
+// 동적으로 늘어난다 — N=0이면 원본 13열 그대로다.
+const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
+const REFERENCE_COL_WIDTH = 7.0;
 
 // A4(297mm) 세로, body margin 10mm×2 를 뺀 실제 인쇄 가능 높이(277mm ≈ 1047px,
 // 96 CSS px/in 기준)를 채우도록 실측(브라우저에서 렌더링된 각 행의 실제 높이를
@@ -83,7 +86,14 @@ const purpleStyle = { borderColor: "#666695" };
 const grayStyle = { borderColor: "#D4D4D4" };
 const greenStyle = { borderColor: "#3A714A" };
 
+// 숫자/코드성 컬럼(No·단위·수량·가격류)은 좁아져도 줄바꿈되어 꺾이면 안 되므로
+// 항상 한 줄 고정(whitespace-nowrap). 반대로 품명/규격/적요처럼 길이가 일정치
+// 않은 텍스트 컬럼은 남는 폭을 채우다 넘치면 자연스럽게 줄바꿈되어야 하므로
+// break-keep(단어 중간에서 안 끊김) + break-words(그래도 안 끊기면 강제 줄바꿈)
+// 조합을 쓴다 — 참고 등급 체크박스가 늘어나 컬럼이 좁아질수록 이 차이가 커진다.
 const cellBase = "bg-white text-gray-900 text-[10px] px-1 leading-tight";
+const cellNumeric = `${cellBase} whitespace-nowrap`;
+const cellText = `${cellBase} break-keep break-words`;
 const noBorderCell = `${cellBase} border-0`;
 
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
@@ -96,12 +106,26 @@ export function EstimateDocumentTable({
   receiver,
   remarks,
   rows,
+  referenceTierLabels = [],
 }: EstimateDocumentTableProps) {
+  const refCount = referenceTierLabels.length;
+
+  // 참고 등급 열(폭 7.0 × N)을 "수량"과 "단가" 사이(base 배열의 인덱스 7)에 끼워 넣는다.
+  const colWidths = [
+    ...COL_WIDTHS_BASE.slice(0, 7),
+    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
+    ...COL_WIDTHS_BASE.slice(7),
+  ];
+  const totalW = colWidths.reduce((a, b) => a + b, 0);
+  const totalCols = colWidths.length; // 13 + refCount
+
   // 부가세 포함가 정책: row.amount(단가×수량)는 이미 부가세가 포함된 최종
   // 판매 금액이다. 부가세 금액/공급가액 역산 표기는 오히려 헷갈린다는
   // 피드백에 따라 화면에는 더 이상 부가세 관련 숫자를 표시하지 않는다
   // (row.vat 자체는 호출부가 여전히 계산해서 넘기지만 이 컴포넌트가
   // 렌더링하지 않을 뿐이다) — "공급금액"도 그냥 합계금액과 같은 값을 보여준다.
+  // 참고 등급 열이 몇 개가 추가되든, 실제 결제 금액(총 합계금액)은 항상
+  // row.amount(기준 등급 단가 × 수량)의 합 단 하나로만 계산한다.
   const grandTotal = rows.reduce((s, r) => s + r.amount, 0);
   const totalSupply = grandTotal;
   const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
@@ -111,8 +135,8 @@ export function EstimateDocumentTable({
 
   const colgroup = (
     <colgroup>
-      {COL_WIDTHS.map((w, i) => (
-        <col key={i} style={{ width: `${(w / TOTAL_W) * 100}%` }} />
+      {colWidths.map((w, i) => (
+        <col key={i} style={{ width: `${(w / totalW) * 100}%` }} />
       ))}
     </colgroup>
   );
@@ -128,7 +152,7 @@ export function EstimateDocumentTable({
         {/* ── 제목 (위 초록 테두리) ──────────────────────────────────── */}
         <tr style={{ height: 50 }}>
           <td
-            colSpan={14}
+            colSpan={totalCols}
             className="border-0 border-t-2 bg-white text-center font-bold text-2xl text-gray-900 py-2"
             style={greenStyle}
           >
@@ -139,7 +163,7 @@ export function EstimateDocumentTable({
         {/* ── 발행일자(요일)/No. (아래 초록 굵은 테두리) ─────────────── */}
         <tr style={{ height: 22 }}>
           <td
-            colSpan={14}
+            colSpan={totalCols}
             className="border-0 border-b-2 bg-white text-[11px] text-gray-900 text-right px-1"
             style={greenStyle}
           >
@@ -163,7 +187,7 @@ export function EstimateDocumentTable({
             사업번호
           </td>
           <td
-            colSpan={7}
+            colSpan={6 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[13px] font-bold`}
             style={purpleStyle}
           >
@@ -189,7 +213,7 @@ export function EstimateDocumentTable({
             상호
           </td>
           <td
-            colSpan={5}
+            colSpan={4 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -240,7 +264,7 @@ export function EstimateDocumentTable({
             주소
           </td>
           <td
-            colSpan={7}
+            colSpan={6 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -260,7 +284,7 @@ export function EstimateDocumentTable({
             업태
           </td>
           <td
-            colSpan={5}
+            colSpan={4 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -283,7 +307,7 @@ export function EstimateDocumentTable({
             전화
           </td>
           <td
-            colSpan={5}
+            colSpan={4 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -306,7 +330,7 @@ export function EstimateDocumentTable({
 
         {/* ── 공백 ──────────────────────────────────────────────────── */}
         <tr style={{ height: 8 }}>
-          <td colSpan={14} className="border-0 bg-white" />
+          <td colSpan={totalCols} className="border-0 bg-white" />
         </tr>
         </tbody>
       </table>
@@ -319,35 +343,40 @@ export function EstimateDocumentTable({
         <thead>
         {/* ── 테이블 헤더 (배경색 없음, 굵은 위 테두리) ────────────────── */}
         <tr style={{ height: 30 }}>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             No.
           </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             품&nbsp;&nbsp;&nbsp;&nbsp;명
           </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             규&nbsp;&nbsp;&nbsp;&nbsp;격
           </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             단위
           </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             수량
           </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[10px] leading-tight`}>
-            소비자가격
-          </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          {referenceTierLabels.map((label, i) => (
+            <td
+              key={`ref-head-${i}`}
+              className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[9px] leading-tight`}
+            >
+              {label}
+            </td>
+          ))}
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             단&nbsp;&nbsp;&nbsp;&nbsp;가
             <div className="text-[8px] font-normal leading-tight">(부가세포함)</div>
           </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             금&nbsp;&nbsp;&nbsp;&nbsp;액
           </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             부가세
           </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             적&nbsp;&nbsp;요
           </td>
         </tr>
@@ -356,19 +385,23 @@ export function EstimateDocumentTable({
         {/* ── 데이터 행 ─────────────────────────────────────────────── */}
         {rows.map((row) => (
           <tr key={row.key} style={{ height: 20 }}>
-            <td className={`${BLACK_BORDER} ${cellBase} text-center`}>{row.seq}</td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellBase} text-left`}>
+            <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.seq}</td>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellText} text-left`}>
               {row.name}
             </td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellBase} text-center`}>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellText} text-center`}>
               {row.spec}
             </td>
-            <td className={`${BLACK_BORDER} ${cellBase} text-center`}>{row.unit}</td>
-            <td className={`${BLACK_BORDER} ${cellBase} text-center`}>{row.quantity}</td>
-            <td className={`${BLACK_BORDER} ${cellBase} text-right`}>
-              {row.priceRetail != null ? fmtNum(row.priceRetail) : "-"}
-            </td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellBase} text-right`}>
+            <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.unit}</td>
+            <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.quantity}</td>
+            {Array.from({ length: refCount }, (_, i) => row.referenceValues?.[i]).map(
+              (value, i) => (
+                <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
+                  {value != null ? fmtNum(value) : "-"}
+                </td>
+              )
+            )}
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
               {fmtNum(row.unitPrice)}
               {!!row.discountRate && row.discountRate > 0 && (
                 <div className="text-[8px] leading-tight text-gray-500">
@@ -376,7 +409,7 @@ export function EstimateDocumentTable({
                 </div>
               )}
             </td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellBase} text-right`}>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
               {fmtNum(row.amount)}
               {!!row.discountRate && row.discountRate > 0 && (
                 <div className="text-[8px] leading-tight text-gray-500">
@@ -384,8 +417,8 @@ export function EstimateDocumentTable({
                 </div>
               )}
             </td>
-            <td className={`${BLACK_BORDER} ${cellBase} text-right`} />
-            <td className={`${BLACK_BORDER} ${cellBase} text-center`}>
+            <td className={`${BLACK_BORDER} ${cellNumeric} text-right`} />
+            <td className={`${BLACK_BORDER} ${cellText} text-center`}>
               {row.itemRemarks || "-"}
             </td>
           </tr>
@@ -396,7 +429,7 @@ export function EstimateDocumentTable({
           <>
             <tr style={{ height: 20 }}>
               <td
-                colSpan={14}
+                colSpan={totalCols}
                 className={`${BLACK_BORDER} bg-white text-[10px] text-center text-gray-500`}
               >
                 ~ 이 하 여 백 ~
@@ -406,7 +439,7 @@ export function EstimateDocumentTable({
               length: totalDataRows - rows.length - 1,
             }).map((_, i) => (
               <tr key={`empty-${i}`} style={{ height: 20 }}>
-                {Array.from({ length: COL_WIDTHS.length }).map((_, c) => (
+                {Array.from({ length: totalCols }).map((_, c) => (
                   <td key={c} className={`${BLACK_BORDER} bg-white`} />
                 ))}
               </tr>
@@ -416,15 +449,17 @@ export function EstimateDocumentTable({
 
         {/* ── 총 계 (흰 배경, 강조색 없음) ──────────────────────────── */}
         <tr style={{ height: 24 }}>
-          <td colSpan={6} className={`${BLACK_BORDER} bg-white text-[11px] text-center font-bold`}>
+          <td colSpan={6} className={`${BLACK_BORDER} bg-white text-[11px] text-center font-bold whitespace-nowrap`}>
             총&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;계
           </td>
-          <td className={`${BLACK_BORDER} bg-white text-[10px] text-center font-bold`}>
+          <td className={`${BLACK_BORDER} bg-white text-[10px] text-center font-bold whitespace-nowrap`}>
             {totalQty}
           </td>
-          <td className={`${BLACK_BORDER} bg-white`} />
+          {refCount > 0 && (
+            <td colSpan={refCount} className={`${BLACK_BORDER} bg-white`} />
+          )}
           <td colSpan={2} className={`${BLACK_BORDER} bg-white`} />
-          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1`}>
+          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap`}>
             {fmtNum(grandTotal)}
           </td>
           <td className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1`} />
@@ -433,11 +468,11 @@ export function EstimateDocumentTable({
 
         {/* ── 비고 (좌: 세로 병합 라벨, 우: 내용) ──────────────────────── */}
         <tr style={{ height: 20 }}>
-          <td rowSpan={5} className={`${BLACK_BORDER} bg-white text-center text-[10px] align-middle`}>
+          <td rowSpan={5} className={`${BLACK_BORDER} bg-white text-center text-[10px] align-middle whitespace-nowrap`}>
             비고
           </td>
           <td
-            colSpan={13}
+            colSpan={12 + refCount}
             rowSpan={5}
             className={`${BLACK_BORDER} bg-white text-[10px] text-gray-900 px-2 py-1 align-top whitespace-pre-wrap`}
           >

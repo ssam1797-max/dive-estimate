@@ -83,6 +83,8 @@ export const exportEstimateSchema = z.object({
   priceTier: z.enum(["RETAIL", "INSTRUCTOR", "CENTER", "COST"], {
     message: "가격 버전을 선택해주세요.",
   }),
+  /** 참고용으로 문서에 함께 노출할 등급들(0~4개). 총액 계산에는 관여하지 않는다. */
+  referenceTiers: z.array(z.enum(["RETAIL", "INSTRUCTOR", "CENTER", "COST"])).default([]),
   items: z.array(exportEstimateItemSchema).min(1, "장비를 1개 이상 담아주세요."),
 });
 

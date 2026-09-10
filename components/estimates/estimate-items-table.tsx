@@ -16,6 +16,7 @@ interface EstimateItemsTableProps {
   onRemove: (clientId: string) => void;
   onQuantityChange: (clientId: string, quantity: number) => void;
   onUnitPriceChange: (clientId: string, unitPrice: number) => void;
+  onPriceRetailChange: (clientId: string, priceRetail: number) => void;
   onClearAll: () => void;
   disabled?: boolean;
 }
@@ -30,6 +31,7 @@ export function EstimateItemsTable({
   onRemove,
   onQuantityChange,
   onUnitPriceChange,
+  onPriceRetailChange,
   onClearAll,
   disabled,
 }: EstimateItemsTableProps) {
@@ -73,6 +75,7 @@ export function EstimateItemsTable({
                   <th className="py-2 pr-2 font-medium">장비명</th>
                   <th className="py-2 pr-2 font-medium">색상 / 사이즈</th>
                   <th className="py-2 pr-2 font-medium">수량</th>
+                  <th className="py-2 pr-2 font-medium">소비자가격</th>
                   <th className="py-2 pr-2 font-medium">단가</th>
                   <th className="py-2 pr-2 font-medium">소계</th>
                   <th className="py-2 pr-2 font-medium">비고</th>
@@ -119,6 +122,22 @@ export function EstimateItemsTable({
                         type="number"
                         min={0}
                         step={100}
+                        value={item.priceRetail}
+                        disabled={disabled}
+                        className="w-28"
+                        onChange={(event) =>
+                          onPriceRetailChange(
+                            item.clientId,
+                            Math.max(0, Number(event.target.value) || 0)
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="py-2 pr-2 align-top">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={100}
                         value={item.unitPrice}
                         disabled={disabled}
                         className="w-28"
@@ -132,9 +151,6 @@ export function EstimateItemsTable({
                       {discountRate > 0 && (
                         <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                           {formatDiscountRate(discountRate)}%↓
-                          <span className="ml-1 text-muted-foreground line-through">
-                            {formatCurrency(item.priceRetail)}
-                          </span>
                         </p>
                       )}
                     </td>
@@ -167,7 +183,7 @@ export function EstimateItemsTable({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} className="pt-3 text-right font-medium">
+                  <td colSpan={6} className="pt-3 text-right font-medium">
                     합계
                   </td>
                   <td className="pt-3 text-lg font-semibold" colSpan={3}>

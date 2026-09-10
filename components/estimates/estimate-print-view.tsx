@@ -3,7 +3,10 @@
 import * as React from "react";
 
 import { PrintControls } from "@/components/estimates/print-controls";
-import { PriceTierSelect } from "@/components/estimates/price-tier-select";
+import {
+  BasisTierSelect,
+  ReferenceTierCheckboxes,
+} from "@/components/estimates/price-tier-controls";
 import {
   EstimateDocumentTable,
   type EstimateDocumentRow,
@@ -13,6 +16,7 @@ import {
   calculateDiscountRate,
   calculateInclusiveVat,
   tierPriceOfSnapshot,
+  PRICE_TIER_LABELS,
   type PriceTier,
 } from "@/lib/estimates/pricing";
 
@@ -33,6 +37,7 @@ interface EstimatePrintViewProps {
  */
 export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
   const [tier, setTier] = React.useState<PriceTier>(estimate.priceTier ?? "RETAIL");
+  const [referenceTiers, setReferenceTiers] = React.useState<PriceTier[]>([]);
 
   const hasTierSnapshot = estimate.items.some(
     (item) =>
@@ -58,9 +63,13 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
       vat: calculateInclusiveVat(amount),
       itemRemarks: item.itemRemarks,
       discountRate: calculateDiscountRate(retailReference, unitPrice),
-      priceRetail: item.priceRetail ?? undefined,
+      // 저장 시점 4개 등급 스냅샷에서 그대로 뽑아 쓴다 — 참고 등급 선택은
+      // 총액 계산과 무관한 순수 표시 옵션이라 새 DB 컬럼 없이도 충분하다.
+      referenceValues: referenceTiers.map((refTier) => tierPriceOfSnapshot(item, refTier)),
     };
   });
+
+  const referenceTierLabels = referenceTiers.map((refTier) => PRICE_TIER_LABELS[refTier]);
 
   return (
     // pb-10 은 화면에서 아래쪽 여백을 주기 위한 것뿐인데, 위쪽의 두
@@ -73,10 +82,11 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
       <PrintControls estimateId={estimate.id} fileName={`견적서_${estimate.estimateNumber}`} />
 
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 print:hidden">
-        <PriceTierSelect value={tier} onChange={setTier} />
+        <BasisTierSelect value={tier} onChange={setTier} />
+        <ReferenceTierCheckboxes value={referenceTiers} onChange={setReferenceTiers} />
         {!hasTierSnapshot && (
           <p className="text-xs text-muted-foreground">
-            이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 탭에 저장 당시 단가가 동일하게 표시됩니다.
+            이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 등급에 저장 당시 단가가 동일하게 표시됩니다.
           </p>
         )}
       </div>
@@ -90,6 +100,7 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
             receiver={estimate.receiver}
             remarks={estimate.remarks}
             rows={rows}
+            referenceTierLabels={referenceTierLabels}
           />
         </div>
       </div>

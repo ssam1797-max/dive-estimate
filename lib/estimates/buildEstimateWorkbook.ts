@@ -5,15 +5,16 @@ import ExcelJS from "exceljs";
 import type { ProfileOption } from "@/lib/estimates/types";
 import { formatDiscountRate, type PriceTier } from "@/lib/estimates/pricing";
 
-// ── 관공서 납품용 견적서 컬럼 구조 (A=1 ~ N=14) ─────────────────────────────
+// ── 관공서 납품용 견적서 컬럼 구조 (A=1 ~ 13+N열) ───────────────────────────
 // 실제 제공된 원본 견적서 스크린샷을 픽셀 단위로 측정해서 비율을 맞춘 원본
 // 13열(No=84px, 품명=172px, 규격=356px, 단위=90px, 수량=64px, 단가=124px,
 //  금액=150px, 부가세=94px, 적요=136px, 표 전체 폭=1270px 기준)에, "수량"과
-// "단가" 사이 참고용 "소비자가격" 열(7.0, H열)을 추가해 14열로 확장했다 —
-// 화면 미리보기(estimate-document-table.tsx)와 동일한 폭 비율.
-// A:No  B-C:품명  D-E:규격  F:단위  G:수량  H:소비자가격  I-J:단가  K-L:금액  M:부가세  N:적요
-const COL_WIDTHS = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 7.0, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
-const TOTAL_COLS = COL_WIDTHS.length; // 14
+// "단가" 사이에 체크된 참고 등급 수(N, 0~4개)만큼 열(각 7.0)을 끼워 넣어
+// 13+N 열로 동적으로 확장한다 — 화면 미리보기(estimate-document-table.tsx)
+// 와 동일한 폭 비율/열 구조. N=0이면 원본 13열 그대로다.
+// A:No  B-C:품명  D-E:규격  F:단위  G:수량  [H..]:참고등급×N  [..]:단가(2)  [..]:금액(2)  [..]:부가세  [..]:적요
+const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
+const REFERENCE_COL_WIDTH = 7.0;
 
 // 테이블 최소 행 수 (이하여백 포함)
 const MIN_DATA_ROWS = 13;
@@ -34,8 +35,12 @@ export interface WorkbookEstimateItem {
   vat: number;         // 부가세 (amount × 10%)
   itemRemarks: string; // 적요
   discountRate: number; // 소비자가격 대비 할인율(%), 0이면 표시 안 함
-  /** 소비자가격(정가). 단순 참고용 표시 컬럼 — unitPrice/amount/vat 계산에는 관여하지 않는다. */
-  priceRetail: number;
+  /**
+   * 참고용으로 함께 노출할 등급들의 단가 목록(params.referenceTierLabels 와
+   * 같은 순서/길이). 단순 참고 표시 컬럼 — unitPrice/amount/vat 계산에는
+   * 전혀 관여하지 않는다.
+   */
+  referenceValues: number[];
 }
 
 export interface BuildEstimateWorkbookParams {
@@ -45,6 +50,8 @@ export interface BuildEstimateWorkbookParams {
   receiver: ProfileOption;
   remarks: string;
   priceTier: PriceTier;
+  /** 체크된 참고 가격 등급들의 표시 이름(선택된 순서 그대로). 없으면 원본 13열 그대로. */
+  referenceTierLabels: string[];
   items: WorkbookEstimateItem[];
 }
 
@@ -200,7 +207,24 @@ async function fetchStampImage(
 export async function buildEstimateWorkbook(
   params: BuildEstimateWorkbookParams
 ): Promise<Buffer> {
-  const { estimateNumber, date, provider, receiver, remarks, priceTier, items } = params;
+  const { estimateNumber, date, provider, receiver, remarks, priceTier, referenceTierLabels, items } = params;
+
+  // 참고 등급 열 개수(N). "수량"과 "단가" 사이에 끼워 넣은 만큼, 그 뒤(단가/
+  // 금액/부가세/적요)의 모든 열 번호가 N칸씩 밀린다 — 아래 리터럴 열 번호는
+  // 전부 N=0(원본 13열) 기준에 N을 더한 것이다.
+  const refCount = referenceTierLabels.length;
+  const COL_WIDTHS = [
+    ...COL_WIDTHS_BASE.slice(0, 7),
+    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
+    ...COL_WIDTHS_BASE.slice(7),
+  ];
+  const TOTAL_COLS = COL_WIDTHS.length; // 13 + refCount
+  // 단가/금액/부가세/적요 열의 시작 번호(N=0일 때의 원본 13열 기준 8,10,12,13
+  // 에 해당) — 참고 등급 열이 끼어든 만큼 그대로 밀어서 재사용한다.
+  const UNIT_PRICE_COL = 8 + refCount;
+  const AMOUNT_COL = 10 + refCount;
+  const VAT_COL = 12 + refCount;
+  const REMARKS_COL = 13 + refCount;
 
   // ── 금액 계산 ──────────────────────────────────────────────────────────────
   // 부가세 포함가 정책: item.amount(단가×수량)는 이미 부가세가 포함된 최종
@@ -338,14 +362,15 @@ export async function buildEstimateWorkbook(
     label2: string,
     value2: string
   ) => {
-    // value1 은 새로 끼운 "소비자가격" 열(8) 폭까지 흡수해 한 칸 더 넓게
-    // 병합한다(8-12, 원래 8-11) — 화면 미리보기에서 이 자리의 colSpan 을
-    // +1 늘린 것과 동일한 처리. label2/value2 는 그만큼 한 칸씩 밀린다.
+    // value1 은 참고 등급 열(8..7+refCount) 폭까지 흡수해 그만큼 더 넓게
+    // 병합한다(원본 8-11 에 refCount 를 더함) — 화면 미리보기에서 이 자리의
+    // colSpan 을 +refCount 늘리는 것과 동일한 처리. label2/value2 는 그만큼
+    // 뒤로 밀린다.
     labelCell(ws.getCell(row, 7), label1, { border: C.PURPLE });
-    ws.mergeCells(row, 8, row, 12);
+    ws.mergeCells(row, 8, row, 11 + refCount);
     valueCell(ws.getCell(row, 8), value1, { align: "center", border: C.PURPLE });
-    labelCell(ws.getCell(row, 13), label2, { border: C.PURPLE });
-    valueCell(ws.getCell(row, 14), value2, { align: "center", border: C.PURPLE });
+    labelCell(ws.getCell(row, 12 + refCount), label2, { border: C.PURPLE });
+    valueCell(ws.getCell(row, 13 + refCount), value2, { align: "center", border: C.PURPLE });
   };
 
   fieldRow(INFO_TOP_ROW, "사업번호", provider.businessNumber ?? "-", { bold: true, size: 14 });
@@ -373,15 +398,16 @@ export async function buildEstimateWorkbook(
   );
 
   // ── 도장 이미지 ("대표자" 값 셀 위에 겹쳐 배치) ───────────────────────────
-  // "상호+대표자" 행(INFO_TOP_ROW+1) 의 대표자 값은 col14(적요 너비) 하나뿐이라
-  // 이름 글자 바로 우측부터 셀 끝까지 겹치도록 배치한다. (소비자가격 열 추가로
-  // 대표자 값 칸이 col13 -> col14 로 밀리면서 0-based 오프셋도 12.15 -> 13.15)
+  // "상호+대표자" 행(INFO_TOP_ROW+1) 의 대표자 값은 REMARKS_COL(적요) 너비
+  // 하나뿐이라 이름 글자 바로 우측부터 셀 끝까지 겹치도록 배치한다. 참고
+  // 등급 열이 늘어난 만큼 대표자 값 칸도 뒤로 밀리므로, 0-based 오프셋도
+  // 그만큼(REMARKS_COL - 1) 함께 밀어준다.
   const stamp = await fetchStampImage(provider.stampUrl);
   if (stamp) {
     const stampRow0 = INFO_TOP_ROW + 1 - 1; // 0-based
     const imgId = wb.addImage({ base64: stamp.base64, extension: stamp.extension });
     ws.addImage(imgId, {
-      tl: { col: 13.15, row: stampRow0 + 0.08 },
+      tl: { col: REMARKS_COL - 1 + 0.15, row: stampRow0 + 0.08 },
       ext: { width: 32, height: 32 },
     });
   }
@@ -392,19 +418,25 @@ export async function buildEstimateWorkbook(
 
   // ── 테이블 헤더 (배경색 없이 흰 배경 + 굵은 검정 테두리, 원본과 동일) ──────
   const TABLE_HEADER_ROW = gapRow + 1;
-  const tableHeaders: { cols: [number, number]; text: string; note?: string }[] = [
+  const tableHeaders: { cols: [number, number]; text: string; note?: string; small?: boolean }[] = [
     { cols: [1, 1], text: "No." },
     { cols: [2, 3], text: "품    명" },
     { cols: [4, 5], text: "규    격" },
     { cols: [6, 6], text: "단위" },
     { cols: [7, 7], text: "수량" },
-    { cols: [8, 8], text: "소비자가격" },
-    { cols: [9, 10], text: "단    가", note: "(부가세포함)" },
-    { cols: [11, 12], text: "금    액" },
-    { cols: [13, 13], text: "부가세" },
-    { cols: [14, 14], text: "적  요" },
+    ...referenceTierLabels.map(
+      (label, i): { cols: [number, number]; text: string; small: boolean } => ({
+        cols: [8 + i, 8 + i],
+        text: label,
+        small: true,
+      })
+    ),
+    { cols: [UNIT_PRICE_COL, UNIT_PRICE_COL + 1], text: "단    가", note: "(부가세포함)" },
+    { cols: [AMOUNT_COL, AMOUNT_COL + 1], text: "금    액" },
+    { cols: [VAT_COL, VAT_COL], text: "부가세" },
+    { cols: [REMARKS_COL, REMARKS_COL], text: "적  요" },
   ];
-  tableHeaders.forEach(({ cols, text, note }) => {
+  tableHeaders.forEach(({ cols, text, note, small }) => {
     if (cols[0] !== cols[1]) ws.mergeCells(TABLE_HEADER_ROW, cols[0], TABLE_HEADER_ROW, cols[1]);
     const cell = ws.getCell(TABLE_HEADER_ROW, cols[0]);
     cell.value = note
@@ -416,7 +448,7 @@ export async function buildEstimateWorkbook(
         }
       : text;
     cell.fill = fill(C.WHITE);
-    cell.font = { name: FONT_NAME, bold: true, size: 11, color: { argb: C.BLACK } };
+    cell.font = { name: FONT_NAME, bold: true, size: small ? 9 : 11, color: { argb: C.BLACK } };
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     cell.border = { ...borderOf(C.BLACK), top: { style: "medium", color: { argb: C.BLACK } } };
   });
@@ -472,11 +504,13 @@ export async function buildEstimateWorkbook(
     writeItemCell(4, 5, item.spec, { align: "center" });
     writeItemCell(6, 6, item.unit, { align: "center" });
     writeItemCell(7, 7, item.quantity, { align: "center" });
-    writeItemCell(8, 8, fmtWon(item.priceRetail), { align: "right" });
-    writeMoneyCell(9, 10, item.unitPrice, rateLabel ? `${rateLabel}%↓` : null);
-    writeMoneyCell(11, 12, item.amount, rateLabel ? `-${rateLabel}%` : null);
-    writeItemCell(13, 13, "", { align: "right" });
-    writeItemCell(14, 14, item.itemRemarks || "-", { align: "center" });
+    item.referenceValues.forEach((value, i) => {
+      writeItemCell(8 + i, 8 + i, fmtWon(value), { align: "right" });
+    });
+    writeMoneyCell(UNIT_PRICE_COL, UNIT_PRICE_COL + 1, item.unitPrice, rateLabel ? `${rateLabel}%↓` : null);
+    writeMoneyCell(AMOUNT_COL, AMOUNT_COL + 1, item.amount, rateLabel ? `-${rateLabel}%` : null);
+    writeItemCell(VAT_COL, VAT_COL, "", { align: "right" });
+    writeItemCell(REMARKS_COL, REMARKS_COL, item.itemRemarks || "-", { align: "center" });
     row.height = hasDiscount ? 30 : 20;
   }
 
@@ -523,20 +557,25 @@ export async function buildEstimateWorkbook(
   tcell.alignment = { horizontal: "center", vertical: "middle" };
   tcell.border = borderOf(C.BLACK);
 
-  // H: 소비자가격 합계 자리 (공백 — 참고용 표시 컬럼이라 합산하지 않는다)
-  const tRetailCell = ws.getCell(totalRow, 8);
-  tRetailCell.fill = fill(C.WHITE);
-  tRetailCell.border = borderOf(C.BLACK);
+  // 참고 등급 열 합계 자리 (공백 — 참고용 표시 컬럼이라 합산하지 않는다).
+  // refCount 가 0이면 이 열 자체가 없으므로(단가가 바로 col8부터 시작)
+  // 건드리지 않는다 — 그렇지 않으면 단가 셀과 같은 칸을 두 번 쓰게 된다.
+  if (refCount > 0) {
+    ws.mergeCells(totalRow, 8, totalRow, 7 + refCount);
+    const tRetailCell = ws.getCell(totalRow, 8);
+    tRetailCell.fill = fill(C.WHITE);
+    tRetailCell.border = borderOf(C.BLACK);
+  }
 
-  // I-J: 단가 합계 자리 (공백)
-  ws.mergeCells(totalRow, 9, totalRow, 10);
-  const tUnitCell = ws.getCell(totalRow, 9);
+  // 단가 합계 자리 (공백)
+  ws.mergeCells(totalRow, UNIT_PRICE_COL, totalRow, UNIT_PRICE_COL + 1);
+  const tUnitCell = ws.getCell(totalRow, UNIT_PRICE_COL);
   tUnitCell.fill = fill(C.WHITE);
   tUnitCell.border = borderOf(C.BLACK);
 
-  // K-L: 금액 합계 (품목 표의 "금액" 열 그대로 합산 — 부가세 포함 금액)
-  ws.mergeCells(totalRow, 11, totalRow, 12);
-  const tAmountCell = ws.getCell(totalRow, 11);
+  // 금액 합계 (품목 표의 "금액" 열 그대로 합산 — 부가세 포함 금액)
+  ws.mergeCells(totalRow, AMOUNT_COL, totalRow, AMOUNT_COL + 1);
+  const tAmountCell = ws.getCell(totalRow, AMOUNT_COL);
   tAmountCell.value = grandTotal;
   tAmountCell.fill = fill(C.WHITE);
   tAmountCell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: C.BLACK } };
@@ -544,15 +583,15 @@ export async function buildEstimateWorkbook(
   tAmountCell.border = borderOf(C.BLACK);
   tAmountCell.numFmt = "#,##0";
 
-  // M: 부가세 합계 (표시하지 않음)
-  const tVatCell = ws.getCell(totalRow, 13);
+  // 부가세 합계 (표시하지 않음)
+  const tVatCell = ws.getCell(totalRow, VAT_COL);
   tVatCell.fill = fill(C.WHITE);
   tVatCell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: C.BLACK } };
   tVatCell.alignment = { horizontal: "right", vertical: "middle" };
   tVatCell.border = borderOf(C.BLACK);
   tVatCell.numFmt = "#,##0";
 
-  // N: 공백
+  // 적요: 공백
   const tRemCell = ws.getCell(totalRow, TOTAL_COLS);
   tRemCell.fill = fill(C.WHITE);
   tRemCell.border = borderOf(C.BLACK);
