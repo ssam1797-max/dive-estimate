@@ -74,6 +74,7 @@ export function ExcelPreviewDialog({
           vat: calculateInclusiveVat(amount),
           itemRemarks: item.itemRemarks,
           discountRate: calculateDiscountRate(item.priceRetail, unitPrice),
+          priceRetail: item.priceRetail,
         };
       }),
     [items, priceTier, discountPolicies]

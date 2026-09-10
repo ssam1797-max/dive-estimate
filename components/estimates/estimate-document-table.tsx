@@ -24,6 +24,12 @@ export interface EstimateDocumentRow {
   itemRemarks: string;
   /** 소비자가격 대비 할인율(%). 계산 기준(priceRetail)이 없는 호출부(보관함 인쇄 등)는 생략 가능 — 생략 시 표시 안 함. */
   discountRate?: number;
+  /**
+   * 소비자가격(정가). 단순 참고용 표시 컬럼 — unitPrice/amount/vat 계산에는
+   * 전혀 관여하지 않는다. 값이 없는 호출부(옛 저장 데이터 등)는 생략 가능 —
+   * 생략 시 "-" 로 표시.
+   */
+  priceRetail?: number;
 }
 
 interface EstimateDocumentTableProps {
@@ -53,9 +59,12 @@ function formatDisplayDate(date: string): string {
   return `${display}(${DAY_OF_WEEK_KO[parsed.getDay()]})`;
 }
 
-// 13열 비율 — 실제 제공된 원본 견적서 스크린샷을 픽셀 단위로 측정해서 맞춘 값.
-// (Excel COL_WIDTHS 와 동일: buildEstimateWorkbook.ts 참고)
-const COL_WIDTHS = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
+// 원본 13열 비율(실제 견적서 스크린샷을 픽셀 단위로 측정해서 맞춘 값, Excel
+// COL_WIDTHS 와 동일 — buildEstimateWorkbook.ts 참고)에, "수량"과 "단가" 사이에
+// 참고용 "소비자가격" 열 하나(7.0, 인덱스 7)를 추가해 14열로 확장했다. 이
+// 화면/미리보기 전용 표시 컬럼이며 Excel 다운로드 구조(buildEstimateWorkbook.ts)
+// 는 그대로 13열이라 맞출 필요가 없다.
+const COL_WIDTHS = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 7.0, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
 const TOTAL_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
 
 // A4(297mm) 세로, body margin 10mm×2 를 뺀 실제 인쇄 가능 높이(277mm ≈ 1047px,
@@ -119,7 +128,7 @@ export function EstimateDocumentTable({
         {/* ── 제목 (위 초록 테두리) ──────────────────────────────────── */}
         <tr style={{ height: 50 }}>
           <td
-            colSpan={13}
+            colSpan={14}
             className="border-0 border-t-2 bg-white text-center font-bold text-2xl text-gray-900 py-2"
             style={greenStyle}
           >
@@ -130,7 +139,7 @@ export function EstimateDocumentTable({
         {/* ── 발행일자(요일)/No. (아래 초록 굵은 테두리) ─────────────── */}
         <tr style={{ height: 22 }}>
           <td
-            colSpan={13}
+            colSpan={14}
             className="border-0 border-b-2 bg-white text-[11px] text-gray-900 text-right px-1"
             style={greenStyle}
           >
@@ -154,7 +163,7 @@ export function EstimateDocumentTable({
             사업번호
           </td>
           <td
-            colSpan={6}
+            colSpan={7}
             className={`${PURPLE_BORDER} bg-white text-center text-[13px] font-bold`}
             style={purpleStyle}
           >
@@ -180,7 +189,7 @@ export function EstimateDocumentTable({
             상호
           </td>
           <td
-            colSpan={4}
+            colSpan={5}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -231,7 +240,7 @@ export function EstimateDocumentTable({
             주소
           </td>
           <td
-            colSpan={6}
+            colSpan={7}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -251,7 +260,7 @@ export function EstimateDocumentTable({
             업태
           </td>
           <td
-            colSpan={4}
+            colSpan={5}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -274,7 +283,7 @@ export function EstimateDocumentTable({
             전화
           </td>
           <td
-            colSpan={4}
+            colSpan={5}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -297,7 +306,7 @@ export function EstimateDocumentTable({
 
         {/* ── 공백 ──────────────────────────────────────────────────── */}
         <tr style={{ height: 8 }}>
-          <td colSpan={13} className="border-0 bg-white" />
+          <td colSpan={14} className="border-0 bg-white" />
         </tr>
         </tbody>
       </table>
@@ -324,6 +333,9 @@ export function EstimateDocumentTable({
           </td>
           <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
             수량
+          </td>
+          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[10px] leading-tight`}>
+            소비자가격
           </td>
           <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px]`}>
             단&nbsp;&nbsp;&nbsp;&nbsp;가
@@ -353,6 +365,9 @@ export function EstimateDocumentTable({
             </td>
             <td className={`${BLACK_BORDER} ${cellBase} text-center`}>{row.unit}</td>
             <td className={`${BLACK_BORDER} ${cellBase} text-center`}>{row.quantity}</td>
+            <td className={`${BLACK_BORDER} ${cellBase} text-right`}>
+              {row.priceRetail != null ? fmtNum(row.priceRetail) : "-"}
+            </td>
             <td colSpan={2} className={`${BLACK_BORDER} ${cellBase} text-right`}>
               {fmtNum(row.unitPrice)}
               {!!row.discountRate && row.discountRate > 0 && (
@@ -381,7 +396,7 @@ export function EstimateDocumentTable({
           <>
             <tr style={{ height: 20 }}>
               <td
-                colSpan={13}
+                colSpan={14}
                 className={`${BLACK_BORDER} bg-white text-[10px] text-center text-gray-500`}
               >
                 ~ 이 하 여 백 ~
@@ -391,7 +406,7 @@ export function EstimateDocumentTable({
               length: totalDataRows - rows.length - 1,
             }).map((_, i) => (
               <tr key={`empty-${i}`} style={{ height: 20 }}>
-                {Array.from({ length: 13 }).map((_, c) => (
+                {Array.from({ length: COL_WIDTHS.length }).map((_, c) => (
                   <td key={c} className={`${BLACK_BORDER} bg-white`} />
                 ))}
               </tr>
@@ -407,6 +422,7 @@ export function EstimateDocumentTable({
           <td className={`${BLACK_BORDER} bg-white text-[10px] text-center font-bold`}>
             {totalQty}
           </td>
+          <td className={`${BLACK_BORDER} bg-white`} />
           <td colSpan={2} className={`${BLACK_BORDER} bg-white`} />
           <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1`}>
             {fmtNum(grandTotal)}
@@ -421,7 +437,7 @@ export function EstimateDocumentTable({
             비고
           </td>
           <td
-            colSpan={12}
+            colSpan={13}
             rowSpan={5}
             className={`${BLACK_BORDER} bg-white text-[10px] text-gray-900 px-2 py-1 align-top whitespace-pre-wrap`}
           >

@@ -73,6 +73,7 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
       vat: calculateInclusiveVat(amount),
       itemRemarks: item.itemRemarks,
       discountRate: calculateDiscountRate(retailReference, unitPrice),
+      priceRetail: item.priceRetail ?? undefined,
     };
   });
 
