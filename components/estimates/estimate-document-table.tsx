@@ -110,11 +110,38 @@ export function EstimateDocumentTable({
 }: EstimateDocumentTableProps) {
   const refCount = referenceTierLabels.length;
 
-  // 참고 등급 열(폭 7.0 × N)을 "수량"과 "단가" 사이(base 배열의 인덱스 7)에 끼워 넣는다.
+  // 참고 등급 열 + 단가 + 금액 = 화면에 동시에 노출되는 "가격류" 열 개수.
+  // 이게 4개 이상이면 한 열에 배정되는 폭이 급격히 좁아져 인쇄 시 숫자가
+  // 옆 칸과 겹치거나 우측 끝이 잘리기 쉬우므로, 인쇄(@media print) 시에만
+  // 폰트를 10px로 더 줄이고 좌우/상하 패딩을 최소화해 여유 공간을 늘린다.
+  const priceColumnCount = refCount + 2;
+  const manyPriceColumns = priceColumnCount >= 4;
+  const pricePrintClass = manyPriceColumns
+    ? "print:text-[10px] print:px-[4px] print:py-[2px] print:leading-tight"
+    : "";
+
+  // 가격류 열이 4개 이상일 때는 폭 배분 자체도 재조정한다 — 원본 비율대로만
+  // 가면 참고등급/단가/금액이 전부 5% 안팎으로 좁아져 숫자(예: 1,864,000)가
+  // 절대 안 들어간다. 상대적으로 여유로운 품명(인덱스 1,2)·규격(인덱스
+  // 3,4) 폭을 줄여서 그만큼을 가격류 열(참고등급 + 단가(7,8) + 금액(9,10))
+  // 쪽으로 넘겨준다 — 합계가 어떻게 바뀌든 아래 %가 totalW 기준으로 다시
+  // 정규화되므로 비율만 맞으면 항상 100%를 채운다.
+  const NAME_SPEC_INDEXES = [1, 2, 3, 4];
+  const PRICE_INDEXES = [7, 8, 9, 10];
+  const nameSpecScale = manyPriceColumns ? 0.72 : 1;
+  const priceWidthScale = manyPriceColumns ? 1.5 : 1;
+  const scaledBase = COL_WIDTHS_BASE.map((w, i) => {
+    if (NAME_SPEC_INDEXES.includes(i)) return w * nameSpecScale;
+    if (PRICE_INDEXES.includes(i)) return w * priceWidthScale;
+    return w;
+  });
+
+  // 참고 등급 열(폭 7.0×N, 가격류 열이 많을 때는 확대 배수 적용)을 "수량"과
+  // "단가" 사이(base 배열의 인덱스 7)에 끼워 넣는다.
   const colWidths = [
-    ...COL_WIDTHS_BASE.slice(0, 7),
-    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
-    ...COL_WIDTHS_BASE.slice(7),
+    ...scaledBase.slice(0, 7),
+    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH * priceWidthScale),
+    ...scaledBase.slice(7),
   ];
   const totalW = colWidths.reduce((a, b) => a + b, 0);
   const totalCols = colWidths.length; // 12 + refCount
@@ -361,16 +388,16 @@ export function EstimateDocumentTable({
           {referenceTierLabels.map((label, i) => (
             <td
               key={`ref-head-${i}`}
-              className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[9px] leading-tight`}
+              className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[9px] leading-tight ${pricePrintClass}`}
             >
               {label}
             </td>
           ))}
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap ${pricePrintClass}`}>
             단&nbsp;&nbsp;&nbsp;&nbsp;가
             <div className="text-[8px] font-normal leading-tight">(부가세포함)</div>
           </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap ${pricePrintClass}`}>
             금&nbsp;&nbsp;&nbsp;&nbsp;액
           </td>
           <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
@@ -393,26 +420,26 @@ export function EstimateDocumentTable({
             <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.quantity}</td>
             {Array.from({ length: refCount }, (_, i) => row.referenceValues?.[i]).map(
               (value, i) => (
-                <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
+                <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
                   {value != null ? fmtNum(value) : "-"}
                 </td>
               )
             )}
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
+            {/* 단가 숫자와 할인율 배지를 한 셀에 두 줄로 쌓지 않고, 폭을 나눠 쓰는
+                별도의 두 <td>로 분리한다 — 숫자와 배지가 같은 셀 안에서 겹쳐
+                보이는 것을 막고, 숫자만 있는 셀은 항상 comma 포맷 그대로
+                단독으로 표시된다. */}
+            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
               {fmtNum(row.unitPrice)}
-              {!!row.discountRate && row.discountRate > 0 && (
-                <div className="text-[8px] leading-tight text-gray-500">
-                  {formatDiscountRate(row.discountRate)}%↓
-                </div>
-              )}
             </td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} text-right`}>
+            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right text-[8px] text-gray-500`}>
+              {!!row.discountRate && row.discountRate > 0 ? `${formatDiscountRate(row.discountRate)}%↓` : ""}
+            </td>
+            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
               {fmtNum(row.amount)}
-              {!!row.discountRate && row.discountRate > 0 && (
-                <div className="text-[8px] leading-tight text-gray-500">
-                  -{formatDiscountRate(row.discountRate)}%
-                </div>
-              )}
+            </td>
+            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right text-[8px] text-gray-500`}>
+              {!!row.discountRate && row.discountRate > 0 ? `-${formatDiscountRate(row.discountRate)}%` : ""}
             </td>
             <td className={`${BLACK_BORDER} ${cellText} text-center`}>
               {row.itemRemarks || "-"}
@@ -452,10 +479,10 @@ export function EstimateDocumentTable({
             {totalQty}
           </td>
           {refCount > 0 && (
-            <td colSpan={refCount} className={`${BLACK_BORDER} bg-white`} />
+            <td colSpan={refCount} className={`${BLACK_BORDER} bg-white ${pricePrintClass}`} />
           )}
-          <td colSpan={2} className={`${BLACK_BORDER} bg-white`} />
-          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap`}>
+          <td colSpan={2} className={`${BLACK_BORDER} bg-white ${pricePrintClass}`} />
+          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap ${pricePrintClass}`}>
             {fmtNum(grandTotal)}
           </td>
           <td className={`${BLACK_BORDER} bg-white`} />
