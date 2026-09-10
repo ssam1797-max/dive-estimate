@@ -5,15 +5,15 @@ import ExcelJS from "exceljs";
 import type { ProfileOption } from "@/lib/estimates/types";
 import { formatDiscountRate, type PriceTier } from "@/lib/estimates/pricing";
 
-// ── 관공서 납품용 견적서 컬럼 구조 (A=1 ~ 13+N열) ───────────────────────────
+// ── 관공서 납품용 견적서 컬럼 구조 (A=1 ~ 12+N열) ───────────────────────────
 // 실제 제공된 원본 견적서 스크린샷을 픽셀 단위로 측정해서 비율을 맞춘 원본
-// 13열(No=84px, 품명=172px, 규격=356px, 단위=90px, 수량=64px, 단가=124px,
-//  금액=150px, 부가세=94px, 적요=136px, 표 전체 폭=1270px 기준)에, "수량"과
-// "단가" 사이에 체크된 참고 등급 수(N, 0~4개)만큼 열(각 7.0)을 끼워 넣어
-// 13+N 열로 동적으로 확장한다 — 화면 미리보기(estimate-document-table.tsx)
-// 와 동일한 폭 비율/열 구조. N=0이면 원본 13열 그대로다.
-// A:No  B-C:품명  D-E:규격  F:단위  G:수량  [H..]:참고등급×N  [..]:단가(2)  [..]:금액(2)  [..]:부가세  [..]:적요
-const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
+// 12열(부가세 열 삭제 후, No/품명/규격/단위/수량/단가/금액/적요 기준)에,
+// "수량"과 "단가" 사이에 체크된 참고 등급 수(N, 0~4개)만큼 열(각 7.0)을
+// 끼워 넣어 12+N 열로 동적으로 확장한다 — 화면 미리보기
+// (estimate-document-table.tsx)와 동일한 폭 비율/열 구조. N=0이면 원본
+// 12열 그대로다.
+// A:No  B-C:품명  D-E:규격  F:단위  G:수량  [H..]:참고등급×N  [..]:단가(2)  [..]:금액(2)  [..]:적요
+const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 10.7];
 const REFERENCE_COL_WIDTH = 7.0;
 
 // 테이블 최소 행 수 (이하여백 포함)
@@ -218,13 +218,12 @@ export async function buildEstimateWorkbook(
     ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
     ...COL_WIDTHS_BASE.slice(7),
   ];
-  const TOTAL_COLS = COL_WIDTHS.length; // 13 + refCount
-  // 단가/금액/부가세/적요 열의 시작 번호(N=0일 때의 원본 13열 기준 8,10,12,13
-  // 에 해당) — 참고 등급 열이 끼어든 만큼 그대로 밀어서 재사용한다.
+  const TOTAL_COLS = COL_WIDTHS.length; // 12 + refCount
+  // 단가/금액/적요 열의 시작 번호(N=0일 때의 원본 12열 기준 8,10,12 에 해당)
+  // — 참고 등급 열이 끼어든 만큼 그대로 밀어서 재사용한다.
   const UNIT_PRICE_COL = 8 + refCount;
   const AMOUNT_COL = 10 + refCount;
-  const VAT_COL = 12 + refCount;
-  const REMARKS_COL = 13 + refCount;
+  const REMARKS_COL = 12 + refCount;
 
   // ── 금액 계산 ──────────────────────────────────────────────────────────────
   // 부가세 포함가 정책: item.amount(단가×수량)는 이미 부가세가 포함된 최종
@@ -367,10 +366,10 @@ export async function buildEstimateWorkbook(
     // colSpan 을 +refCount 늘리는 것과 동일한 처리. label2/value2 는 그만큼
     // 뒤로 밀린다.
     labelCell(ws.getCell(row, 7), label1, { border: C.PURPLE });
-    ws.mergeCells(row, 8, row, 11 + refCount);
+    ws.mergeCells(row, 8, row, 10 + refCount);
     valueCell(ws.getCell(row, 8), value1, { align: "center", border: C.PURPLE });
-    labelCell(ws.getCell(row, 12 + refCount), label2, { border: C.PURPLE });
-    valueCell(ws.getCell(row, 13 + refCount), value2, { align: "center", border: C.PURPLE });
+    labelCell(ws.getCell(row, 11 + refCount), label2, { border: C.PURPLE });
+    valueCell(ws.getCell(row, 12 + refCount), value2, { align: "center", border: C.PURPLE });
   };
 
   fieldRow(INFO_TOP_ROW, "사업번호", provider.businessNumber ?? "-", { bold: true, size: 14 });
@@ -433,7 +432,6 @@ export async function buildEstimateWorkbook(
     ),
     { cols: [UNIT_PRICE_COL, UNIT_PRICE_COL + 1], text: "단    가", note: "(부가세포함)" },
     { cols: [AMOUNT_COL, AMOUNT_COL + 1], text: "금    액" },
-    { cols: [VAT_COL, VAT_COL], text: "부가세" },
     { cols: [REMARKS_COL, REMARKS_COL], text: "적  요" },
   ];
   tableHeaders.forEach(({ cols, text, note, small }) => {
@@ -509,7 +507,6 @@ export async function buildEstimateWorkbook(
     });
     writeMoneyCell(UNIT_PRICE_COL, UNIT_PRICE_COL + 1, item.unitPrice, rateLabel ? `${rateLabel}%↓` : null);
     writeMoneyCell(AMOUNT_COL, AMOUNT_COL + 1, item.amount, rateLabel ? `-${rateLabel}%` : null);
-    writeItemCell(VAT_COL, VAT_COL, "", { align: "right" });
     writeItemCell(REMARKS_COL, REMARKS_COL, item.itemRemarks || "-", { align: "center" });
     row.height = hasDiscount ? 30 : 20;
   }
@@ -582,14 +579,6 @@ export async function buildEstimateWorkbook(
   tAmountCell.alignment = { horizontal: "right", vertical: "middle" };
   tAmountCell.border = borderOf(C.BLACK);
   tAmountCell.numFmt = "#,##0";
-
-  // 부가세 합계 (표시하지 않음)
-  const tVatCell = ws.getCell(totalRow, VAT_COL);
-  tVatCell.fill = fill(C.WHITE);
-  tVatCell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: C.BLACK } };
-  tVatCell.alignment = { horizontal: "right", vertical: "middle" };
-  tVatCell.border = borderOf(C.BLACK);
-  tVatCell.numFmt = "#,##0";
 
   // 적요: 공백
   const tRemCell = ws.getCell(totalRow, TOTAL_COLS);

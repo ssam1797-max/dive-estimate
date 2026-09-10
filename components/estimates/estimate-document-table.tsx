@@ -63,11 +63,11 @@ function formatDisplayDate(date: string): string {
   return `${display}(${DAY_OF_WEEK_KO[parsed.getDay()]})`;
 }
 
-// 원본 13열 비율(실제 견적서 스크린샷을 픽셀 단위로 측정해서 맞춘 값, Excel
-// COL_WIDTHS_BASE 와 동일 — buildEstimateWorkbook.ts 참고). "수량"과 "단가"
-// 사이에 체크된 참고 등급 수(N)만큼 열(각 7.0)을 끼워 넣어 13+N 열로
-// 동적으로 늘어난다 — N=0이면 원본 13열 그대로다.
-const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 7.4, 10.7];
+// 원본 12열 비율(부가세 열 삭제 후, 실제 견적서 스크린샷을 픽셀 단위로 측정해서
+// 맞춘 값, Excel COL_WIDTHS_BASE 와 동일 — buildEstimateWorkbook.ts 참고).
+// "수량"과 "단가" 사이에 체크된 참고 등급 수(N)만큼 열(각 7.0)을 끼워 넣어
+// 12+N 열로 동적으로 늘어난다 — N=0이면 원본 12열 그대로다.
+const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 10.7];
 const REFERENCE_COL_WIDTH = 7.0;
 
 // A4(297mm) 세로, body margin 10mm×2 를 뺀 실제 인쇄 가능 높이(277mm ≈ 1047px,
@@ -117,7 +117,7 @@ export function EstimateDocumentTable({
     ...COL_WIDTHS_BASE.slice(7),
   ];
   const totalW = colWidths.reduce((a, b) => a + b, 0);
-  const totalCols = colWidths.length; // 13 + refCount
+  const totalCols = colWidths.length; // 12 + refCount
 
   // 부가세 포함가 정책: row.amount(단가×수량)는 이미 부가세가 포함된 최종
   // 판매 금액이다. 부가세 금액/공급가액 역산 표기는 오히려 헷갈린다는
@@ -187,7 +187,7 @@ export function EstimateDocumentTable({
             사업번호
           </td>
           <td
-            colSpan={6 + refCount}
+            colSpan={5 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[13px] font-bold`}
             style={purpleStyle}
           >
@@ -213,7 +213,7 @@ export function EstimateDocumentTable({
             상호
           </td>
           <td
-            colSpan={4 + refCount}
+            colSpan={3 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -264,7 +264,7 @@ export function EstimateDocumentTable({
             주소
           </td>
           <td
-            colSpan={6 + refCount}
+            colSpan={5 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -284,7 +284,7 @@ export function EstimateDocumentTable({
             업태
           </td>
           <td
-            colSpan={4 + refCount}
+            colSpan={3 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -307,7 +307,7 @@ export function EstimateDocumentTable({
             전화
           </td>
           <td
-            colSpan={4 + refCount}
+            colSpan={3 + refCount}
             className={`${PURPLE_BORDER} bg-white text-center text-[10px]`}
             style={purpleStyle}
           >
@@ -374,9 +374,6 @@ export function EstimateDocumentTable({
             금&nbsp;&nbsp;&nbsp;&nbsp;액
           </td>
           <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
-            부가세
-          </td>
-          <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             적&nbsp;&nbsp;요
           </td>
         </tr>
@@ -417,7 +414,6 @@ export function EstimateDocumentTable({
                 </div>
               )}
             </td>
-            <td className={`${BLACK_BORDER} ${cellNumeric} text-right`} />
             <td className={`${BLACK_BORDER} ${cellText} text-center`}>
               {row.itemRemarks || "-"}
             </td>
@@ -462,7 +458,6 @@ export function EstimateDocumentTable({
           <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap`}>
             {fmtNum(grandTotal)}
           </td>
-          <td className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1`} />
           <td className={`${BLACK_BORDER} bg-white`} />
         </tr>
 
@@ -472,7 +467,7 @@ export function EstimateDocumentTable({
             비고
           </td>
           <td
-            colSpan={12 + refCount}
+            colSpan={11 + refCount}
             rowSpan={5}
             className={`${BLACK_BORDER} bg-white text-[10px] text-gray-900 px-2 py-1 align-top whitespace-pre-wrap`}
           >
