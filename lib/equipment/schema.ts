@@ -55,3 +55,8 @@ export const equipmentCreateSchema = z.object({
 });
 
 export type EquipmentCreateInput = z.infer<typeof equipmentCreateSchema>;
+
+/** 장비 수정 API(PUT) 요청 검증 스키마 — 생성 스키마와 동일한 전체 필드를 그대로 덮어쓴다. */
+export const equipmentUpdateSchema = equipmentCreateSchema;
+
+export type EquipmentUpdateInput = z.infer<typeof equipmentUpdateSchema>;

@@ -26,6 +26,32 @@ export interface BrandDiscountRates {
 /** 브랜드명 -> 할인율 맵 */
 export type DiscountPolicyMap = Record<string, BrandDiscountRates>;
 
+/**
+ * discount_policies 행 목록(브랜드 + 별칭 + 등급별 할인율)을 DiscountPolicyMap
+ * 으로 변환한다. 브라우저(장비 수정 다이얼로그의 실시간 할인 미리보기)와
+ * 서버(discount-policy-repo.getDiscountPolicyMap) 양쪽에서 완전히 같은
+ * 별칭 매핑 규칙을 쓰기 위해 순수 함수로 분리했다.
+ */
+export function buildDiscountPolicyMap(
+  policies: { brand: string; aliases: string[]; rate_retail: number; rate_instructor: number; rate_center: number; rate_cost: number }[]
+): DiscountPolicyMap {
+  const map: DiscountPolicyMap = {};
+  for (const p of policies) {
+    const rates: BrandDiscountRates = {
+      rate_retail: p.rate_retail,
+      rate_instructor: p.rate_instructor,
+      rate_center: p.rate_center,
+      rate_cost: p.rate_cost,
+    };
+    map[p.brand] = rates;
+    for (const alias of p.aliases) {
+      const trimmed = alias.trim();
+      if (trimmed) map[trimmed] = rates;
+    }
+  }
+  return map;
+}
+
 function rateForTier(tier: PriceTier, rates: BrandDiscountRates | undefined): number {
   if (!rates) return 0;
   switch (tier) {

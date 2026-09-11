@@ -172,7 +172,7 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
 
 // ── 단건 INSERT ───────────────────────────────────────────────────────────────
 
-interface InsertEquipmentData {
+export interface InsertEquipmentData {
   brand: string;
   category: string;
   name: string;
@@ -211,6 +211,113 @@ export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: 
     .single();
   if (error) throw error;
   return { id: row.id as string };
+}
+
+// ── 단건 조회 (수정 화면 초기값용) ───────────────────────────────────────────
+
+export interface EquipmentDetail extends InsertEquipmentData {
+  id: string;
+}
+
+export async function getEquipmentById(id: string): Promise<EquipmentDetail | null> {
+  if (isMockMode()) {
+    const row = mockStore.equipment.find((e) => e.id === id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      brand: row.brand,
+      category: row.category,
+      name: row.name,
+      price_retail: row.price_retail,
+      colors: row.colors,
+      sizes: row.sizes,
+      catalog_year: row.catalog_year,
+    };
+  }
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { data: row, error } = await supabase
+    .from("equipment")
+    .select("id, brand, category, name, price_retail, colors, sizes, catalog_year")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    brand: row.brand as string,
+    category: row.category as string,
+    name: row.name as string,
+    price_retail: Number(row.price_retail),
+    colors: (row.colors as string[] | null) ?? [],
+    sizes: (row.sizes as string[] | null) ?? [],
+    catalog_year: row.catalog_year as number | null,
+  };
+}
+
+// ── 단건 수정 ─────────────────────────────────────────────────────────────────
+// insertEquipment 과 동일하게 브랜드명은 항상 normalizeBrand() 를 거쳐 저장한다
+// (수정 화면에서 브랜드를 다른 표기로 바꿔도 크롤러가 만든 정규화 규칙과
+// 어긋나지 않도록).
+
+export async function updateEquipment(
+  id: string,
+  data: InsertEquipmentData
+): Promise<void> {
+  const normalized: InsertEquipmentData = { ...data, brand: normalizeBrand(data.brand) };
+
+  if (isMockMode()) {
+    const row = mockStore.equipment.find((e) => e.id === id);
+    if (!row) {
+      const err = new Error("장비를 찾을 수 없습니다.") as Error & { code?: string };
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+    const duplicate = mockStore.equipment.find(
+      (e) =>
+        e.id !== id &&
+        e.brand === normalized.brand &&
+        e.catalog_year === normalized.catalog_year &&
+        e.name === normalized.name
+    );
+    if (duplicate) {
+      const err = new Error("Duplicate") as Error & { code: string };
+      err.code = "23505";
+      throw err;
+    }
+    Object.assign(row, normalized, { updated_at: new Date().toISOString() });
+    return;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { error } = await supabase.from("equipment").update(normalized).eq("id", id);
+  if (error) throw error;
+}
+
+// ── 단건 삭제 ─────────────────────────────────────────────────────────────────
+// equipment_items.equipment_id 는 "on delete set null" 로 걸려 있어(초기
+// 마이그레이션 참고), 이미 저장된 견적서가 이 장비를 참조 중이어도 삭제가
+// 막히지 않는다 — 해당 견적서의 항목은 이후 "(삭제된 장비)" 로 표시된다
+// (estimate-repo.ts 의 name: eq?.name ?? "(삭제된 장비)" 폴백 참고). 단가/수량
+// 등 견적 당시 스냅샷 값은 estimate_items 자체에 저장돼 있어 그대로 유지된다.
+
+export async function deleteEquipment(id: string): Promise<boolean> {
+  if (isMockMode()) {
+    const idx = mockStore.equipment.findIndex((e) => e.id === id);
+    if (idx === -1) return false;
+    mockStore.equipment.splice(idx, 1);
+    return true;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { error, count } = await supabase
+    .from("equipment")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }
 
 // ── 벌크 UPSERT (PDF 업로드용) ───────────────────────────────────────────────

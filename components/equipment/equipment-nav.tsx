@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { label: "PDF 자동 등록", href: "/equipment/import" },
   { label: "직접 등록", href: "/equipment/new" },
+  { label: "장비 목록(수정/삭제)", href: "/equipment/list" },
 ];
 
 export function EquipmentNav() {

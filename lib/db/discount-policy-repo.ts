@@ -1,7 +1,7 @@
 import "server-only";
 import { isMockMode } from "@/lib/db/is-mock";
 import { mockStore } from "@/lib/db/mock-store";
-import type { DiscountPolicyMap } from "@/lib/estimates/pricing";
+import { buildDiscountPolicyMap, type DiscountPolicyMap } from "@/lib/estimates/pricing";
 import { normalizeBrand } from "@/lib/equipment/normalizeBrand";
 import { fetchAllPages } from "@/lib/db/paginate";
 
@@ -56,22 +56,7 @@ export async function getAllDiscountPolicies(): Promise<DiscountPolicy[]> {
 
 export async function getDiscountPolicyMap(): Promise<DiscountPolicyMap> {
   const list = await getAllDiscountPolicies();
-  const map: DiscountPolicyMap = {};
-  for (const p of list) {
-    const rates = {
-      rate_retail: p.rate_retail,
-      rate_instructor: p.rate_instructor,
-      rate_center: p.rate_center,
-      rate_cost: p.rate_cost,
-    };
-    map[p.brand] = rates;
-    // 별칭(다른 언어/표기의 브랜드명)도 같은 할인율을 가리키도록 등록한다.
-    for (const alias of p.aliases) {
-      const trimmed = alias.trim();
-      if (trimmed) map[trimmed] = rates;
-    }
-  }
-  return map;
+  return buildDiscountPolicyMap(list);
 }
 
 /** 대소문자뿐 아니라 앞뒤/연속 공백 차이도 무시하고 비교하기 위한 키. */
