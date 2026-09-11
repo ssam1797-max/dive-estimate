@@ -147,7 +147,7 @@ export function EquipmentListManager({
             </p>
           )}
 
-          {!loading && results.length > 0 && (
+          {!loading && query.trim() !== "" && results.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm">
                 <thead>

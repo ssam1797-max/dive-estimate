@@ -6,7 +6,7 @@ export default function EquipmentLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col">
+    <div className="mx-auto flex w-full max-w-4xl flex-col">
       <div className="px-6 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-2xl font-semibold">장비 관리</h1>
         <p className="mt-1 text-sm text-muted-foreground">
