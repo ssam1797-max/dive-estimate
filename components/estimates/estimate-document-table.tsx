@@ -425,21 +425,26 @@ export function EstimateDocumentTable({
                 </td>
               )
             )}
-            {/* 단가 숫자와 할인율 배지를 한 셀에 두 줄로 쌓지 않고, 폭을 나눠 쓰는
-                별도의 두 <td>로 분리한다 — 숫자와 배지가 같은 셀 안에서 겹쳐
-                보이는 것을 막고, 숫자만 있는 셀은 항상 comma 포맷 그대로
-                단독으로 표시된다. */}
-            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
+            {/* 단가/금액은 colSpan=2 짜리 하나의 셀에 숫자를 그대로 두고, 할인율은
+                그 아래 작은 보조 줄로만 덧붙인다 — 숫자 셀을 둘로 쪼개
+                (번호 칸 + 배지 칸) 각각 반쪽 폭만 쓰게 하면, 할인이 없어
+                배지가 비어 있을 때도 숫자 칸 자체가 원래 폭의 절반으로
+                좁아져 큰 금액이 잘리거나 안 보이는 문제가 생긴다. */}
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
               {fmtNum(row.unitPrice)}
+              {!!row.discountRate && row.discountRate > 0 && (
+                <div className="text-[8px] leading-tight text-gray-500">
+                  {formatDiscountRate(row.discountRate)}%↓
+                </div>
+              )}
             </td>
-            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right text-[8px] text-gray-500`}>
-              {!!row.discountRate && row.discountRate > 0 ? `${formatDiscountRate(row.discountRate)}%↓` : ""}
-            </td>
-            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
               {fmtNum(row.amount)}
-            </td>
-            <td className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right text-[8px] text-gray-500`}>
-              {!!row.discountRate && row.discountRate > 0 ? `-${formatDiscountRate(row.discountRate)}%` : ""}
+              {!!row.discountRate && row.discountRate > 0 && (
+                <div className="text-[8px] leading-tight text-gray-500">
+                  -{formatDiscountRate(row.discountRate)}%
+                </div>
+              )}
             </td>
             <td className={`${BLACK_BORDER} ${cellText} text-center`}>
               {row.itemRemarks || "-"}
