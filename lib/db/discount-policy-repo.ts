@@ -37,7 +37,9 @@ export async function getAllDiscountPolicies(): Promise<DiscountPolicy[]> {
   }>((from, to) =>
     supabase
       .from("discount_policies")
-      .select("id, brand, aliases, rate_retail, rate_instructor, rate_center, rate_cost")
+      .select("id, brand, aliases, rate_retail, rate_instructor, rate_center, rate_cost", {
+        count: "exact",
+      })
       .order("brand")
       .range(from, to)
   );
@@ -90,7 +92,11 @@ export async function getDiscountPolicyBrands(): Promise<string[]> {
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
   const rows = await fetchAllPages<{ brand: string }>((from, to) =>
-    supabase.from("discount_policies").select("brand").order("brand").range(from, to)
+    supabase
+      .from("discount_policies")
+      .select("brand", { count: "exact" })
+      .order("brand")
+      .range(from, to)
   );
   return rows.map((r) => r.brand);
 }

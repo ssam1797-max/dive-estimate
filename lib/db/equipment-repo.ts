@@ -38,7 +38,11 @@ export async function getEquipmentBrands(): Promise<string[]> {
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
   const rows = await fetchAllPages<{ brand: string }>((from, to) =>
-    supabase.from("equipment").select("brand").order("brand").range(from, to)
+    supabase
+      .from("equipment")
+      .select("brand", { count: "exact" })
+      .order("brand")
+      .range(from, to)
   );
   return [...new Set(rows.map((r) => r.brand))].sort();
 }
@@ -71,7 +75,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
     }>((from, to) =>
       supabase
         .from("equipment")
-        .select("id, brand, category, name, price_retail, colors, sizes")
+        .select("id, brand, category, name, price_retail, colors, sizes", { count: "exact" })
         .order("brand")
         .order("category")
         .order("name")
