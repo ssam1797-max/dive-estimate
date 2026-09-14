@@ -31,6 +31,10 @@ export interface MockDiscountPolicy {
   rate_instructor: number;
   rate_center: number;
   rate_cost: number;
+  /** 사용자가 "브랜드 할인율 설정" 화면에서 직접 저장했으면 true — 퐁당닷컴
+   *  동기화가 덮어쓰지 않는다. 이 필드가 추가되기 전 데이터를 위해
+   *  optional로 두고, 읽는 쪽에서 `?? false` 로 방어한다. */
+  is_custom?: boolean;
   created_at: string;
   updated_at: string;
 }

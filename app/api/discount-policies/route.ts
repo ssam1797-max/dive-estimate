@@ -43,7 +43,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const policy = await upsertDiscountPolicy(parsed.data);
+    // 이 라우트는 "브랜드 할인율 설정" 화면의 저장 버튼(사람이 직접 입력)
+    // 에서만 호출된다 — isCustom: true 로 넘겨 퐁당닷컴 동기화가 이 값을
+    // 덮어쓰지 않도록 한다.
+    const policy = await upsertDiscountPolicy(parsed.data, { isCustom: true });
     return NextResponse.json(policy);
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";

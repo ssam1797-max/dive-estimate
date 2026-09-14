@@ -24,6 +24,7 @@ export async function POST() {
     }
 
     const updatedBrands: string[] = [];
+    const protectedBrands: string[] = [];
     const upsertWarnings: string[] = [];
 
     for (const { brand, ratePercent } of brandRates) {
@@ -31,6 +32,14 @@ export async function POST() {
         // 별칭까지 확인해서 기존 정책 행이 있으면 그 행의 다른 탭(소비자가/강사가/원가)과
         // 별칭은 보존한 채 센터가만 갱신한다. 없으면 센터가만 채운 새 행을 만든다.
         const existing = await findDiscountPolicyByBrandOrAlias(brand);
+
+        // 사람이 "브랜드 할인율 설정" 화면에서 직접 저장한 브랜드
+        // (is_custom=true)는 동기화가 공급가를 덮어쓰지 않고 건너뛴다.
+        if (existing?.is_custom) {
+          protectedBrands.push(existing.brand);
+          continue;
+        }
+
         await upsertDiscountPolicy({
           brand: existing?.brand ?? brand,
           aliases: existing?.aliases ?? [],
@@ -51,6 +60,7 @@ export async function POST() {
         ok: true,
         brandRates,
         updatedBrands,
+        protectedBrands,
         pagesFetched,
         warnings: [...warnings, ...upsertWarnings],
       },

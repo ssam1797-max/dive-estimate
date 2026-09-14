@@ -16,6 +16,8 @@ interface SyncResponse {
   ok: boolean;
   brandRates: BrandShopRate[];
   updatedBrands: string[];
+  /** 사용자가 직접 저장한(is_custom=true) 브랜드라 이번 동기화에서 건너뛴 브랜드명 목록 */
+  protectedBrands: string[];
   warnings: string[];
 }
 
@@ -48,10 +50,14 @@ export function PongdangShopSyncButton() {
         .map((r) => `${r.brand} ${r.ratePercent}%`)
         .join(", ");
       const more = body.brandRates.length > 3 ? ` 외 ${body.brandRates.length - 3}개 브랜드` : "";
+      const protectedNote =
+        body.protectedBrands.length > 0
+          ? ` (${body.protectedBrands.length}개 브랜드는 직접 설정한 값이라 건너뜀: ${body.protectedBrands.slice(0, 3).join(", ")}${body.protectedBrands.length > 3 ? " 외" : ""})`
+          : "";
 
       setToast({
         tone: "success",
-        message: `${summary}${more} 할인율 동기화 완료!`,
+        message: `${summary}${more} 할인율 동기화 완료!${protectedNote}`,
       });
 
       // 방금 갱신된 정책 값이 목록 화면에 바로 보이도록 새로고침한다.
