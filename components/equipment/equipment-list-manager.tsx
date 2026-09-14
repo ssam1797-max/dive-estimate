@@ -19,6 +19,11 @@ function formatCurrency(amount: number): string {
   return `₩${Math.round(amount).toLocaleString("ko-KR")}`;
 }
 
+// 이 화면은 브랜드 하나만 검색해도(예: "다이브라이트" 70여 건) 전체를 훑어봐야
+// 하므로, 견적서 작성 화면의 검색 드롭다운(기본 20건)보다 훨씬 넉넉하게 받는다
+// — 그래도 잘릴 수 있으니 아래에서 total 과 비교해 잘렸으면 안내 문구를 보여준다.
+const MANAGEMENT_SEARCH_LIMIT = 200;
+
 /** 검색어 입력마다 바로 요청하지 않고, 타이핑이 잠시 멈췄을 때만 요청한다. */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = React.useState(value);
@@ -36,6 +41,7 @@ export function EquipmentListManager({
   const [query, setQuery] = React.useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
   const [results, setResults] = React.useState<EquipmentCatalogItem[]>([]);
+  const [total, setTotal] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
   // useTransition 의 isPending 을 로딩 표시로 쓴다 — startTransition 에 넘긴
   // 비동기 콜백이 끝날 때까지 자동으로 true 를 유지해주므로(React 19),
@@ -63,7 +69,9 @@ export function EquipmentListManager({
 
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/equipment/search?q=${encodeURIComponent(trimmed)}`);
+        const res = await fetch(
+          `/api/equipment/search?q=${encodeURIComponent(trimmed)}&limit=${MANAGEMENT_SEARCH_LIMIT}`
+        );
         const data: unknown = await res.json();
         if (!res.ok) {
           const message =
@@ -74,12 +82,15 @@ export function EquipmentListManager({
         }
         if (cancelled) return;
         const items = (data as { items?: EquipmentCatalogItem[] }).items ?? [];
+        const matchedTotal = (data as { total?: number }).total ?? items.length;
         setResults(items);
+        setTotal(matchedTotal);
         setError(null);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "검색 중 오류가 발생했습니다.");
         setResults([]);
+        setTotal(0);
       }
     });
 
@@ -144,6 +155,14 @@ export function EquipmentListManager({
           {!loading && !error && query.trim() !== "" && results.length === 0 && (
             <p className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
               검색 결과가 없습니다.
+            </p>
+          )}
+
+          {!loading && query.trim() !== "" && results.length > 0 && total > results.length && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              이 검색어에 맞는 품목이 총 {total}건이라 상위 {results.length}건만
+              표시했습니다. 찾는 품목이 안 보이면 검색어를 더 구체적으로
+              입력해보세요(예: 브랜드명만이 아니라 모델명 일부까지).
             </p>
           )}
 

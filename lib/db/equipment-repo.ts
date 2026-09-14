@@ -121,7 +121,20 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
 /** equipment 테이블에는 model_number 컬럼이 없어(name 컬럼이 "장비명(모델명)"
  *  역할을 겸함), 요청된 3필드(equipment_name/brand/model_number) 대신 실제
  *  스키마의 brand/category/name 세 컬럼을 대상으로 검색한다. */
-const SEARCH_RESULT_LIMIT = 20;
+// 견적서 작성 화면의 "키워드 통합 검색"(드롭다운)은 짧고 구체적인 검색어를
+// 치는 용도라 기본값(20건)으로 충분하지만, "장비 목록(수정/삭제)" 화면은
+// 브랜드 하나로만 검색해도(예: "다이브라이트" 70여 건) 전체를 훑어볼 수
+// 있어야 한다 — 기본값 20건에 걸려 있어 실제로는 안 지워진 품목이 검색
+// 결과에 안 보여 "삭제된 줄 알았다"는 혼선이 있었다. 호출부가 필요한
+// 만큼 limit 을 넘길 수 있게 하고, MAX 로 과도한 요청만 막는다.
+const DEFAULT_SEARCH_RESULT_LIMIT = 20;
+const MAX_SEARCH_RESULT_LIMIT = 200;
+
+export interface SearchEquipmentResult {
+  items: EquipmentCatalogItem[];
+  /** 이 검색어에 실제로 매칭되는 전체 건수(= limit 적용 전). items.length 보다 크면 화면에서 잘렸다는 뜻이다. */
+  total: number;
+}
 
 /** PostgREST `.or()` 필터 문자열에 그대로 끼워 넣을 값이라, 필터 문법을
  *  깨뜨리거나 의도치 않게 조건을 조작할 수 있는 문자(쉼표=조건 구분자,
@@ -132,21 +145,25 @@ function sanitizeSearchQuery(raw: string): string {
   return raw.replace(/[,()"'\\%_]/g, " ").trim();
 }
 
-export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalogItem[]> {
+export async function searchEquipment(
+  rawQuery: string,
+  limit: number = DEFAULT_SEARCH_RESULT_LIMIT
+): Promise<SearchEquipmentResult> {
   const query = sanitizeSearchQuery(rawQuery);
-  if (!query) return [];
+  if (!query) return { items: [], total: 0 };
+
+  const cappedLimit = Math.min(Math.max(1, Math.trunc(limit) || DEFAULT_SEARCH_RESULT_LIMIT), MAX_SEARCH_RESULT_LIMIT);
 
   if (isMockMode()) {
     const lower = query.toLowerCase();
-    return mockStore.equipment
-      .filter(
-        (e) =>
-          e.brand.toLowerCase().includes(lower) ||
-          e.category.toLowerCase().includes(lower) ||
-          e.name.toLowerCase().includes(lower)
-      )
-      .slice(0, SEARCH_RESULT_LIMIT)
-      .map((e) => ({
+    const matched = mockStore.equipment.filter(
+      (e) =>
+        e.brand.toLowerCase().includes(lower) ||
+        e.category.toLowerCase().includes(lower) ||
+        e.name.toLowerCase().includes(lower)
+    );
+    return {
+      items: matched.slice(0, cappedLimit).map((e) => ({
         id: e.id,
         brand: e.brand,
         category: e.category,
@@ -155,21 +172,25 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
         colors: e.colors,
         sizes: e.sizes,
         override_discount_rate: e.override_discount_rate ?? null,
-      }));
+      })),
+      total: matched.length,
+    };
   }
 
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("equipment")
-    .select("id, brand, category, name, price_retail, colors, sizes, override_discount_rate")
+    .select("id, brand, category, name, price_retail, colors, sizes, override_discount_rate", {
+      count: "exact",
+    })
     .or(`brand.ilike.%${query}%,category.ilike.%${query}%,name.ilike.%${query}%`)
     .order("brand")
     .order("name")
-    .limit(SEARCH_RESULT_LIMIT);
+    .limit(cappedLimit);
   if (error) throw error;
 
-  return ((data ?? []) as {
+  const items = ((data ?? []) as {
     id: string;
     brand: string;
     category: string;
@@ -189,6 +210,8 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
     override_discount_rate:
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
   }));
+
+  return { items, total: count ?? items.length };
 }
 
 // ── 단건 INSERT ───────────────────────────────────────────────────────────────
