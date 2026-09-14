@@ -2,13 +2,19 @@ import "server-only";
 import { isMockMode } from "@/lib/db/is-mock";
 import { mockStore } from "@/lib/db/mock-store";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
-import type { ParsedEquipmentItem, EquipmentImportItemResult } from "@/lib/equipment/types";
+import type {
+  ParsedEquipmentItem,
+  EquipmentImportItemResult,
+  EquipmentImportItemStatus,
+} from "@/lib/equipment/types";
 import { normalizeBrand } from "@/lib/equipment/normalizeBrand";
 import { fetchAllPages } from "@/lib/db/paginate";
 
 export interface UpsertBulkResult {
   insertedCount: number;
   updatedCount: number;
+  /** 사용자가 직접 등록/수정한(is_custom=true) 품목이라 덮어쓰지 않고 건너뛴 개수 */
+  protectedCount: number;
   failedCount: number;
   items: EquipmentImportItemResult[];
 }
@@ -199,6 +205,13 @@ export interface InsertEquipmentData {
   override_discount_rate: number | null;
 }
 
+/**
+ * 이 함수는 "직접 등록" 화면(사람이 손으로 입력)에서만 호출된다 — 자동
+ * 동기화(upsertEquipmentBulk)와 경로가 완전히 분리돼 있어, 여기로 들어오는
+ * 품목은 항상 is_custom=true 로 저장한다. 클라이언트가 이 값을 직접 보내게
+ * 하지 않고 서버에서 무조건 강제하는 이유는, 이 플래그가 사용자 편집 여부를
+ * 나타내는 무결성 플래그이지 사용자가 켜고 끌 수 있는 옵션이 아니기 때문이다.
+ */
 export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: string }> {
   const normalized: InsertEquipmentData = { ...data, brand: normalizeBrand(data.brand) };
 
@@ -215,7 +228,13 @@ export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: 
       throw err;
     }
     const now = new Date().toISOString();
-    const newItem = { ...normalized, id: crypto.randomUUID(), created_at: now, updated_at: now };
+    const newItem = {
+      ...normalized,
+      id: crypto.randomUUID(),
+      is_custom: true,
+      created_at: now,
+      updated_at: now,
+    };
     mockStore.equipment.push(newItem);
     return { id: newItem.id };
   }
@@ -223,7 +242,7 @@ export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: 
   const supabase = await createAdminClient();
   const { data: row, error } = await supabase
     .from("equipment")
-    .insert(normalized)
+    .insert({ ...normalized, is_custom: true })
     .select("id")
     .single();
   if (error) throw error;
@@ -282,6 +301,12 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
 // (수정 화면에서 브랜드를 다른 표기로 바꿔도 크롤러가 만든 정규화 규칙과
 // 어긋나지 않도록).
 
+/**
+ * "장비 목록(수정/삭제)" 화면에서 사람이 직접 고칠 때만 호출된다 —
+ * insertEquipment 와 동일한 이유로 is_custom=true 를 서버에서 강제한다.
+ * 자동 동기화가 나중에 같은 브랜드+연도+모델명으로 다시 들어와도, 이
+ * 플래그 덕분에 방금 수동으로 고친 값을 덮어쓰지 않는다.
+ */
 export async function updateEquipment(
   id: string,
   data: InsertEquipmentData
@@ -307,13 +332,16 @@ export async function updateEquipment(
       err.code = "23505";
       throw err;
     }
-    Object.assign(row, normalized, { updated_at: new Date().toISOString() });
+    Object.assign(row, normalized, { is_custom: true, updated_at: new Date().toISOString() });
     return;
   }
 
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
-  const { error } = await supabase.from("equipment").update(normalized).eq("id", id);
+  const { error } = await supabase
+    .from("equipment")
+    .update({ ...normalized, is_custom: true })
+    .eq("id", id);
   if (error) throw error;
 }
 
@@ -342,7 +370,11 @@ export async function deleteEquipment(id: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
-// ── 벌크 UPSERT (PDF 업로드용) ───────────────────────────────────────────────
+// ── 벌크 UPSERT (퐁당닷컴/스쿠버프로 공홈 동기화, PDF 업로드용) ───────────────
+// 자동 동기화가 사용자가 수동으로 등록/수정한(is_custom=true) 품목까지
+// 최신 크롤링 값으로 덮어쓰지 않도록, 매칭되는 기존 품목의 is_custom 을
+// 먼저 확인해서 true인 항목은 upsert 대상에서 아예 제외한다(그 품목은
+// 그대로 유지되고 status="protected" 로 보고된다).
 
 export async function upsertEquipmentBulk(
   rawBrand: string,
@@ -350,7 +382,7 @@ export async function upsertEquipmentBulk(
   rawItems: ParsedEquipmentItem[]
 ): Promise<UpsertBulkResult> {
   if (rawItems.length === 0) {
-    return { insertedCount: 0, updatedCount: 0, failedCount: 0, items: [] };
+    return { insertedCount: 0, updatedCount: 0, protectedCount: 0, failedCount: 0, items: [] };
   }
 
   const brand = normalizeBrand(rawBrand);
@@ -367,7 +399,9 @@ export async function upsertEquipmentBulk(
       const idx = mockStore.equipment.findIndex(
         (e) => e.brand === brand && e.catalog_year === catalogYear && e.name === item.name
       );
-      if (idx >= 0) {
+      if (idx >= 0 && mockStore.equipment[idx].is_custom) {
+        results.push({ name: item.name, category: item.category, status: "protected" });
+      } else if (idx >= 0) {
         mockStore.equipment[idx] = {
           ...mockStore.equipment[idx],
           category: item.category,
@@ -396,27 +430,35 @@ export async function upsertEquipmentBulk(
 
     const insertedCount = results.filter((r) => r.status === "inserted").length;
     const updatedCount = results.filter((r) => r.status === "updated").length;
-    return { insertedCount, updatedCount, failedCount: 0, items: results };
+    const protectedCount = results.filter((r) => r.status === "protected").length;
+    return { insertedCount, updatedCount, protectedCount, failedCount: 0, items: results };
   }
 
   // ── 실제 Supabase ──
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
 
-  let existingNames: Set<string>;
+  // 이름 -> is_custom 맵. 이걸로 (a) upsert 대상에서 보호 품목을 걸러내고,
+  // (b) 처리 후 각 항목이 신규/갱신/보호 중 무엇이었는지 보고한다.
+  let existingByName: Map<string, boolean>;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("name")
+      .select("name, is_custom")
       .eq("brand", brand)
       .eq("catalog_year", catalogYear);
     if (error) throw error;
-    existingNames = new Set((data ?? []).map((r) => r.name as string));
+    existingByName = new Map(
+      (data ?? []).map((r) => [r.name as string, Boolean(r.is_custom)])
+    );
   } catch {
-    existingNames = new Set();
+    existingByName = new Map();
   }
 
-  const rows = items.map((item) => ({
+  const protectedItems = items.filter((item) => existingByName.get(item.name) === true);
+  const itemsToUpsert = items.filter((item) => existingByName.get(item.name) !== true);
+
+  const rows = itemsToUpsert.map((item) => ({
     brand,
     catalog_year: catalogYear,
     category: item.category,
@@ -427,20 +469,31 @@ export async function upsertEquipmentBulk(
   }));
 
   try {
-    const { error } = await supabase
-      .from("equipment")
-      .upsert(rows, { onConflict: "brand,catalog_year,name" });
-    if (error) throw error;
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from("equipment")
+        .upsert(rows, { onConflict: "brand,catalog_year,name" });
+      if (error) throw error;
+    }
 
-    const results: EquipmentImportItemResult[] = items.map((item) => ({
-      name: item.name,
-      category: item.category,
-      status: existingNames.has(item.name) ? "updated" : "inserted",
-    }));
+    const results: EquipmentImportItemResult[] = [
+      ...itemsToUpsert.map((item) => ({
+        name: item.name,
+        category: item.category,
+        status: (existingByName.has(item.name) ? "updated" : "inserted") as EquipmentImportItemStatus,
+      })),
+      ...protectedItems.map((item) => ({
+        name: item.name,
+        category: item.category,
+        status: "protected" as EquipmentImportItemStatus,
+        message: "수동으로 등록/수정된 품목이라 자동 동기화에서 건너뛰었습니다.",
+      })),
+    ];
 
     return {
       insertedCount: results.filter((r) => r.status === "inserted").length,
       updatedCount: results.filter((r) => r.status === "updated").length,
+      protectedCount: results.filter((r) => r.status === "protected").length,
       failedCount: 0,
       items: results,
     };
@@ -455,12 +508,18 @@ export async function upsertEquipmentBulk(
           ? String((error as { message: unknown }).message)
           : "알 수 없는 오류";
     console.error("장비 벌크 upsert 실패:", error);
-    const results: EquipmentImportItemResult[] = items.map((item) => ({
+    const results: EquipmentImportItemResult[] = itemsToUpsert.map((item) => ({
       name: item.name,
       category: item.category,
       status: "failed",
       message: `저장 실패: ${message}`,
     }));
-    return { insertedCount: 0, updatedCount: 0, failedCount: results.length, items: results };
+    return {
+      insertedCount: 0,
+      updatedCount: 0,
+      protectedCount: 0,
+      failedCount: results.length,
+      items: results,
+    };
   }
 }

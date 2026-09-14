@@ -18,8 +18,12 @@ export interface CatalogExtractionResult {
   warnings: string[];
 }
 
-/** equipment 테이블 upsert 결과, 항목 1건에 대한 처리 상태 */
-export type EquipmentImportItemStatus = "inserted" | "updated" | "failed";
+/**
+ * equipment 테이블 upsert 결과, 항목 1건에 대한 처리 상태.
+ * "protected" 는 기존 품목이 사용자가 직접 등록/수정한 것(is_custom=true)
+ * 이라 자동 동기화 값으로 덮어쓰지 않고 그대로 건너뛴 경우다.
+ */
+export type EquipmentImportItemStatus = "inserted" | "updated" | "protected" | "failed";
 
 export interface EquipmentImportItemResult {
   name: string;
@@ -38,6 +42,8 @@ export interface EquipmentImportSummary {
   totalParsed: number;
   insertedCount: number;
   updatedCount: number;
+  /** 사용자가 직접 등록/수정한(is_custom=true) 품목이라 자동 동기화 값으로 덮어쓰지 않고 건너뛴 개수 */
+  protectedCount: number;
   failedCount: number;
   items: EquipmentImportItemResult[];
   /** 추출 단계에서 발생한 경고 (일부 페이지 청크 처리 실패 등) */

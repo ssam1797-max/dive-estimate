@@ -39,6 +39,7 @@ export async function POST() {
 
     let insertedCount = 0;
     let updatedCount = 0;
+    let protectedCount = 0;
     let failedCount = 0;
     const items: EquipmentImportItemResult[] = [];
 
@@ -56,6 +57,7 @@ export async function POST() {
       );
       insertedCount += result.insertedCount;
       updatedCount += result.updatedCount;
+      protectedCount += result.protectedCount;
       failedCount += result.failedCount;
       items.push(...result.items);
     }
@@ -67,6 +69,7 @@ export async function POST() {
       totalParsed: crawlResult.items.length,
       insertedCount,
       updatedCount,
+      protectedCount,
       failedCount,
       items,
       warnings: crawlResult.warnings,

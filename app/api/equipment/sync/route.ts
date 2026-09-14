@@ -39,6 +39,7 @@ export async function POST() {
       totalParsed: crawlResult.items.length,
       insertedCount: upsertResult.insertedCount,
       updatedCount: upsertResult.updatedCount,
+      protectedCount: upsertResult.protectedCount,
       failedCount: upsertResult.failedCount,
       items: upsertResult.items,
       warnings: crawlResult.warnings,

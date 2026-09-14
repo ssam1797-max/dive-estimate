@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,14 +20,16 @@ function StatTile({
 }: {
   label: string;
   value: number;
-  tone: "default" | "success" | "destructive";
+  tone: "default" | "success" | "warning" | "destructive";
 }) {
   const toneClass =
     tone === "success"
       ? "text-emerald-600 dark:text-emerald-400"
-      : tone === "destructive"
-        ? "text-destructive"
-        : "text-foreground";
+      : tone === "warning"
+        ? "text-amber-600 dark:text-amber-400"
+        : tone === "destructive"
+          ? "text-destructive"
+          : "text-foreground";
 
   return (
     <div className="flex flex-col items-center gap-1 rounded-lg border p-3">
@@ -39,6 +41,7 @@ function StatTile({
 
 export function ImportResultSummary({ summary }: ImportResultSummaryProps) {
   const failedItems = summary.items.filter((item) => item.status === "failed");
+  const protectedItems = summary.items.filter((item) => item.status === "protected");
 
   return (
     <Card>
@@ -48,12 +51,31 @@ export function ImportResultSummary({ summary }: ImportResultSummaryProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatTile label="총 인식 항목" value={summary.totalParsed} tone="default" />
           <StatTile label="신규 등록" value={summary.insertedCount} tone="success" />
           <StatTile label="업데이트" value={summary.updatedCount} tone="default" />
+          <StatTile label="보호됨(수동 변경 유지)" value={summary.protectedCount} tone="warning" />
           <StatTile label="실패" value={summary.failedCount} tone="destructive" />
         </div>
+
+        {protectedItems.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            <div className="flex items-center gap-2 font-medium">
+              <ShieldCheck className="size-4" />
+              수동으로 등록/수정해 자동 동기화에서 건너뛴 품목
+            </div>
+            <ul className="flex flex-wrap gap-1.5">
+              {protectedItems.map((item, index) => (
+                <li key={index}>
+                  <Badge variant="outline" title={item.category}>
+                    {item.name}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {summary.warnings.length > 0 && (
           <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -94,7 +116,7 @@ export function ImportResultSummary({ summary }: ImportResultSummaryProps) {
 
         <div className="flex flex-wrap gap-1.5">
           {summary.items
-            .filter((item) => item.status !== "failed")
+            .filter((item) => item.status !== "failed" && item.status !== "protected")
             .slice(0, 30)
             .map((item, index) => (
               <Badge

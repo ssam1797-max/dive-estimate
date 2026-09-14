@@ -5,6 +5,7 @@ import type { ParsedEquipmentItem, EquipmentImportItemResult } from "@/lib/equip
 interface UpsertEquipmentResult {
   insertedCount: number;
   updatedCount: number;
+  protectedCount: number;
   failedCount: number;
   items: EquipmentImportItemResult[];
 }

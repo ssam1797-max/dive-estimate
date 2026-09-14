@@ -131,6 +131,7 @@ export async function POST(request: Request) {
       totalParsed: extraction.items.length,
       insertedCount: upsertResult.insertedCount,
       updatedCount: upsertResult.updatedCount,
+      protectedCount: upsertResult.protectedCount,
       failedCount: upsertResult.failedCount,
       items: upsertResult.items,
       warnings: extraction.warnings,

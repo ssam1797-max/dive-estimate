@@ -14,6 +14,10 @@ export interface MockEquipment {
   /** 품목별 예외 할인율(%). 이 필드가 추가되기 전에 만들어진 시드 데이터를
    *  위해 optional로 두고, 읽는 쪽에서 `?? null` 로 방어한다. */
   override_discount_rate?: number | null;
+  /** 사용자가 직접 등록/수정한 품목이면 true — 자동 동기화가 덮어쓰지 않는다.
+   *  이 필드가 추가되기 전 시드 데이터를 위해 optional로 두고, 읽는 쪽에서
+   *  `?? false` 로 방어한다. */
+  is_custom?: boolean;
   created_at: string;
   updated_at: string;
 }
