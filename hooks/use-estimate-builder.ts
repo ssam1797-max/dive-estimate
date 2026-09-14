@@ -125,7 +125,8 @@ function reducer(
           item.priceRetail,
           item.brand,
           action.tier,
-          action.discountPolicies
+          action.discountPolicies,
+          item.overrideDiscountRate
         ),
       }));
       return { ...state, priceTier: action.tier, items: recalculated };
@@ -192,7 +193,8 @@ function reducer(
                   action.priceRetail,
                   item.brand,
                   state.priceTier,
-                  action.discountPolicies
+                  action.discountPolicies,
+                  item.overrideDiscountRate
                 ),
               }
             : item

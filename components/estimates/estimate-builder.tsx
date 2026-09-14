@@ -79,6 +79,7 @@ function toItemPayloads(
     priceRetail: number;
     unitPrice: number;
     itemRemarks: string;
+    overrideDiscountRate: number | null;
   }[],
   discountPolicies: DiscountPolicyMap,
   activeTier: PriceTier
@@ -87,7 +88,13 @@ function toItemPayloads(
     const tierPrice = (tier: PriceTier) =>
       tier === activeTier
         ? item.unitPrice
-        : calculateEffectiveUnitPrice(item.priceRetail, item.brand, tier, discountPolicies);
+        : calculateEffectiveUnitPrice(
+            item.priceRetail,
+            item.brand,
+            tier,
+            discountPolicies,
+            item.overrideDiscountRate
+          );
 
     return {
       equipmentId: item.equipmentId || null,
@@ -114,6 +121,7 @@ function toExportItemPayloads(
     quantity: number;
     priceRetail: number;
     itemRemarks: string;
+    overrideDiscountRate: number | null;
   }[]
 ): ExportEstimateItemPayload[] {
   return items.map((item) => ({
@@ -125,6 +133,7 @@ function toExportItemPayloads(
     quantity: item.quantity,
     priceRetail: item.priceRetail,
     itemRemarks: item.itemRemarks,
+    overrideDiscountRate: item.overrideDiscountRate,
   }));
 }
 

@@ -61,7 +61,8 @@ export async function POST(request: Request) {
         item.priceRetail,
         item.brand,
         priceTier,
-        discountPolicies
+        discountPolicies,
+        item.overrideDiscountRate
       );
       const amount = effectiveUnitPrice * item.quantity;
 
@@ -77,7 +78,13 @@ export async function POST(request: Request) {
         itemRemarks: item.itemRemarks,
         discountRate: calculateDiscountRate(item.priceRetail, effectiveUnitPrice),
         referenceValues: referenceTiers.map((tier) =>
-          calculateEffectiveUnitPrice(item.priceRetail, item.brand, tier, discountPolicies)
+          calculateEffectiveUnitPrice(
+            item.priceRetail,
+            item.brand,
+            tier,
+            discountPolicies,
+            item.overrideDiscountRate
+          )
         ),
       };
     });

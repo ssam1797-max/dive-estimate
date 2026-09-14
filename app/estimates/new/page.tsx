@@ -47,13 +47,16 @@ function todayInSeoul(): string {
  * 빈 새 견적서로 진행한다(에러로 화면 전체를 막지 않음).
  */
 async function loadDuplicateSource(
-  id: string
+  id: string,
+  catalog: EquipmentCatalogItem[]
 ): Promise<EstimateBuilderInitialData | null> {
   try {
     const estimate = await getSavedEstimateDetail(id);
     if (!estimate) return null;
 
     const priceTier = estimate.priceTier ?? "RETAIL";
+    // 예외 할인율은 estimate_items 스냅샷에 없고 장비 마스터에만 있어,
+    // 이미 불러온 catalog(최신 값)에서 equipmentId 로 찾아 채운다.
     const items: EstimateItemDraft[] = estimate.items.map((item) => ({
       clientId: crypto.randomUUID(),
       equipmentId: item.equipmentId ?? "",
@@ -66,6 +69,8 @@ async function loadDuplicateSource(
       priceRetail: item.priceRetail ?? item.unitPrice,
       unitPrice: tierPriceOfSnapshot(item, priceTier),
       itemRemarks: item.itemRemarks,
+      overrideDiscountRate:
+        catalog.find((eq) => eq.id === item.equipmentId)?.override_discount_rate ?? null,
     }));
 
     return {
@@ -158,7 +163,7 @@ export default async function NewEstimatePage({
     await loadPageData();
   const { duplicateFrom: duplicateFromId } = await searchParams;
   const duplicateFrom = duplicateFromId
-    ? await loadDuplicateSource(duplicateFromId)
+    ? await loadDuplicateSource(duplicateFromId, catalog)
     : null;
 
   return (

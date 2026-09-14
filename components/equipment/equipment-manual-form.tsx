@@ -30,6 +30,8 @@ const EMPTY_FORM = {
   colors: [] as string[],
   sizes: [] as string[],
   catalogYear: CURRENT_YEAR,
+  /** 빈 문자열이면 예외 할인율 없음(브랜드 기본 할인율 적용) — 저장 시 null로 변환. */
+  overrideDiscountRate: "",
 };
 
 export function EquipmentManualForm({
@@ -58,6 +60,11 @@ export function EquipmentManualForm({
     const price = Number(form.priceRetail);
     if (form.priceRetail === "" || isNaN(price) || price < 0)
       next.priceRetail = "소비자 가격을 올바르게 입력해주세요. (0 이상 숫자)";
+    if (form.overrideDiscountRate !== "") {
+      const rate = Number(form.overrideDiscountRate);
+      if (isNaN(rate) || rate < 0 || rate > 100)
+        next.overrideDiscountRate = "예외 할인율은 0~100 사이 숫자여야 합니다.";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -80,6 +87,8 @@ export function EquipmentManualForm({
           colors: form.colors,
           sizes: form.sizes,
           catalog_year: form.catalogYear,
+          override_discount_rate:
+            form.overrideDiscountRate === "" ? null : Number(form.overrideDiscountRate),
         }),
       });
 
@@ -202,21 +211,43 @@ export function EquipmentManualForm({
             </div>
           </div>
 
-          {/* 카탈로그 연도 */}
-          <div className="flex flex-col gap-2 sm:w-1/2">
-            <Label htmlFor="manual-catalog-year">카탈로그 연도 <span className="text-muted-foreground font-normal">(선택)</span></Label>
-            <Select
-              id="manual-catalog-year"
-              value={form.catalogYear}
-              disabled={isSubmitting}
-              onChange={(e) => set("catalogYear", Number(e.target.value))}
-            >
-              {YEAR_OPTIONS.map((year) => (
-                <option key={year} value={year}>
-                  {year}년
-                </option>
-              ))}
-            </Select>
+          {/* 카탈로그 연도 · 예외 할인율 */}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="manual-catalog-year">카탈로그 연도 <span className="text-muted-foreground font-normal">(선택)</span></Label>
+              <Select
+                id="manual-catalog-year"
+                value={form.catalogYear}
+                disabled={isSubmitting}
+                onChange={(e) => set("catalogYear", Number(e.target.value))}
+              >
+                {YEAR_OPTIONS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}년
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="override-discount-rate">
+                예외 할인율(%) <span className="text-muted-foreground font-normal">(선택)</span>
+              </Label>
+              <Input
+                id="override-discount-rate"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={100}
+                value={form.overrideDiscountRate}
+                disabled={isSubmitting}
+                placeholder="비워두면 브랜드 기본 할인율 적용"
+                onChange={(e) => set("overrideDiscountRate", e.target.value)}
+              />
+              {errors.overrideDiscountRate && (
+                <p className="text-xs text-destructive">{errors.overrideDiscountRate}</p>
+              )}
+            </div>
           </div>
 
           {/* 피드백 */}

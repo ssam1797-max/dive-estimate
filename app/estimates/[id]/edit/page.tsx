@@ -50,6 +50,11 @@ export default async function EditEstimatePage({
 
     const priceTier: PriceTier = estimate.priceTier ?? "RETAIL";
 
+    // 예외 할인율은 estimate_items 에 저장돼 있지 않고 장비 마스터
+    // (equipment.override_discount_rate)에만 있다 — 이미 같이 불러온
+    // catalog(최신 값)에서 equipmentId 로 찾아 채운다. 브랜드 할인율도
+    // 저장 당시가 아니라 현재 정책(discountPolicies)을 쓰는 것과 동일한
+    // 원칙이다(등급 전환 시 항상 최신 정책 기준으로 재계산됨).
     const items: EstimateItemDraft[] = estimate.items.map((item) => ({
       clientId: crypto.randomUUID(),
       equipmentId: item.equipmentId ?? "",
@@ -62,6 +67,8 @@ export default async function EditEstimatePage({
       priceRetail: item.priceRetail ?? item.unitPrice,
       unitPrice: tierPriceOfSnapshot(item, priceTier),
       itemRemarks: item.itemRemarks,
+      overrideDiscountRate:
+        catalogData.find((eq) => eq.id === item.equipmentId)?.override_discount_rate ?? null,
     }));
 
     editContext = {

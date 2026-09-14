@@ -59,6 +59,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       price_retail: e.price_retail,
       colors: e.colors,
       sizes: e.sizes,
+      override_discount_rate: e.override_discount_rate ?? null,
     }));
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
@@ -72,10 +73,14 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       price_retail: number | string;
       colors: string[] | null;
       sizes: string[] | null;
+      override_discount_rate: number | string | null;
     }>((from, to) =>
       supabase
         .from("equipment")
-        .select("id, brand, category, name, price_retail, colors, sizes", { count: "exact" })
+        .select(
+          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate",
+          { count: "exact" }
+        )
         .order("brand")
         .order("category")
         .order("name")
@@ -89,6 +94,8 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       price_retail: Number(row.price_retail),
       colors: row.colors ?? [],
       sizes: row.sizes ?? [],
+      override_discount_rate:
+        row.override_discount_rate == null ? null : Number(row.override_discount_rate),
     }));
   } catch (error) {
     console.error(
@@ -141,6 +148,7 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
         price_retail: e.price_retail,
         colors: e.colors,
         sizes: e.sizes,
+        override_discount_rate: e.override_discount_rate ?? null,
       }));
   }
 
@@ -148,7 +156,7 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
   const supabase = await createAdminClient();
   const { data, error } = await supabase
     .from("equipment")
-    .select("id, brand, category, name, price_retail, colors, sizes")
+    .select("id, brand, category, name, price_retail, colors, sizes, override_discount_rate")
     .or(`brand.ilike.%${query}%,category.ilike.%${query}%,name.ilike.%${query}%`)
     .order("brand")
     .order("name")
@@ -163,6 +171,7 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
     price_retail: number | string;
     colors: string[] | null;
     sizes: string[] | null;
+    override_discount_rate: number | string | null;
   }[]).map((row) => ({
     id: row.id,
     brand: row.brand,
@@ -171,6 +180,8 @@ export async function searchEquipment(rawQuery: string): Promise<EquipmentCatalo
     price_retail: Number(row.price_retail),
     colors: row.colors ?? [],
     sizes: row.sizes ?? [],
+    override_discount_rate:
+      row.override_discount_rate == null ? null : Number(row.override_discount_rate),
   }));
 }
 
@@ -184,6 +195,8 @@ export interface InsertEquipmentData {
   colors: string[];
   sizes: string[];
   catalog_year: number | null;
+  /** 품목별 예외 할인율(%, 0~100). null이면 브랜드 기본 할인율을 그대로 쓴다. */
+  override_discount_rate: number | null;
 }
 
 export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: string }> {
@@ -236,13 +249,16 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
       colors: row.colors,
       sizes: row.sizes,
       catalog_year: row.catalog_year,
+      override_discount_rate: row.override_discount_rate ?? null,
     };
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
   const { data: row, error } = await supabase
     .from("equipment")
-    .select("id, brand, category, name, price_retail, colors, sizes, catalog_year")
+    .select(
+      "id, brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate"
+    )
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -256,6 +272,8 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
     colors: (row.colors as string[] | null) ?? [],
     sizes: (row.sizes as string[] | null) ?? [],
     catalog_year: row.catalog_year as number | null,
+    override_discount_rate:
+      row.override_discount_rate == null ? null : Number(row.override_discount_rate),
   };
 }
 

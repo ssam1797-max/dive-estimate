@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { brand, category, name, price_retail, colors, sizes, catalog_year } =
+    const { brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate } =
       parsed.data;
 
     try {
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
         colors,
         sizes,
         catalog_year: catalog_year ?? null,
+        override_discount_rate: override_discount_rate ?? null,
       });
       return NextResponse.json({ id: result.id }, { status: 201 });
     } catch (error) {

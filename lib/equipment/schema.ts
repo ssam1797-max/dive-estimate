@@ -52,6 +52,13 @@ export const equipmentCreateSchema = z.object({
     .max(2100, "발행 연도가 올바르지 않습니다.")
     .nullable()
     .optional(),
+  /** 품목별 예외 할인율(%, 0~100). 비워두면(null) 브랜드 기본 할인율을 그대로 쓴다. */
+  override_discount_rate: z
+    .number()
+    .min(0, "예외 할인율은 0 이상이어야 합니다.")
+    .max(100, "예외 할인율은 100 이하여야 합니다.")
+    .nullable()
+    .optional(),
 });
 
 export type EquipmentCreateInput = z.infer<typeof equipmentCreateSchema>;

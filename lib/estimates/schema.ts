@@ -71,6 +71,8 @@ export const exportEstimateItemSchema = z.object({
   priceRetail: z.number().min(0, "정가는 0 이상이어야 합니다."),
   itemRemarks: z.string().trim().default(""),
   unit: z.string().trim().optional(),
+  /** 품목별 예외 할인율(%). 있으면 서버 재계산 시 브랜드 할인율보다 우선한다. */
+  overrideDiscountRate: z.number().min(0).max(100).nullable().optional(),
 });
 
 /** 엑셀 미리보기/다운로드(POST /api/estimates/export) 요청 검증 스키마 */

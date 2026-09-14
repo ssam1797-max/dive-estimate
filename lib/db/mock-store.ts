@@ -11,6 +11,9 @@ export interface MockEquipment {
   colors: string[];
   sizes: string[];
   catalog_year: number | null;
+  /** 품목별 예외 할인율(%). 이 필드가 추가되기 전에 만들어진 시드 데이터를
+   *  위해 optional로 두고, 읽는 쪽에서 `?? null` 로 방어한다. */
+  override_discount_rate?: number | null;
   created_at: string;
   updated_at: string;
 }

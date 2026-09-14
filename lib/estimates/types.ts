@@ -12,6 +12,8 @@ export interface EquipmentCatalogItem {
   price_retail: number;
   colors: string[];
   sizes: string[];
+  /** 품목별 예외 할인율(%). 없으면(null) 브랜드 기본 할인율을 그대로 쓴다. */
+  override_discount_rate: number | null;
 }
 
 /** 공급자/수신자 드롭다운에 쓰는 프로필 옵션 (엑셀 미리보기/다운로드에 필요한 주소·도장 이미지 포함) */
@@ -45,6 +47,12 @@ export interface EstimateItemDraft {
   /** 현재 적용 단가 (가격 탭 전환 시 재계산, 수동 편집 가능) */
   unitPrice: number;
   itemRemarks: string;
+  /**
+   * 이 품목(equipment)에 지정된 예외 할인율(%). 있으면 가격 등급/브랜드
+   * 할인율 정책과 무관하게 이 값이 최우선 적용된다 — null이면 기존처럼
+   * 브랜드 기본 할인율을 쓴다.
+   */
+  overrideDiscountRate: number | null;
 }
 
 /** 저장된 템플릿 요약 (불러오기 목록용) */
@@ -97,6 +105,8 @@ export interface ExportEstimateItemPayload {
   itemRemarks: string;
   /** 단위 (기본: "개") */
   unit?: string;
+  /** 품목별 예외 할인율(%). 있으면 서버 재계산 시 브랜드 할인율보다 우선한다. */
+  overrideDiscountRate?: number | null;
 }
 
 /** 엑셀 다운로드(POST /api/estimates/export) 요청 바디 */

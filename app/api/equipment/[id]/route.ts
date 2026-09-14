@@ -53,7 +53,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
-    const { brand, category, name, price_retail, colors, sizes, catalog_year } =
+    const { brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate } =
       parsed.data;
 
     try {
@@ -65,6 +65,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         colors,
         sizes,
         catalog_year: catalog_year ?? null,
+        override_discount_rate: override_discount_rate ?? null,
       });
       return NextResponse.json({ ok: true });
     } catch (error) {

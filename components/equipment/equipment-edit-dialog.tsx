@@ -47,6 +47,8 @@ interface FormState {
   colors: string[];
   sizes: string[];
   catalogYear: number | null;
+  /** 빈 문자열이면 예외 할인율 없음(브랜드 기본 할인율 적용) — 저장 시 null로 변환. */
+  overrideDiscountRate: string;
 }
 
 function fmtWon(value: number): string {
@@ -64,10 +66,12 @@ function DiscountPreview({
   priceRetail,
   brand,
   discountMap,
+  overrideRate,
 }: {
   priceRetail: number;
   brand: string;
   discountMap: DiscountPolicyMap;
+  overrideRate: number | null;
 }) {
   if (!brand.trim() || priceRetail <= 0) {
     return (
@@ -78,22 +82,36 @@ function DiscountPreview({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {PRICE_TIERS.map((tier) => {
-        const price = calculateEffectiveUnitPrice(priceRetail, brand, tier, discountMap);
-        const rate = calculateDiscountRate(priceRetail, price);
-        return (
-          <div key={tier} className="rounded-md border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">{PRICE_TIER_LABELS[tier]}</p>
-            <p className="text-sm font-semibold">{fmtWon(price)}원</p>
-            {rate > 0 && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                -{formatDiscountRate(rate)}%
-              </p>
-            )}
-          </div>
-        );
-      })}
+    <div className="flex flex-col gap-2">
+      {overrideRate != null && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          예외 할인율 {formatDiscountRate(overrideRate)}%가 브랜드 기본 할인율보다
+          우선 적용됩니다.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {PRICE_TIERS.map((tier) => {
+          const price = calculateEffectiveUnitPrice(
+            priceRetail,
+            brand,
+            tier,
+            discountMap,
+            overrideRate
+          );
+          const rate = calculateDiscountRate(priceRetail, price);
+          return (
+            <div key={tier} className="rounded-md border bg-muted/30 p-2">
+              <p className="text-xs text-muted-foreground">{PRICE_TIER_LABELS[tier]}</p>
+              <p className="text-sm font-semibold">{fmtWon(price)}원</p>
+              {rate > 0 && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                  -{formatDiscountRate(rate)}%
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -146,6 +164,7 @@ export function EquipmentEditDialog({
           colors: string[];
           sizes: string[];
           catalog_year: number | null;
+          override_discount_rate: number | null;
         };
 
         setForm({
@@ -156,6 +175,8 @@ export function EquipmentEditDialog({
           colors: eq.colors,
           sizes: eq.sizes,
           catalogYear: eq.catalog_year,
+          overrideDiscountRate:
+            eq.override_discount_rate == null ? "" : String(eq.override_discount_rate),
         });
         setDiscountMap(
           buildDiscountPolicyMap(
@@ -199,6 +220,11 @@ export function EquipmentEditDialog({
     const price = Number(current.priceRetail);
     if (current.priceRetail === "" || Number.isNaN(price) || price < 0)
       next.priceRetail = "소비자 가격을 올바르게 입력해주세요. (0 이상 숫자)";
+    if (current.overrideDiscountRate !== "") {
+      const rate = Number(current.overrideDiscountRate);
+      if (Number.isNaN(rate) || rate < 0 || rate > 100)
+        next.overrideDiscountRate = "예외 할인율은 0~100 사이 숫자여야 합니다.";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -222,6 +248,8 @@ export function EquipmentEditDialog({
           colors: form.colors,
           sizes: form.sizes,
           catalog_year: form.catalogYear,
+          override_discount_rate:
+            form.overrideDiscountRate === "" ? null : Number(form.overrideDiscountRate),
         }),
       });
       const data: unknown = await res.json();
@@ -319,12 +347,35 @@ export function EquipmentEditDialog({
               </div>
             </div>
 
+            <div className="flex flex-col gap-2 sm:w-1/2">
+              <Label htmlFor="edit-override-discount-rate">
+                예외 할인율(%) <span className="text-muted-foreground font-normal">(선택)</span>
+              </Label>
+              <Input
+                id="edit-override-discount-rate"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={100}
+                value={form.overrideDiscountRate}
+                disabled={isSubmitting}
+                placeholder="비워두면 브랜드 기본 할인율 적용"
+                onChange={(e) => set("overrideDiscountRate", e.target.value)}
+              />
+              {errors.overrideDiscountRate && (
+                <p className="text-xs text-destructive">{errors.overrideDiscountRate}</p>
+              )}
+            </div>
+
             <div className="flex flex-col gap-2">
               <Label>등급별 실제 단가 미리보기</Label>
               <DiscountPreview
                 priceRetail={priceRetailNumber}
                 brand={form.brand}
                 discountMap={discountMap}
+                overrideRate={
+                  form.overrideDiscountRate === "" ? null : Number(form.overrideDiscountRate)
+                }
               />
             </div>
 

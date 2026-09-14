@@ -315,6 +315,7 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
         priceRetail: eq?.price_retail ?? i.unit_price,
         unitPrice: i.unit_price,
         itemRemarks: i.item_remarks ?? "",
+        overrideDiscountRate: eq?.override_discount_rate ?? null,
       };
     });
 
@@ -341,7 +342,9 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
 
   const { data: items, error: itemsError } = await supabase
     .from("estimate_items")
-    .select("equipment_id, color, size, quantity, unit_price, item_remarks, equipment(brand, category, name, price_retail)")
+    .select(
+      "equipment_id, color, size, quantity, unit_price, item_remarks, equipment(brand, category, name, price_retail, override_discount_rate)"
+    )
     .eq("estimate_id", id)
     .order("created_at");
   if (itemsError) throw new Error("템플릿 항목을 불러오지 못했습니다.");
@@ -353,7 +356,22 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
     quantity: number;
     unit_price: number | string;
     item_remarks: string | null;
-    equipment: { brand: string; category: string; name: string; price_retail: number }[] | { brand: string; category: string; name: string; price_retail: number } | null;
+    equipment:
+      | {
+          brand: string;
+          category: string;
+          name: string;
+          price_retail: number;
+          override_discount_rate: number | string | null;
+        }[]
+      | {
+          brand: string;
+          category: string;
+          name: string;
+          price_retail: number;
+          override_discount_rate: number | string | null;
+        }
+      | null;
   }[]).map((row) => {
     const eq = Array.isArray(row.equipment) ? row.equipment[0] : row.equipment;
     return {
@@ -368,6 +386,8 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
       priceRetail: eq?.price_retail ?? Number(row.unit_price),
       unitPrice: Number(row.unit_price),
       itemRemarks: row.item_remarks ?? "",
+      overrideDiscountRate:
+        eq?.override_discount_rate == null ? null : Number(eq.override_discount_rate),
     };
   });
 

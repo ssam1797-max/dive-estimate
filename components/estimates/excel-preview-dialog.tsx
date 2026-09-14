@@ -62,7 +62,8 @@ export function ExcelPreviewDialog({
           item.priceRetail,
           item.brand,
           priceTier,
-          discountPolicies
+          discountPolicies,
+          item.overrideDiscountRate
         );
         const amount = unitPrice * item.quantity;
         return {
@@ -78,7 +79,13 @@ export function ExcelPreviewDialog({
           itemRemarks: item.itemRemarks,
           discountRate: calculateDiscountRate(item.priceRetail, unitPrice),
           referenceValues: referenceTiers.map((tier) =>
-            calculateEffectiveUnitPrice(item.priceRetail, item.brand, tier, discountPolicies)
+            calculateEffectiveUnitPrice(
+              item.priceRetail,
+              item.brand,
+              tier,
+              discountPolicies,
+              item.overrideDiscountRate
+            )
           ),
         };
       }),

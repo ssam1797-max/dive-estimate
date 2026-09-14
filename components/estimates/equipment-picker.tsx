@@ -138,7 +138,8 @@ export function EquipmentPicker({
       selectedEquipment.price_retail,
       selectedEquipment.brand,
       priceTier,
-      discountPolicies
+      discountPolicies,
+      selectedEquipment.override_discount_rate
     );
   }, [selectedEquipment, priceTier, discountPolicies]);
 
@@ -198,7 +199,8 @@ export function EquipmentPicker({
       selectedEquipment.price_retail,
       selectedEquipment.brand,
       priceTier,
-      discountPolicies
+      discountPolicies,
+      selectedEquipment.override_discount_rate
     );
 
     onAdd({
@@ -213,6 +215,7 @@ export function EquipmentPicker({
       priceRetail: selectedEquipment.price_retail,
       unitPrice,
       itemRemarks,
+      overrideDiscountRate: selectedEquipment.override_discount_rate,
     });
 
     // 최근 사용 기록 갱신 — 구독 중인 useSyncExternalStore 가 자동으로

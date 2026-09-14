@@ -121,18 +121,28 @@ function floorWon(value: number): number {
  * listPrice 는 항상 number 여야 하지만, 크롤러/외부 데이터 소스를 거쳐 들어온
  * 값이 문자열로 새어 들어오는 경우를 대비해 Number() 로 한 번 더 강제 변환한다.
  *
+ * overrideRate(품목별 예외 할인율, equipment.override_discount_rate)가
+ * null/undefined 가 아니면, 브랜드 할인율 정책을 아예 조회하지 않고 이
+ * 값을 4개 가격 등급 전부에 그대로 적용한다 — "예외 할인율이 있으면
+ * 최우선, 없으면 브랜드 기본 할인율" 규칙이라 등급별로 다른 값을 두지
+ * 않는다.
+ *
  * 결과값은 소수점을 버리는 절사(floorWon)로 원단위까지 정리한다.
  */
 export function calculateEffectiveUnitPrice(
   listPrice: number,
   brand: string,
   tier: PriceTier,
-  discountPolicies: DiscountPolicyMap
+  discountPolicies: DiscountPolicyMap,
+  overrideRate?: number | null
 ): number {
   const numericListPrice = Number(listPrice);
   if (!Number.isFinite(numericListPrice)) return 0;
 
-  const rate = rateForTier(tier, findDiscountRates(brand, discountPolicies));
+  const rate =
+    overrideRate != null
+      ? Number(overrideRate)
+      : rateForTier(tier, findDiscountRates(brand, discountPolicies));
   return Math.max(0, floorWon(numericListPrice * (1 - rate / 100)));
 }
 
