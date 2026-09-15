@@ -74,10 +74,19 @@ const REFERENCE_COL_WIDTH = 7.0;
 // 96 CSS px/in 기준)를 채우도록 실측(브라우저에서 렌더링된 각 행의 실제 높이를
 // 측정) 기반으로 정한 값이다. 품목 수가 적어도 서식 전체가 A4 한 장을 거의
 // 꽉 채우도록 하기 위함 — 이전 값(13)은 절반 정도만 채워 하단이 허전했다.
-// 31이었다가 29로 2줄 줄인 이유: 이후 대표자 성명 폰트 확대(15px, bold)와
-// 이메일 셀 줄바꿈(2줄) 등으로 총 높이가 조금씩 늘어, 품목이 5개만 있어도
-// 277mm 를 살짝 넘겨 헤더만 있는 빈 2페이지가 따라 나오는 문제가 있었다.
-const MIN_DATA_ROWS = 29;
+// 31 -> 29 -> 19 로 줄어든 이유: 처음엔 대표자 성명 폰트 확대(15px, bold)와
+// 이메일 셀 줄바꿈(2줄) 등으로 늘어난 높이를 맞추려 29로 줄였고, 이후
+// 표 전체 세로 길이를 더 줄이면서 대신 행 하나당 위아래 패딩(ITEM_ROW_PADDING_Y)
+// 을 넓혀 답답해 보이지 않게 하자는 요청에 따라 19로 한 번 더 줄였다 —
+// 행이 줄어든 만큼 한 행이 넓어져도(20px -> 28px, 아래 ITEM_ROW_HEIGHT)
+// 총 높이(19×28≈532px)는 이전(29×20=580px)보다 오히려 더 짧다.
+const MIN_DATA_ROWS = 19;
+
+// 품목 표 각 행의 위아래 패딩(px)과, 그 패딩을 감안한 행 높이(빈 행 포함
+// 전부 동일하게 맞춰야 표 전체 격자선이 가지런히 보인다). 상단 정보
+// 블록(공급자 정보 등)은 이 상수와 무관하게 기존 높이를 그대로 유지한다.
+const ITEM_ROW_PADDING_Y = "py-2"; // Tailwind py-2 = 8px(위아래 각각)
+const ITEM_ROW_HEIGHT = 28;
 
 // 원본은 배경색 채우기가 전혀 없고(전부 흰 배경), 테두리 색상만 구역별로 다르다.
 const BLACK_BORDER = "border border-black";
@@ -92,8 +101,11 @@ const greenStyle = { borderColor: "#3A714A" };
 // break-keep(단어 중간에서 안 끊김) + break-words(그래도 안 끊기면 강제 줄바꿈)
 // 조합을 쓴다 — 참고 등급 체크박스가 늘어나 컬럼이 좁아질수록 이 차이가 커진다.
 const cellBase = "bg-white text-gray-900 text-[10px] px-1 leading-tight";
-const cellNumeric = `${cellBase} whitespace-nowrap`;
-const cellText = `${cellBase} break-keep break-words`;
+// 품목 표 데이터 셀만 위아래 패딩을 넓힌다(ITEM_ROW_PADDING_Y) — 상단 정보
+// 블록에 쓰는 noBorderCell 은 원래 cellBase 그대로라 영향받지 않는다.
+const itemCellBase = `${cellBase} ${ITEM_ROW_PADDING_Y}`;
+const cellNumeric = `${itemCellBase} whitespace-nowrap`;
+const cellText = `${itemCellBase} break-keep break-words`;
 const noBorderCell = `${cellBase} border-0`;
 
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
@@ -408,7 +420,7 @@ export function EstimateDocumentTable({
         <tbody>
         {/* ── 데이터 행 ─────────────────────────────────────────────── */}
         {rows.map((row) => (
-          <tr key={row.key} style={{ height: 20 }}>
+          <tr key={row.key} style={{ height: ITEM_ROW_HEIGHT }}>
             <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.seq}</td>
             <td colSpan={2} className={`${BLACK_BORDER} ${cellText} text-left`}>
               {row.name}
@@ -455,10 +467,10 @@ export function EstimateDocumentTable({
         {/* ── 이하여백 + 빈 행 ──────────────────────────────────────── */}
         {rows.length < totalDataRows && (
           <>
-            <tr style={{ height: 20 }}>
+            <tr style={{ height: ITEM_ROW_HEIGHT }}>
               <td
                 colSpan={totalCols}
-                className={`${BLACK_BORDER} bg-white text-[10px] text-center text-gray-500`}
+                className={`${BLACK_BORDER} ${ITEM_ROW_PADDING_Y} bg-white text-[10px] text-center text-gray-500`}
               >
                 ~ 이 하 여 백 ~
               </td>
@@ -466,7 +478,7 @@ export function EstimateDocumentTable({
             {Array.from({
               length: totalDataRows - rows.length - 1,
             }).map((_, i) => (
-              <tr key={`empty-${i}`} style={{ height: 20 }}>
+              <tr key={`empty-${i}`} style={{ height: ITEM_ROW_HEIGHT }}>
                 {Array.from({ length: totalCols }).map((_, c) => (
                   <td key={c} className={`${BLACK_BORDER} bg-white`} />
                 ))}
