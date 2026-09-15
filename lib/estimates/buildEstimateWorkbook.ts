@@ -16,8 +16,15 @@ import { formatDiscountRate, type PriceTier } from "@/lib/estimates/pricing";
 const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 10.7];
 const REFERENCE_COL_WIDTH = 7.0;
 
-// 테이블 최소 행 수 (이하여백 포함)
-const MIN_DATA_ROWS = 13;
+// 테이블 최소 행 수 (이하여백 포함). 화면 인쇄/PDF(estimate-document-table.tsx)
+// 쪽에서 "빈 행을 10개 정도 줄이고 그만큼 행 높이(패딩)를 넓히자"는 요청을
+// 받아 29 -> 19(행 높이 20 -> 28)로 바꾼 것과 같은 방향으로, 엑셀도 행 수를
+// 줄이고(13 -> 9) 행 높이를 20 -> 28(ITEM_ROW_HEIGHT)로 넓혔다 — 두 값
+// 체계가 원래부터 서로 달라(엑셀은 fitToHeight:0 이라 페이지 한 장에 맞출
+// 필요가 없어 애초에 더 적은 13으로 시작했다) 감소분을 그대로 옮기지 않고,
+// 화면 쪽과 같은 비율(행 수 -약 30%, 행 높이 +40%)로 환산했다.
+const MIN_DATA_ROWS = 9;
+const ITEM_ROW_HEIGHT = 28;
 const TABLE_START_ROW = 10;
 
 const FONT_NAME = "맑은 고딕";
@@ -508,7 +515,7 @@ export async function buildEstimateWorkbook(
     writeMoneyCell(UNIT_PRICE_COL, UNIT_PRICE_COL + 1, item.unitPrice, rateLabel ? `${rateLabel}%↓` : null);
     writeMoneyCell(AMOUNT_COL, AMOUNT_COL + 1, item.amount, rateLabel ? `-${rateLabel}%` : null);
     writeItemCell(REMARKS_COL, REMARKS_COL, item.itemRemarks || "-", { align: "center" });
-    row.height = hasDiscount ? 30 : 20;
+    row.height = hasDiscount ? ITEM_ROW_HEIGHT + 10 : ITEM_ROW_HEIGHT;
   }
 
   // ── 이하여백 + 빈 행 채우기 ───────────────────────────────────────────────
@@ -521,7 +528,7 @@ export async function buildEstimateWorkbook(
     ihaCell.font = { name: FONT_NAME, size: 10, color: { argb: C.BLACK } };
     ihaCell.alignment = { horizontal: "center", vertical: "middle" };
     ihaCell.border = borderOf(C.BLACK);
-    ws.getRow(curRow).height = 20;
+    ws.getRow(curRow).height = ITEM_ROW_HEIGHT;
     curRow++;
 
     // 나머지 빈 행
@@ -532,7 +539,7 @@ export async function buildEstimateWorkbook(
         cell.fill = fill(C.WHITE);
         cell.border = borderOf(C.BLACK);
       }
-      ws.getRow(curRow).height = 20;
+      ws.getRow(curRow).height = ITEM_ROW_HEIGHT;
     }
   }
 
