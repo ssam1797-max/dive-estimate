@@ -248,19 +248,25 @@ export function DeliveryNoteTable({
             </td>
             <td
               colSpan={4}
-              className="relative overflow-visible border bg-white text-center text-[8px] font-medium text-gray-900"
+              className="overflow-visible border bg-white text-center text-[8px] font-medium text-gray-900"
               style={border}
             >
               {provider?.representative ?? "-"}
-              <span style={{ color: theme }}>&nbsp;&nbsp;인</span>
-              {provider && (
-                <img
-                  src={stampSrc}
-                  alt="도장"
-                  className="pointer-events-none absolute right-2 top-1/2 z-10 -translate-y-1/2 overflow-visible mix-blend-multiply"
-                  style={{ width: 20, height: 20, maxWidth: "none" }}
-                />
-              )}
+              {/* 도장을 "인" 글자 자체에 앵커링 — 이름 길이와 무관하게 항상
+                  "인" 위에 겹쳐 찍히도록 이 글자만 감싸는 relative 컨테이너를
+                  기준으로 도장을 절대 위치시킨다(셀 전체를 기준으로 하면
+                  이름이 짧을 때 "인"과 도장 위치가 벌어진다). */}
+              <span className="relative inline-block" style={{ color: theme }}>
+                &nbsp;&nbsp;인
+                {provider && (
+                  <img
+                    src={stampSrc}
+                    alt="도장"
+                    className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 overflow-visible mix-blend-multiply"
+                    style={{ width: 20, height: 20, maxWidth: "none" }}
+                  />
+                )}
+              </span>
             </td>
             <td colSpan={3} className={cellBase} style={border}>
               <div className="flex h-full items-center justify-between">
