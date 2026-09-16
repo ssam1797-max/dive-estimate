@@ -11,7 +11,8 @@ import type { ProfileOption } from "@/lib/estimates/types";
  *  - 라벨(상호, 사업장주소 등)은 굵은 테마색, 값은 검정 일반체 — 등록번호/
  *    합계금액 값만 더 크고 굵은 검정으로 강조.
  *  - 인수자/납품자 서명란은 "이름 + 인" 한 셀에 이어 쓰고, 납품자 쪽만 그
- *    "인" 위에 대표자 도장 이미지를 겹쳐 찍은 것처럼 올린다.
+ *    "인" 위에 대표자 도장 이미지를 겹쳐 찍은 것처럼 올린다 — 도장은 이
+ *    한 곳에만 표시한다(상단 정보 블록의 성명 옆에는 찍지 않는다).
  *
  * 정보 블록과 품목 표가 같은 <colgroup>(13칸)을 공유한다 — 원본 PDF의 실제
  * 칸 경계를 픽셀로 측정해 13개 슬롯 비율을 도출했고(년/월/일 각 1슬롯,
@@ -152,20 +153,8 @@ export function DeliveryNoteTable({
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
               성명
             </td>
-            <td
-              colSpan={2}
-              className="relative overflow-visible border bg-white px-0.5 text-center text-[8px] leading-tight text-gray-900"
-              style={border}
-            >
+            <td colSpan={2} className={valueCenter} style={border}>
               {provider?.representative ?? "-"}
-              {provider && (
-                <img
-                  src={stampSrc}
-                  alt="도장"
-                  className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 overflow-visible mix-blend-multiply"
-                  style={{ width: 16, height: 16, maxWidth: "none" }}
-                />
-              )}
             </td>
           </tr>
           {/* R3: 전화번호라벨(3) 전화번호값(2) | 사업장주소라벨(1) 사업장주소값(5) */}
