@@ -263,7 +263,7 @@ export function DeliveryNoteTable({
                     src={stampSrc}
                     alt="도장"
                     className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 overflow-visible mix-blend-multiply"
-                    style={{ width: 20, height: 20, maxWidth: "none" }}
+                    style={{ width: 26, height: 26, maxWidth: "none" }}
                   />
                 )}
               </span>
