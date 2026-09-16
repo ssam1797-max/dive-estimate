@@ -13,6 +13,8 @@ import type { ProfileOption } from "@/lib/estimates/types";
  *  - 인수자/납품자 서명란은 "이름 + 인" 한 셀에 이어 쓰고, 납품자 쪽만 그
  *    "인" 위에 대표자 도장 이미지를 겹쳐 찍은 것처럼 올린다 — 도장은 이
  *    한 곳에만 표시한다(상단 정보 블록의 성명 옆에는 찍지 않는다).
+ *  - "공급받는자"/"공급자" 라벨은 원본처럼 한 글자씩 세로로 줄바꿈해
+ *    표시한다(VerticalLabel) — 정보 블록 행 높이도 원본에 맞춰 더 크다.
  *
  * 정보 블록과 품목 표가 같은 <colgroup>(13칸)을 공유한다 — 원본 PDF의 실제
  * 칸 경계를 픽셀로 측정해 13개 슬롯 비율을 도출했고(년/월/일 각 1슬롯,
@@ -45,6 +47,20 @@ interface DeliveryNoteTableProps {
 
 function fmtNum(value: number): string {
   return Math.round(value).toLocaleString("ko-KR");
+}
+
+/** "공급받는자"/"공급자" 라벨을 한 글자씩 세로로 한 줄에 하나씩 줄바꿈해 표시한다. */
+function VerticalLabel({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("").map((ch, i) => (
+        <span key={i}>
+          {i > 0 && <br />}
+          {ch}
+        </span>
+      ))}
+    </>
+  );
 }
 
 /** 원본 양식은 날짜를 "년/월/일" 세 칸으로 따로 나눠 표기한다(YY 두 자리). */
@@ -116,9 +132,9 @@ export function DeliveryNoteTable({
 
           {/* ── 공급받는자(좌) / 공급자(우) 정보, 4행 × 13칸 ─────────────── */}
           {/* R1: 공급받는자(1) 상호라벨(3) 상호값(2) | 공급자(1) 등록번호라벨(1) 등록번호값(5) */}
-          <tr style={{ height: 16 }}>
+          <tr style={{ height: 21 }}>
             <td rowSpan={4} colSpan={1} className={label} style={{ ...border, color: theme }}>
-              공급받는자
+              <VerticalLabel text="공급받는자" />
             </td>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               상호(법인명)
@@ -127,7 +143,7 @@ export function DeliveryNoteTable({
               {receiver?.name ?? "-"}
             </td>
             <td rowSpan={4} colSpan={1} className={label} style={{ ...border, color: theme }}>
-              공급자
+              <VerticalLabel text="공급자" />
             </td>
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
               등록번호
@@ -137,7 +153,7 @@ export function DeliveryNoteTable({
             </td>
           </tr>
           {/* R2: 사업장주소라벨(3) 사업장주소값(2) | 상호라벨(1) 상호값(2) 성명라벨(1) 성명값(2) */}
-          <tr style={{ height: 16 }}>
+          <tr style={{ height: 21 }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               사업장주소
             </td>
@@ -158,7 +174,7 @@ export function DeliveryNoteTable({
             </td>
           </tr>
           {/* R3: 전화번호라벨(3) 전화번호값(2) | 사업장주소라벨(1) 사업장주소값(5) */}
-          <tr style={{ height: 16 }}>
+          <tr style={{ height: 21 }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               전화번호
             </td>
@@ -173,7 +189,7 @@ export function DeliveryNoteTable({
             </td>
           </tr>
           {/* R4: 합계금액라벨(3) 합계금액값(2) | 전화라벨(1) 전화값(2) 팩스라벨(1) 팩스값(2) */}
-          <tr style={{ height: 16 }}>
+          <tr style={{ height: 21 }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               합계금액(VAT포함)
             </td>
