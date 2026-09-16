@@ -11,6 +11,12 @@ import {
   EstimateDocumentTable,
   type EstimateDocumentRow,
 } from "@/components/estimates/estimate-document-table";
+import {
+  DeliveryNoteTable,
+  type DeliveryNoteRow,
+} from "@/components/estimates/delivery-note-table";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SavedEstimateDetail } from "@/lib/estimates/types";
 import {
   calculateDiscountRate,
@@ -38,6 +44,9 @@ interface EstimatePrintViewProps {
 export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
   const [tier, setTier] = React.useState<PriceTier>(estimate.priceTier ?? "RETAIL");
   const [referenceTiers, setReferenceTiers] = React.useState<PriceTier[]>([]);
+  const [documentMode, setDocumentMode] = React.useState<"estimate" | "deliveryNote">(
+    "estimate"
+  );
 
   const hasTierSnapshot = estimate.items.some(
     (item) =>
@@ -71,6 +80,31 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
 
   const referenceTierLabels = referenceTiers.map((refTier) => PRICE_TIER_LABELS[refTier]);
 
+  // 거래명세서용 데이터 — 견적서와 같은 기준 등급(tier)의 최종 금액(amount)을
+  // 그대로 쓰되, 공급가액/세액으로 역산해서 나눈다(calculateInclusiveVat 재사용).
+  // 새로 부가세를 얹는 게 아니라 이미 확정된 금액을 쪼개는 것이라, 거래명세서
+  // 합계금액은 견적서 합계금액과 항상 정확히 같다.
+  const deliveryNoteRows: DeliveryNoteRow[] = estimate.items.map((item, index) => {
+    const unitPrice = tierPriceOfSnapshot(item, tier);
+    const amount = unitPrice * item.quantity;
+    const vat = calculateInclusiveVat(amount);
+    const supplyAmount = amount - vat;
+    return {
+      seq: index + 1,
+      key: index,
+      name: `${item.brand} ${item.name}`.trim(),
+      spec: formatSpec(item.color, item.size),
+      quantity: item.quantity,
+      unitPrice: item.quantity > 0 ? Math.round(supplyAmount / item.quantity) : supplyAmount,
+      supplyAmount,
+      vat,
+    };
+  });
+  const deliveryNoteGrandTotal = deliveryNoteRows.reduce(
+    (s, r) => s + r.supplyAmount + r.vat,
+    0
+  );
+
   return (
     // pb-10 은 화면에서 아래쪽 여백을 주기 위한 것뿐인데, 위쪽의 두
     // print:hidden 블록(PrintControls, 등급 탭)과 달리 이 padding 은 print
@@ -79,29 +113,79 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
     // 견적서는 이 padding 때문에 살짝 넘쳐 빈 2페이지가 따라 나왔다.
     // print:pb-0 으로 인쇄 시에만 없앤다(화면에서는 그대로 pb-10 유지).
     <main className="flex flex-col gap-4 pb-10 print:pb-0">
-      <PrintControls estimateId={estimate.id} fileName={`견적서_${estimate.estimateNumber}`} />
+      <PrintControls
+        estimateId={estimate.id}
+        fileName={
+          documentMode === "estimate"
+            ? `견적서_${estimate.estimateNumber}`
+            : `거래명세서_${estimate.estimateNumber}`
+        }
+      />
 
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 print:hidden">
-        <BasisTierSelect value={tier} onChange={setTier} />
-        <ReferenceTierCheckboxes value={referenceTiers} onChange={setReferenceTiers} />
-        {!hasTierSnapshot && (
-          <p className="text-xs text-muted-foreground">
-            이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 등급에 저장 당시 단가가 동일하게 표시됩니다.
-          </p>
-        )}
+      <div className="mx-auto flex w-full max-w-4xl gap-2 px-4 print:hidden">
+        <Button
+          type="button"
+          variant={documentMode === "estimate" ? "default" : "outline"}
+          className={cn(documentMode !== "estimate" && "text-muted-foreground")}
+          onClick={() => setDocumentMode("estimate")}
+        >
+          견적서 보기/인쇄
+        </Button>
+        <Button
+          type="button"
+          variant={documentMode === "deliveryNote" ? "default" : "outline"}
+          className={cn(documentMode !== "deliveryNote" && "text-muted-foreground")}
+          onClick={() => setDocumentMode("deliveryNote")}
+        >
+          거래명세서 보기/인쇄
+        </Button>
       </div>
+
+      {documentMode === "estimate" && (
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 print:hidden">
+          <BasisTierSelect value={tier} onChange={setTier} />
+          <ReferenceTierCheckboxes value={referenceTiers} onChange={setReferenceTiers} />
+          {!hasTierSnapshot && (
+            <p className="text-xs text-muted-foreground">
+              이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 등급에 저장 당시 단가가 동일하게 표시됩니다.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-4xl px-4">
         <div className="estimate-a4-page">
-          <EstimateDocumentTable
-            estimateNumber={estimate.estimateNumber}
-            date={estimate.date}
-            provider={estimate.provider}
-            receiver={estimate.receiver}
-            remarks={estimate.remarks}
-            rows={rows}
-            referenceTierLabels={referenceTierLabels}
-          />
+          {documentMode === "estimate" ? (
+            <EstimateDocumentTable
+              estimateNumber={estimate.estimateNumber}
+              date={estimate.date}
+              provider={estimate.provider}
+              receiver={estimate.receiver}
+              remarks={estimate.remarks}
+              rows={rows}
+              referenceTierLabels={referenceTierLabels}
+            />
+          ) : (
+            <div className="delivery-note-page">
+              <DeliveryNoteTable
+                copyLabel="공급받는자 보관용"
+                date={estimate.date}
+                provider={estimate.provider}
+                receiver={estimate.receiver}
+                rows={deliveryNoteRows}
+                grandTotal={deliveryNoteGrandTotal}
+              />
+              <div className="delivery-note-divider" />
+              <DeliveryNoteTable
+                copyLabel="공급자 보관용"
+                date={estimate.date}
+                provider={estimate.provider}
+                receiver={estimate.receiver}
+                rows={deliveryNoteRows}
+                grandTotal={deliveryNoteGrandTotal}
+              />
+            </div>
+          )}
         </div>
       </div>
     </main>

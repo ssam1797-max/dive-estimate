@@ -17,6 +17,7 @@ export const profileSchema = z.object({
   businessType: z.string().trim().default(""),
   businessCategory: z.string().trim().default(""),
   email: z.string().trim().default(""),
+  fax: z.string().trim().default(""),
 });
 
 export type ProfileInput = z.infer<typeof profileSchema>;

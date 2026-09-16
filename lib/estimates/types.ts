@@ -29,6 +29,7 @@ export interface ProfileOption {
   businessType?: string | null;   // 업태
   businessCategory?: string | null; // 종목
   email?: string | null;
+  fax?: string | null; // 팩스 (거래명세서에 표시)
 }
 
 /** 견적 테이블에 담긴 항목 1건 (클라이언트 상태) */

@@ -196,3 +196,27 @@
     break-inside: avoid;
   }
 }
+
+/*
+ * 거래명세서(공급받는자 보관용 + 공급자 보관용)를 .estimate-a4-page 안에
+ * 위/아래로 두 번 넣는 틀. 실제 사용 중인 원본 양식도 A4 한 장에 이
+ * 구조로 인쇄한다(83% 축소) — 여기서는 DeliveryNoteTable 자체를 작은
+ * 폰트/좁은 행으로 만들어 축소 없이도 두 장이 한 페이지에 들어가게 했다.
+ * 두 장 사이 점선은 실제로 자르거나 접는 위치를 표시하는 관례적 표시다.
+ */
+.delivery-note-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.delivery-note-divider {
+  border-top: 1px dashed #999;
+  margin: 2px 0;
+}
+
+@media print {
+  .delivery-note-divider {
+    border-top: 1px dashed #666;
+  }
+}

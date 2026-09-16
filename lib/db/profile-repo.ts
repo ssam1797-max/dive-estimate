@@ -14,6 +14,7 @@ function toProfileOption(r: {
   business_type?: string | null;
   business_category?: string | null;
   email?: string | null;
+  fax?: string | null;
 }): ProfileOption {
   return {
     id: r.id,
@@ -26,6 +27,7 @@ function toProfileOption(r: {
     businessType: r.business_type ?? null,
     businessCategory: r.business_category ?? null,
     email: r.email ?? null,
+    fax: r.fax ?? null,
   };
 }
 
@@ -42,7 +44,7 @@ export async function getProfilesByType(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email"
+      "id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email, fax"
     )
     .eq("type", type)
     .order("name");
@@ -60,7 +62,7 @@ export async function getProfileById(id: string): Promise<ProfileOption | null> 
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email"
+      "id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email, fax"
     )
     .eq("id", id)
     .maybeSingle();
@@ -79,6 +81,7 @@ export interface ProfileInputData {
   businessType: string;
   businessCategory: string;
   email: string;
+  fax: string;
 }
 
 /** 빈 문자열은 "값 없음"을 뜻하는 null 로 정규화해서 저장한다 (기존 필드들과 동일한 규칙). */
@@ -95,6 +98,7 @@ function toNullableRow(input: ProfileInputData) {
     business_type: orNull(input.businessType),
     business_category: orNull(input.businessCategory),
     email: orNull(input.email),
+    fax: orNull(input.fax),
   };
 }
 
@@ -112,7 +116,7 @@ export async function createProfile(input: ProfileInputData): Promise<ProfileOpt
   const { data, error } = await supabase
     .from("profiles")
     .insert(row)
-    .select("id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email")
+    .select("id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email, fax")
     .single();
   if (error) throw error;
   return toProfileOption(data as Parameters<typeof toProfileOption>[0]);
@@ -137,7 +141,7 @@ export async function updateProfile(
     .from("profiles")
     .update(row)
     .eq("id", id)
-    .select("id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email")
+    .select("id, name, contact, address, stamp_url, business_number, representative, business_type, business_category, email, fax")
     .maybeSingle();
   if (error) throw error;
   return data ? toProfileOption(data as Parameters<typeof toProfileOption>[0]) : null;

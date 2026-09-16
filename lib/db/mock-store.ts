@@ -51,6 +51,7 @@ export interface MockProfile {
   business_type?: string | null;
   business_category?: string | null;
   email?: string | null;
+  fax?: string | null;
 }
 
 export interface MockEstimate {

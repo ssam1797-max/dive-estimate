@@ -27,6 +27,7 @@ export interface ProfileFormValues {
   businessType: string;
   businessCategory: string;
   email: string;
+  fax: string;
 }
 
 interface ProfileFormDialogProps {
@@ -49,6 +50,7 @@ function toFormValues(profile: ProfileOption | null): ProfileFormValues {
     businessType: profile?.businessType ?? "",
     businessCategory: profile?.businessCategory ?? "",
     email: profile?.email ?? "",
+    fax: profile?.fax ?? "",
   };
 }
 
@@ -191,6 +193,16 @@ function ProfileForm({
                   value={values.businessCategory}
                   disabled={isSaving}
                   onChange={(event) => set("businessCategory", event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="profile-fax">팩스</Label>
+                <Input
+                  id="profile-fax"
+                  value={values.fax}
+                  disabled={isSaving}
+                  onChange={(event) => set("fax", event.target.value)}
                 />
               </div>
 
