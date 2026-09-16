@@ -111,7 +111,10 @@ export function DeliveryNoteTable({
   const valueCenter = `${cellBase} text-center text-gray-900`;
   const valueLeft = `${cellBase} text-left text-gray-900`;
   const valueRight = `${cellBase} text-right text-gray-900`;
-  const emphasisValue = `${cellBase} text-right font-bold text-[10px] text-gray-900`;
+  // 등록번호는 사업자번호 같은 서식 코드값이라 가운데 정렬, 합계금액은 금액이라
+  // 관례상 오른쪽 정렬 — 둘 다 강조를 위해 크고 굵게만 공통으로 준다.
+  const emphasisCenter = `${cellBase} text-center font-bold text-[10px] text-gray-900`;
+  const emphasisRight = `${cellBase} text-right font-bold text-[10px] text-gray-900`;
 
   return (
     <div className="delivery-note-copy" style={{ border: `2px solid ${theme}` }}>
@@ -148,7 +151,7 @@ export function DeliveryNoteTable({
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
               등록번호
             </td>
-            <td colSpan={5} className={emphasisValue} style={border}>
+            <td colSpan={5} className={emphasisCenter} style={border}>
               {provider?.businessNumber ?? "-"}
             </td>
           </tr>
@@ -193,7 +196,7 @@ export function DeliveryNoteTable({
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               합계금액(VAT포함)
             </td>
-            <td colSpan={2} className={emphasisValue} style={border}>
+            <td colSpan={2} className={emphasisRight} style={border}>
               {fmtNum(grandTotal)}
             </td>
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
