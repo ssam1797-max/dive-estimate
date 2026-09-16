@@ -92,7 +92,10 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
     return {
       seq: index + 1,
       key: index,
-      name: `${item.brand} ${item.name}`.trim(),
+      // 거래명세서 품목명은 브랜드/카테고리 말머리 없이 순수 품명만 표시한다
+      // (견적서 표는 브랜드를 붙여 보여주는 것과 다른 규칙 — 실제 사용 중인
+      // 거래명세서 원본에는 브랜드 표기 없이 품명만 적혀 있었다).
+      name: item.name.trim(),
       spec: formatSpec(item.color, item.size),
       quantity: item.quantity,
       unitPrice: item.quantity > 0 ? Math.round(supplyAmount / item.quantity) : supplyAmount,

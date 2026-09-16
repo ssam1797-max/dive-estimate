@@ -152,8 +152,20 @@ export function DeliveryNoteTable({
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
               성명
             </td>
-            <td colSpan={2} className={valueCenter} style={border}>
+            <td
+              colSpan={2}
+              className="relative overflow-visible border bg-white px-0.5 text-center text-[8px] leading-tight text-gray-900"
+              style={border}
+            >
               {provider?.representative ?? "-"}
+              {provider && (
+                <img
+                  src={stampSrc}
+                  alt="도장"
+                  className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 overflow-visible mix-blend-multiply"
+                  style={{ width: 16, height: 16, maxWidth: "none" }}
+                />
+              )}
             </td>
           </tr>
           {/* R3: 전화번호라벨(3) 전화번호값(2) | 사업장주소라벨(1) 사업장주소값(5) */}
