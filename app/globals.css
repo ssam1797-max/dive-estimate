@@ -229,6 +229,19 @@
   page-break-inside: avoid;
 }
 
+/*
+ * 실제 원본(엑셀) 거래명세서는 표가 페이지 가로 폭을 꽉 채우지 않고,
+ * "공급받는자"/"공급자" 세로 라벨 칸이 좁아서 표 전체 너비가 페이지보다
+ * 작아지고, 그 결과 좌우 여백이 똑같이 남는다. 우리 표는 칸 비율을
+ * 전부 %로 둬서 컨테이너 너비에 맞춰 항상 꽉 차 버리므로, 컨테이너 자체를
+ * 살짝 좁히고 가운데로 정렬해 원본처럼 좌우 여백이 같아지게 한다.
+ */
+.delivery-note-copy {
+  width: 92%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @media print {
   .delivery-note-divider {
     border-top: 1px dashed #666;
