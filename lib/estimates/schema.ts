@@ -24,6 +24,12 @@ export type ProfileInput = z.infer<typeof profileSchema>;
 
 export const saveEstimateItemSchema = z.object({
   equipmentId: z.string().uuid().nullable(),
+  // equipment 마스터 조인이 아니라 항목 자체에 품명/브랜드/카테고리를 그대로
+  // 저장한다 — 품명 수동 수정 및 퐁당닷컴 검색 없이 직접 추가한 품목(
+  // equipmentId=null) 을 지원하기 위함.
+  name: z.string().trim().default(""),
+  brand: z.string().trim().default(""),
+  category: z.string().trim().default(""),
   color: z.string().trim().default(""),
   size: z.string().trim().default(""),
   quantity: z.number().int("수량은 정수여야 합니다.").min(1, "수량은 1개 이상이어야 합니다."),

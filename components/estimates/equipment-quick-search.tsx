@@ -41,9 +41,16 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
   const [error, setError] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // 한글 입력 중(자음/모음이 아직 완성된 글자로 조합되는 중)인지 추적한다.
+  // onCompositionStart~End 사이에는 디바운스 타이머를 새로 걸지 않는다 —
+  // 걸어도 어차피 조합 중인 완성되지 않은 글자로 검색해봤자 의미가 없고,
+  // 매 키 입력마다 타이머를 리셋하는 것 자체가 조합 중인 IME 상태와 겹쳐
+  // "ㄱㅏㅁㅣㄴ"처럼 자모가 분리돼 보이는 현상의 원인이 될 수 있다.
+  const isComposingRef = React.useRef(false);
 
   // 250ms 디바운스 — 입력마다 바로 DB 를 치지 않는다.
   React.useEffect(() => {
+    if (isComposingRef.current) return;
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query]);
@@ -119,6 +126,17 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={(e) => {
+            isComposingRef.current = false;
+            // 조합이 끝난 최종 완성 글자로 한 번 더 동기화 — onChange 가
+            // 조합 중간에도 계속 불렸으므로 보통은 이미 같은 값이지만,
+            // 브라우저별로 compositionend 시점에 value 가 살짝 다르게
+            // 처리되는 경우를 방어한다.
+            setQuery(e.currentTarget.value);
+          }}
           placeholder="브랜드·제품명·카테고리로 빠르게 검색 (예: 스쿠버프로 레귤레이터)"
           className="pl-9"
           aria-label="장비 통합 검색"

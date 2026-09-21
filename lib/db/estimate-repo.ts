@@ -106,6 +106,9 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
         id: crypto.randomUUID(),
         estimate_id: id,
         equipment_id: item.equipmentId || null,
+        item_name: item.name || null,
+        item_brand: item.brand || null,
+        item_category: item.category || null,
         color: item.color || null,
         size: item.size || null,
         quantity: item.quantity,
@@ -134,6 +137,9 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
     p_price_tier: params.priceTier,
     p_items: params.items.map((item) => ({
       equipment_id: item.equipmentId,
+      item_name: item.name,
+      item_brand: item.brand,
+      item_category: item.category,
       color: item.color,
       size: item.size,
       quantity: item.quantity,
@@ -206,6 +212,9 @@ export async function updateSavedEstimate(
         id: crypto.randomUUID(),
         estimate_id: id,
         equipment_id: item.equipmentId || null,
+        item_name: item.name || null,
+        item_brand: item.brand || null,
+        item_category: item.category || null,
         color: item.color || null,
         size: item.size || null,
         quantity: item.quantity,
@@ -234,6 +243,9 @@ export async function updateSavedEstimate(
     p_price_tier: params.priceTier,
     p_items: params.items.map((item) => ({
       equipment_id: item.equipmentId,
+      item_name: item.name,
+      item_brand: item.brand,
+      item_category: item.category,
       color: item.color,
       size: item.size,
       quantity: item.quantity,
@@ -306,9 +318,9 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
       return {
         clientId: crypto.randomUUID(),
         equipmentId: i.equipment_id ?? "",
-        brand: eq?.brand ?? "",
-        category: eq?.category ?? "",
-        name: eq?.name ?? "(삭제된 장비)",
+        brand: i.item_brand ?? eq?.brand ?? "",
+        category: i.item_category ?? eq?.category ?? "",
+        name: i.item_name ?? eq?.name ?? "(삭제된 장비)",
         color: i.color ?? "",
         size: i.size ?? "",
         quantity: i.quantity,
@@ -343,7 +355,7 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
   const { data: items, error: itemsError } = await supabase
     .from("estimate_items")
     .select(
-      "equipment_id, color, size, quantity, unit_price, item_remarks, equipment(brand, category, name, price_retail, override_discount_rate)"
+      "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, equipment(brand, category, name, price_retail, override_discount_rate)"
     )
     .eq("estimate_id", id)
     .order("created_at");
@@ -351,6 +363,9 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
 
   const draftItems: EstimateItemDraft[] = ((items ?? []) as {
     equipment_id: string | null;
+    item_name: string | null;
+    item_brand: string | null;
+    item_category: string | null;
     color: string | null;
     size: string | null;
     quantity: number;
@@ -377,9 +392,9 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
     return {
       clientId: crypto.randomUUID(),
       equipmentId: row.equipment_id ?? "",
-      brand: eq?.brand ?? "",
-      category: eq?.category ?? "",
-      name: eq?.name ?? "(삭제된 장비)",
+      brand: row.item_brand ?? eq?.brand ?? "",
+      category: row.item_category ?? eq?.category ?? "",
+      name: row.item_name ?? eq?.name ?? "(삭제된 장비)",
       color: row.color ?? "",
       size: row.size ?? "",
       quantity: row.quantity,
@@ -550,9 +565,9 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       const eq = mockStore.equipment.find((e) => e.id === i.equipment_id);
       return {
         equipmentId: i.equipment_id,
-        brand: eq?.brand ?? "",
-        category: eq?.category ?? "",
-        name: eq?.name ?? "(삭제된 장비)",
+        brand: i.item_brand ?? eq?.brand ?? "",
+        category: i.item_category ?? eq?.category ?? "",
+        name: i.item_name ?? eq?.name ?? "(삭제된 장비)",
         color: i.color ?? "",
         size: i.size ?? "",
         quantity: i.quantity,
@@ -625,7 +640,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     supabase
       .from("estimate_items")
       .select(
-        "equipment_id, color, size, quantity, unit_price, item_remarks, price_retail, price_instructor, price_center, price_cost, equipment(brand, category, name)"
+        "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, price_retail, price_instructor, price_center, price_cost, equipment(brand, category, name)"
       )
       .eq("estimate_id", id)
       .order("created_at")
@@ -637,6 +652,9 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
 
   const detailItems: SavedEstimateDetail["items"] = (items as {
     equipment_id: string | null;
+    item_name: string | null;
+    item_brand: string | null;
+    item_category: string | null;
     color: string | null;
     size: string | null;
     quantity: number;
@@ -651,9 +669,9 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     const eq = Array.isArray(i.equipment) ? i.equipment[0] : i.equipment;
     return {
       equipmentId: i.equipment_id,
-      brand: eq?.brand ?? "",
-      category: eq?.category ?? "",
-      name: eq?.name ?? "(삭제된 장비)",
+      brand: i.item_brand ?? eq?.brand ?? "",
+      category: i.item_category ?? eq?.category ?? "",
+      name: i.item_name ?? eq?.name ?? "(삭제된 장비)",
       color: i.color ?? "",
       size: i.size ?? "",
       quantity: i.quantity,

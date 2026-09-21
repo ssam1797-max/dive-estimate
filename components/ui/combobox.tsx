@@ -94,7 +94,11 @@ export function Combobox({
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDropdown();
+      // event.isComposing: 한글 입력 중 일부 IME가 조합 취소 신호로 Escape를
+      // 내부적으로 흘려보내는 경우가 있다 — 이때 그대로 닫아버리면 검색어
+      // (query) 가 통째로 지워져 지금까지 입력한 한글이 사라지고, 다음
+      // 입력이 자모가 분리된 채로 새로 시작되는 것처럼 보일 수 있다.
+      if (event.key === "Escape" && !event.isComposing) closeDropdown();
     };
 
     document.addEventListener("mousedown", handleClickOutside);

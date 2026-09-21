@@ -75,6 +75,10 @@ export interface MockEstimateItem {
   id: string;
   estimate_id: string;
   equipment_id: string | null;
+  /** 항목 자체에 저장된 품명/브랜드/카테고리 (equipment 마스터 조인과 별개). */
+  item_name: string | null;
+  item_brand: string | null;
+  item_category: string | null;
   color: string | null;
   size: string | null;
   quantity: number;

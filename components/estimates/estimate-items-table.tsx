@@ -17,6 +17,7 @@ interface EstimateItemsTableProps {
   onQuantityChange: (clientId: string, quantity: number) => void;
   onUnitPriceChange: (clientId: string, unitPrice: number) => void;
   onPriceRetailChange: (clientId: string, priceRetail: number) => void;
+  onNameChange: (clientId: string, name: string) => void;
   onClearAll: () => void;
   disabled?: boolean;
 }
@@ -32,6 +33,7 @@ export function EstimateItemsTable({
   onQuantityChange,
   onUnitPriceChange,
   onPriceRetailChange,
+  onNameChange,
   onClearAll,
   disabled,
 }: EstimateItemsTableProps) {
@@ -95,8 +97,13 @@ export function EstimateItemsTable({
                       <br />
                       {item.category}
                     </td>
-                    <td className="py-2 pr-2 align-top font-medium">
-                      {item.name}
+                    <td className="py-2 pr-2 align-top">
+                      <Input
+                        value={item.name}
+                        disabled={disabled}
+                        className="w-36 font-medium"
+                        onChange={(event) => onNameChange(item.clientId, event.target.value)}
+                      />
                     </td>
                     <td className="py-2 pr-2 align-top text-muted-foreground">
                       {item.color || "-"} / {item.size || "-"}

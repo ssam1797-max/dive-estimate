@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { EquipmentQuickSearch } from "@/components/estimates/equipment-quick-search";
+import { ManualItemForm } from "@/components/estimates/manual-item-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -382,6 +383,14 @@ export function EquipmentPicker({
           <Plus />
           견적 목록에 추가
         </Button>
+
+        <ManualItemForm
+          catalog={catalog}
+          onAdd={onAdd}
+          priceTier={priceTier}
+          discountPolicies={discountPolicies}
+          disabled={disabled}
+        />
       </CardContent>
     </Card>
   );

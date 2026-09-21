@@ -48,6 +48,7 @@ type Action =
   | { type: "REMOVE_ITEM"; clientId: string }
   | { type: "UPDATE_ITEM_QUANTITY"; clientId: string; quantity: number }
   | { type: "UPDATE_ITEM_UNIT_PRICE"; clientId: string; unitPrice: number }
+  | { type: "UPDATE_ITEM_NAME"; clientId: string; name: string }
   | {
       type: "UPDATE_ITEM_PRICE_RETAIL";
       clientId: string;
@@ -174,6 +175,15 @@ function reducer(
         items: state.items.map((item) =>
           item.clientId === action.clientId
             ? { ...item, unitPrice: action.unitPrice }
+            : item
+        ),
+      };
+    case "UPDATE_ITEM_NAME":
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.clientId === action.clientId
+            ? { ...item, name: action.name }
             : item
         ),
       };
@@ -365,6 +375,11 @@ export function useEstimateBuilder(
       dispatch({ type: "UPDATE_ITEM_UNIT_PRICE", clientId, unitPrice }),
     []
   );
+  const updateItemName = React.useCallback(
+    (clientId: string, name: string) =>
+      dispatch({ type: "UPDATE_ITEM_NAME", clientId, name }),
+    []
+  );
   const updateItemPriceRetail = React.useCallback(
     (clientId: string, priceRetail: number) =>
       dispatch({
@@ -412,6 +427,7 @@ export function useEstimateBuilder(
       removeItem,
       updateItemQuantity,
       updateItemUnitPrice,
+      updateItemName,
       updateItemPriceRetail,
       loadItems,
       clearItems,

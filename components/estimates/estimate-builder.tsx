@@ -73,6 +73,8 @@ function toItemPayloads(
   items: {
     equipmentId: string;
     brand: string;
+    category: string;
+    name: string;
     color: string;
     size: string;
     quantity: number;
@@ -98,6 +100,9 @@ function toItemPayloads(
 
     return {
       equipmentId: item.equipmentId || null,
+      name: item.name,
+      brand: item.brand,
+      category: item.category,
       color: item.color,
       size: item.size,
       quantity: item.quantity,
@@ -630,6 +635,7 @@ export function EstimateBuilder({
           onQuantityChange={actions.updateItemQuantity}
           onUnitPriceChange={actions.updateItemUnitPrice}
           onPriceRetailChange={actions.updateItemPriceRetail}
+          onNameChange={actions.updateItemName}
           onClearAll={actions.clearItems}
           disabled={isSaving}
         />

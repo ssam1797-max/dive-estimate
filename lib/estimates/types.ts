@@ -72,6 +72,17 @@ export interface TemplateDetail extends TemplateSummary {
 /** 저장 API 요청 바디에 실리는 항목 형태 */
 export interface SaveEstimateItemPayload {
   equipmentId: string | null;
+  /**
+   * 품명/브랜드/카테고리를 equipment 마스터 조인이 아니라 이 항목 자체에도
+   * 그대로 저장한다 — 그래야 (1) 견적서 작성 화면에서 품명을 수동으로 고쳐도
+   * 그 견적서 고유의 값으로 저장되고(마스터 데이터를 건드리지 않음),
+   * (2) 퐁당닷컴 검색 없이 직접 입력한 품목도 equipment_id 없이 저장·조회가
+   * 되며, (3) 나중에 그 장비가 마스터에서 삭제돼도 이 견적서에는 원래
+   * 품명이 그대로 남는다.
+   */
+  name: string;
+  brand: string;
+  category: string;
   color: string;
   size: string;
   quantity: number;
