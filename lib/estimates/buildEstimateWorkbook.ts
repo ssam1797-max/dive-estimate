@@ -13,8 +13,30 @@ import { formatDiscountRate, type PriceTier } from "@/lib/estimates/pricing";
 // (estimate-document-table.tsx)와 동일한 폭 비율/열 구조. N=0이면 원본
 // 12열 그대로다.
 // A:No  B-C:품명  D-E:규격  F:단위  G:수량  [H..]:참고등급×N  [..]:단가(2)  [..]:금액(2)  [..]:적요
-const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 10.7];
-const REFERENCE_COL_WIDTH = 7.0;
+//
+// 가격류 열(참고 등급 N개 · 단가 · 금액)은 전부 같은 종류의 금액이라 폭이
+// 서로 달라야 할 이유가 없는데, 예전에는 참고 등급 7.0 / 단가 9.8 / 금액
+// 11.8 로 제각각이었다 — 엑셀은 열이 좁으면 숫자를 "#####" 로 바꿔버리므로
+// 천만 원 단위(8자리+콤마)에서 특히 문제가 된다. 화면/인쇄 쪽
+// (estimate-document-table.tsx)과 똑같이 PRICE_COL_WIDTH 하나로 통일한다.
+// (단가·금액은 2열 병합이라 슬롯 하나가 절반씩 나눠 갖는다.)
+const PRICE_COL_WIDTH = 11.5;
+const PRICE_SLOT = PRICE_COL_WIDTH / 2;
+// 품명 ↔ 규격 폭 재배분(합계 41.5 유지 — 가격 열 폭에 영향 없음). 원본
+// 비율은 규격이 품명의 2배였는데 실제 데이터는 규격이 "-"/"블랙 / L" 처럼
+// 짧고 품명이 훨씬 길어, 품명이 여러 줄로 꺾이며 표가 세로로 길어졌다 —
+// 화면/인쇄(estimate-document-table.tsx)와 동일하게 맞춘다.
+const COL_WIDTHS_BASE = [
+  6.6, // A: No.
+  13, 13, // B-C: 품명
+  7.75, 7.75, // D-E: 규격
+  7.1, // F: 단위
+  5, // G: 수량
+  PRICE_SLOT, PRICE_SLOT, // 단가 (2열 병합)
+  PRICE_SLOT, PRICE_SLOT, // 금액 (2열 병합)
+  10.7, // 적요
+];
+const REFERENCE_COL_WIDTH = PRICE_COL_WIDTH;
 
 // 테이블 최소 행 수 (이하여백 포함). 화면 인쇄/PDF(estimate-document-table.tsx)
 // 쪽과 같은 요청 그대로 — 기존 값(13)에서 10행을 그대로 빼고, 그만큼
@@ -216,10 +238,20 @@ export async function buildEstimateWorkbook(
   // 금액/부가세/적요)의 모든 열 번호가 N칸씩 밀린다 — 아래 리터럴 열 번호는
   // 전부 N=0(원본 13열) 기준에 N을 더한 것이다.
   const refCount = referenceTierLabels.length;
+  // 참고 등급을 켤수록 가격 열이 (N+2)개로 늘어 표 전체가 가로로 넓어지는데,
+  // pageSetup.fitToWidth=1 이라 넓어진 만큼 시트 전체가 축소 인쇄되어 글자가
+  // 작아진다. 상대적으로 여유로운 품명(인덱스 1,2)·규격(인덱스 3,4) 폭을
+  // 줄여 전체 폭 증가를 상쇄한다 — 화면/인쇄(estimate-document-table.tsx)의
+  // nameSpecScale 과 동일한 값이라 두 출력물의 열 비율이 계속 일치한다.
+  const NAME_SPEC_INDEXES = [1, 2, 3, 4];
+  const nameSpecScale = refCount >= 4 ? 0.58 : refCount >= 2 ? 0.72 : 1;
+  const scaledBase = COL_WIDTHS_BASE.map((w, i) =>
+    NAME_SPEC_INDEXES.includes(i) ? w * nameSpecScale : w
+  );
   const COL_WIDTHS = [
-    ...COL_WIDTHS_BASE.slice(0, 7),
+    ...scaledBase.slice(0, 7),
     ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
-    ...COL_WIDTHS_BASE.slice(7),
+    ...scaledBase.slice(7),
   ];
   const TOTAL_COLS = COL_WIDTHS.length; // 12 + refCount
   // 단가/금액/적요 열의 시작 번호(N=0일 때의 원본 12열 기준 8,10,12 에 해당)
@@ -303,18 +335,23 @@ export async function buildEstimateWorkbook(
   receiverCell.alignment = { horizontal: "left", vertical: "bottom" };
   receiverCell.fill = fill(C.WHITE);
 
-  // 좌측: 공급금액 / 부가세 / 합계금액 (연회색 테두리 박스, 라벨=col1-3, 값=col4-5)
+  // 좌측: 공급금액 / 부가세 / 합계금액 (연회색 테두리 박스, 라벨=col1-2, 값=col3-5)
   // 부가세 행은 값을 표시하지 않는다(value: null → 빈 셀).
+  //
+  // 라벨 1-3 / 값 4-5 였던 것을 1-2 / 3-5 로 옮긴 이유: 품명 ↔ 규격 폭
+  // 재배분으로 4·5열(규격)이 좁아졌는데, 금액 값이 바로 그 4-5열에 걸려
+  // 있어서 "5,325,400 원" 이 칸을 넘치게 됐다(엑셀은 좁으면 ##### 로 바뀐다).
+  // 값 쪽에 열을 하나 더 주고 라벨을 한 칸 줄여 원래 폭(약 28)을 되찾는다.
   const amountRows: { row: number; label: string; value: number | null; bold: boolean; suffix: string }[] = [
     { row: INFO_TOP_ROW + 1, label: "공급금액", value: totalSupply, bold: false, suffix: " 원" },
     { row: INFO_TOP_ROW + 2, label: "부가세", value: null, bold: false, suffix: "" },
     { row: INFO_TOP_ROW + 3, label: "합계금액", value: grandTotal, bold: true, suffix: " 원" },
   ];
   for (const { row, label, value, bold, suffix } of amountRows) {
-    ws.mergeCells(row, 1, row, 3);
+    ws.mergeCells(row, 1, row, 2);
     labelCell(ws.getCell(row, 1), label, { align: "left", border: C.GRAY_BORDER, bold });
-    ws.mergeCells(row, 4, row, 5);
-    valueCell(ws.getCell(row, 4), value === null ? "" : `${fmtWon(value)}${suffix}`, {
+    ws.mergeCells(row, 3, row, 5);
+    valueCell(ws.getCell(row, 3), value === null ? "" : `${fmtWon(value)}${suffix}`, {
       align: "right",
       bold,
       size: bold ? 13 : 12,

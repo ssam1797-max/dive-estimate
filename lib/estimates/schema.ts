@@ -70,7 +70,14 @@ export const nextEstimateNumberQuerySchema = z.object({
 /** 엑셀 미리보기/다운로드 요청 항목 검증 스키마 (equipmentId 대신 표시용 필드를 직접 담음) */
 export const exportEstimateItemSchema = z.object({
   brand: z.string().trim().min(1, "브랜드 정보가 없습니다."),
-  category: z.string().trim().min(1, "카테고리 정보가 없습니다."),
+  // 카테고리는 엑셀 문서에 아예 표시되지 않고(buildEstimateWorkbook 은
+  // name/spec/단위/수량/단가/금액/적요만 그린다) 서버 재계산에도 쓰이지
+  // 않는다(브랜드만 할인율 조회에 쓰인다). 그런데 필수(min 1)로 묶여
+  // 있어서, 카테고리를 비워둔 채 "품목 직접 추가"로 넣은 품목이 들어간
+  // 견적서는 엑셀 다운로드가 "카테고리 정보가 없습니다."로 통째로 막혔다
+  // — 배송비처럼 카테고리가 없는 일회성 품목이 정상적인 입력이므로
+  // 선택 항목으로 되돌린다.
+  category: z.string().trim().default(""),
   name: z.string().trim().min(1, "장비명 정보가 없습니다."),
   color: z.string().trim().default(""),
   size: z.string().trim().default(""),

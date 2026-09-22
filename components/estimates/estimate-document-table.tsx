@@ -65,10 +65,39 @@ function formatDisplayDate(date: string): string {
 
 // 원본 12열 비율(부가세 열 삭제 후, 실제 견적서 스크린샷을 픽셀 단위로 측정해서
 // 맞춘 값, Excel COL_WIDTHS_BASE 와 동일 — buildEstimateWorkbook.ts 참고).
-// "수량"과 "단가" 사이에 체크된 참고 등급 수(N)만큼 열(각 7.0)을 끼워 넣어
+// "수량"과 "단가" 사이에 체크된 참고 등급 수(N)만큼 열을 끼워 넣어
 // 12+N 열로 동적으로 늘어난다 — N=0이면 원본 12열 그대로다.
-const COL_WIDTHS_BASE = [6.6, 6.75, 6.75, 14, 14, 7.1, 5, 4.9, 4.9, 5.9, 5.9, 10.7];
-const REFERENCE_COL_WIDTH = 7.0;
+//
+// 가격류 열(참고 등급 N개 · 단가 · 금액)은 전부 같은 종류의 금액이라 폭이
+// 서로 달라야 할 이유가 없는데, 예전에는 참고 등급 7.0 / 단가 9.8 / 금액
+// 11.8 로 제각각이라 같은 자릿수 금액인데도 어떤 칸은 여유롭고 어떤 칸은
+// 숫자가 테두리를 넘거나 잘렸다. 전부 PRICE_COL_WIDTH 하나로 통일한다.
+// (단가·금액은 colSpan=2 라 슬롯 하나가 절반씩 나눠 갖는다.)
+//
+// 값(11.5)의 근거: A4 인쇄 가능 폭(210mm - 좌우 10mm = 190mm ≈ 718px) 기준
+// 참고 등급을 하나도 안 켰을 때 11.5/93.9 ≈ 12.2% ≈ 88px 가 된다. 10px
+// 폰트에서 천만 원 단위("10,000,000" = 8자리 + 콤마 2개)가 약 49px,
+// 좌우 패딩(4px×2)까지 더해도 57px 이라 충분한 여유가 있다.
+const PRICE_COL_WIDTH = 11.5;
+const PRICE_SLOT = PRICE_COL_WIDTH / 2;
+// 품명 ↔ 규격 폭 재배분(합계 41.5 는 그대로 유지 — 가격 열 폭에 영향 없음):
+// 원본 스크린샷 비율은 품명 13.5 / 규격 28 로 규격이 품명의 2배였는데, 실제
+// 이 앱의 데이터에서는 규격이 대개 "-" 나 "블랙 / L" 처럼 짧고 품명이
+// ("포스엘리먼트 락호퍼 숏부츠, ROCK HOPPER 3MM SHOE") 훨씬 길다. 그 결과
+// 품명이 3~5줄로 꺾여 행 하나가 28px 대신 60~90px 이 되고, 12품목 견적서가
+// A4 한 장(1047px)을 넘겨 1371px 짜리 2페이지로 인쇄됐다. 품명을 넓히고
+// 규격을 좁혀 줄바꿈을 줄인다.
+const COL_WIDTHS_BASE = [
+  6.6, // No.
+  13, 13, // 품명 (colSpan 2)
+  7.75, 7.75, // 규격 (colSpan 2)
+  7.1, // 단위
+  5, // 수량
+  PRICE_SLOT, PRICE_SLOT, // 단가 (colSpan 2)
+  PRICE_SLOT, PRICE_SLOT, // 금액 (colSpan 2)
+  10.7, // 적요
+];
+const REFERENCE_COL_WIDTH = PRICE_COL_WIDTH;
 
 // A4(297mm) 세로, body margin 10mm×2 를 뺀 실제 인쇄 가능 높이(277mm ≈ 1047px,
 // 96 CSS px/in 기준)를 채우도록 실측(브라우저에서 렌더링된 각 행의 실제 높이를
@@ -108,6 +137,28 @@ const cellNumeric = `${itemCellBase} whitespace-nowrap`;
 const cellText = `${itemCellBase} break-keep break-words`;
 const noBorderCell = `${cellBase} border-0`;
 
+// 가격류 데이터 셀(참고 등급 · 단가 · 금액) 공통 스타일 — 우측 정렬 +
+// 좌우 4px 패딩(px-1, cellBase 에 포함)으로 숫자가 테두리선에 바짝 붙지
+// 않게 하고, 8자리 금액("10,000,000")도 절대 꺾이지 않도록 한 줄
+// 고정(whitespace-nowrap)한다. 모든 가격 열이 같은 폭이라 참고 등급을 몇
+// 개 켜든 이 하나의 스타일만 쓰면 된다(예전에는 열이 좁아질 때를 대비해
+// 인쇄 전용 축소 클래스를 따로 뒀는데, 폰트 크기가 본문과 같은 10px 이라
+// 실제로는 아무 효과가 없는 무의미한 분기였다).
+// 위아래 패딩만 py-2(8px) 대신 py-1(4px)로 좁힌다 — 할인율 배지가 붙어
+// 두 줄이 되는 셀도 기본 행 높이(ITEM_ROW_HEIGHT=28px) 안에 들어가게
+// 하려면 4+4(패딩) + 12.5(10px 본문 × leading-tight) + 8(8px 배지 ×
+// leading-none) ≈ 28.5px 로 맞춰야 한다. py-2 였을 때는 36.5px 이 되어
+// 할인이 있는 행만 8px 씩 높아지며 표 전체가 그만큼 길어졌다.
+// (itemCellBase 를 쓰지 않고 cellBase 에서 직접 조립하는 이유: Tailwind 는
+// py-2 와 py-1 의 우선순위가 같아 클래스 문자열 순서로는 승부가 안 갈린다.)
+const cellPrice = `${cellBase} py-1 whitespace-nowrap text-right`;
+
+// 단가/금액 아래에 붙는 할인율 보조 줄(예: "39%↓"). 이 줄 때문에 할인이
+// 있는 행만 다른 행보다 높아져 표 격자가 어긋나고 표 전체가 길어졌으므로,
+// 차지하는 세로 공간을 최소로 깎는다 — leading-none(=1, 8px 글자면 딱 8px)
+// + 위아래 여백 0. nowrap 은 "39%↓" 가 좁은 칸에서 두 줄로 꺾이는 것을 막는다.
+const discountBadge = "text-[8px] leading-none text-gray-500 whitespace-nowrap";
+
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
 const MOCK_STAMP_SRC = "/mock-stamp.png";
 
@@ -122,37 +173,27 @@ export function EstimateDocumentTable({
 }: EstimateDocumentTableProps) {
   const refCount = referenceTierLabels.length;
 
-  // 참고 등급 열 + 단가 + 금액 = 화면에 동시에 노출되는 "가격류" 열 개수.
-  // 이게 4개 이상이면 한 열에 배정되는 폭이 급격히 좁아져 인쇄 시 숫자가
-  // 옆 칸과 겹치거나 우측 끝이 잘리기 쉬우므로, 인쇄(@media print) 시에만
-  // 폰트를 10px로 더 줄이고 좌우/상하 패딩을 최소화해 여유 공간을 늘린다.
-  const priceColumnCount = refCount + 2;
-  const manyPriceColumns = priceColumnCount >= 4;
-  const pricePrintClass = manyPriceColumns
-    ? "print:text-[10px] print:px-[4px] print:py-[2px] print:leading-tight"
-    : "";
-
-  // 가격류 열이 4개 이상일 때는 폭 배분 자체도 재조정한다 — 원본 비율대로만
-  // 가면 참고등급/단가/금액이 전부 5% 안팎으로 좁아져 숫자(예: 1,864,000)가
-  // 절대 안 들어간다. 상대적으로 여유로운 품명(인덱스 1,2)·규격(인덱스
-  // 3,4) 폭을 줄여서 그만큼을 가격류 열(참고등급 + 단가(7,8) + 금액(9,10))
-  // 쪽으로 넘겨준다 — 합계가 어떻게 바뀌든 아래 %가 totalW 기준으로 다시
-  // 정규화되므로 비율만 맞으면 항상 100%를 채운다.
+  // 가격류 열은 전부 같은 폭(PRICE_COL_WIDTH)이라 더 이상 열 개수에 따라
+  // 폰트를 줄이지 않는다 — 대신 참고 등급을 켤수록 가격 열이 (N+2)개로
+  // 늘어 전체에서 차지하는 비중이 커지므로, 그만큼 상대적으로 여유로운
+  // 품명(인덱스 1,2)·규격(인덱스 3,4) 폭을 줄여 가격 열의 실제 폭(%)이
+  // 8자리 금액을 못 담을 만큼 좁아지는 것을 막는다. (합계가 어떻게 바뀌든
+  // 아래에서 totalW 기준으로 다시 정규화되므로 비율만 맞으면 항상 100%를
+  // 채운다.)
+  //
+  // 이 배분으로 계산되는 가격 열 1칸의 실제 폭(A4 인쇄 718px 기준):
+  //   N=0 → 12.2%(88px)   N=2 → 10.9%(78px)   N=4 → 9.4%(67px)
+  // 전부 "10,000,000" 에 필요한 57px 보다 넉넉하다.
   const NAME_SPEC_INDEXES = [1, 2, 3, 4];
-  const PRICE_INDEXES = [7, 8, 9, 10];
-  const nameSpecScale = manyPriceColumns ? 0.72 : 1;
-  const priceWidthScale = manyPriceColumns ? 1.5 : 1;
-  const scaledBase = COL_WIDTHS_BASE.map((w, i) => {
-    if (NAME_SPEC_INDEXES.includes(i)) return w * nameSpecScale;
-    if (PRICE_INDEXES.includes(i)) return w * priceWidthScale;
-    return w;
-  });
+  const nameSpecScale = refCount >= 4 ? 0.58 : refCount >= 2 ? 0.72 : 1;
+  const scaledBase = COL_WIDTHS_BASE.map((w, i) =>
+    NAME_SPEC_INDEXES.includes(i) ? w * nameSpecScale : w
+  );
 
-  // 참고 등급 열(폭 7.0×N, 가격류 열이 많을 때는 확대 배수 적용)을 "수량"과
-  // "단가" 사이(base 배열의 인덱스 7)에 끼워 넣는다.
+  // 참고 등급 열을 "수량"과 "단가" 사이(base 배열의 인덱스 7)에 끼워 넣는다.
   const colWidths = [
     ...scaledBase.slice(0, 7),
-    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH * priceWidthScale),
+    ...Array.from({ length: refCount }, () => REFERENCE_COL_WIDTH),
     ...scaledBase.slice(7),
   ];
   const totalW = colWidths.reduce((a, b) => a + b, 0);
@@ -242,10 +283,10 @@ export function EstimateDocumentTable({
             (이전 42px 는 도장이 아직 행 안에 들어있던 구조를 위한 값이라
             지금은 더 클 필요가 없다). */}
         <tr style={{ height: 34 }}>
-          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-left text-[10px] px-1.5`} style={grayStyle}>
+          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-left text-[10px] px-1.5`} style={grayStyle}>
             공급금액
           </td>
-          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-right text-[12px] px-1.5`} style={grayStyle}>
+          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-right text-[12px] px-1.5 whitespace-nowrap`} style={grayStyle}>
             {fmtWon(totalSupply)} 원
           </td>
           <td className={`${PURPLE_BORDER} bg-white text-center text-[10px]`} style={purpleStyle}>
@@ -293,10 +334,10 @@ export function EstimateDocumentTable({
 
         {/* ── Row C: 부가세 / 주소 ─────────────────────────────────────── */}
         <tr style={{ height: 30 }}>
-          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-left text-[10px] px-1.5`} style={grayStyle}>
+          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-left text-[10px] px-1.5`} style={grayStyle}>
             부가세
           </td>
-          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-right text-[12px] px-1.5`} style={grayStyle}>
+          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-right text-[12px] px-1.5 whitespace-nowrap`} style={grayStyle}>
             &nbsp;
           </td>
           <td className={`${PURPLE_BORDER} bg-white text-center text-[10px]`} style={purpleStyle}>
@@ -313,10 +354,10 @@ export function EstimateDocumentTable({
 
         {/* ── Row D: 합계금액 / 업태+종목 ──────────────────────────────── */}
         <tr style={{ height: 30 }}>
-          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-left text-[10px] font-bold px-1.5`} style={grayStyle}>
+          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-left text-[10px] font-bold px-1.5`} style={grayStyle}>
             합계금액
           </td>
-          <td colSpan={2} className={`${PURPLE_BORDER} bg-white text-right text-[13px] font-bold px-1.5`} style={grayStyle}>
+          <td colSpan={3} className={`${PURPLE_BORDER} bg-white text-right text-[13px] font-bold px-1.5 whitespace-nowrap`} style={grayStyle}>
             {fmtWon(grandTotal)} 원
           </td>
           <td className={`${PURPLE_BORDER} bg-white text-center text-[10px]`} style={purpleStyle}>
@@ -400,16 +441,16 @@ export function EstimateDocumentTable({
           {referenceTierLabels.map((label, i) => (
             <td
               key={`ref-head-${i}`}
-              className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[9px] leading-tight ${pricePrintClass}`}
+              className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[9px] leading-tight`}
             >
               {label}
             </td>
           ))}
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap ${pricePrintClass}`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             단&nbsp;&nbsp;&nbsp;&nbsp;가
             <div className="text-[8px] font-normal leading-tight">(부가세포함)</div>
           </td>
-          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap ${pricePrintClass}`}>
+          <td colSpan={2} className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
             금&nbsp;&nbsp;&nbsp;&nbsp;액
           </td>
           <td className={`${BLACK_BORDER} border-t-2 bg-white font-bold text-center text-[11px] whitespace-nowrap`}>
@@ -432,7 +473,7 @@ export function EstimateDocumentTable({
             <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.quantity}</td>
             {Array.from({ length: refCount }, (_, i) => row.referenceValues?.[i]).map(
               (value, i) => (
-                <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
+                <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellPrice}`}>
                   {value != null ? fmtNum(value) : "-"}
                 </td>
               )
@@ -442,18 +483,18 @@ export function EstimateDocumentTable({
                 (번호 칸 + 배지 칸) 각각 반쪽 폭만 쓰게 하면, 할인이 없어
                 배지가 비어 있을 때도 숫자 칸 자체가 원래 폭의 절반으로
                 좁아져 큰 금액이 잘리거나 안 보이는 문제가 생긴다. */}
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {fmtNum(row.unitPrice)}
               {!!row.discountRate && row.discountRate > 0 && (
-                <div className="text-[8px] leading-tight text-gray-500">
+                <div className={discountBadge}>
                   {formatDiscountRate(row.discountRate)}%↓
                 </div>
               )}
             </td>
-            <td colSpan={2} className={`${BLACK_BORDER} ${cellNumeric} ${pricePrintClass} text-right`}>
+            <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {fmtNum(row.amount)}
               {!!row.discountRate && row.discountRate > 0 && (
-                <div className="text-[8px] leading-tight text-gray-500">
+                <div className={discountBadge}>
                   -{formatDiscountRate(row.discountRate)}%
                 </div>
               )}
@@ -496,10 +537,10 @@ export function EstimateDocumentTable({
             {totalQty}
           </td>
           {refCount > 0 && (
-            <td colSpan={refCount} className={`${BLACK_BORDER} bg-white ${pricePrintClass}`} />
+            <td colSpan={refCount} className={`${BLACK_BORDER} bg-white`} />
           )}
-          <td colSpan={2} className={`${BLACK_BORDER} bg-white ${pricePrintClass}`} />
-          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap ${pricePrintClass}`}>
+          <td colSpan={2} className={`${BLACK_BORDER} bg-white`} />
+          <td colSpan={2} className={`${BLACK_BORDER} bg-white text-[10px] text-right font-bold px-1 whitespace-nowrap`}>
             {fmtNum(grandTotal)}
           </td>
           <td className={`${BLACK_BORDER} bg-white`} />
