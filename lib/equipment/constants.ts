@@ -36,7 +36,13 @@ export const CATALOG_EXTRACTION_MAX_TOKENS = 32768;
  */
 export const SCUBAPRO_SYNC_BRAND = "스쿠버프로";
 
-/** 다이빙 장비 표준 카테고리 목록 (Gemini 추출 프롬프트와 동일하게 유지) */
+/**
+ * 다이빙 장비 표준 카테고리 목록 (Gemini 추출 프롬프트와 동일하게 유지).
+ * 호스/부속품/소모품/악세서리 4개는 퐁당닷컴의 별도 최상위 카테고리(c0003,
+ * "스쿠버 acc" 태그)를 크롤링 대상에 새로 포함시키면서 추가했다 — 그 전까지는
+ * 크롤러가 이 카테고리 자체를 요청하지 않아 스냅링·오링·아답터·호스 등이
+ * 통째로 수집되지 않았다(pongdangCrawler.ts CATEGORY_MAP 참고).
+ */
 export const EQUIPMENT_CATEGORIES = [
   "BCD",
   "레귤레이터",
@@ -52,6 +58,10 @@ export const EQUIPMENT_CATEGORIES = [
   "다이빙 라이트",
   "게이지",
   "가방",
+  "호스",
+  "부속품",
+  "소모품",
+  "악세서리",
   "기타",
 ] as const;
 

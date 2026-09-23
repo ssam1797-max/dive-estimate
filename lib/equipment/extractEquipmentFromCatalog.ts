@@ -6,6 +6,7 @@ import { parsedEquipmentListSchema } from "@/lib/equipment/schema";
 import {
   CATALOG_EXTRACTION_MAX_TOKENS,
   CATALOG_EXTRACTION_MODEL,
+  EQUIPMENT_CATEGORIES,
   MAX_CHUNK_CHARS,
 } from "@/lib/equipment/constants";
 import type { CatalogExtractionResult, ParsedEquipmentItem } from "@/lib/equipment/types";
@@ -62,7 +63,7 @@ function buildSystemPrompt(brand: string, catalogYear: number): string {
 
 1. 실제로 판매되는 개별 장비(제품) 항목만 추출하세요. 표지, 목차, 브랜드/회사 소개, 마케팅 문구, 페이지 번호, 색인 등은 무시하세요.
 2. category(장비 종류)는 아래 다이빙 업계 표준 한글 용어 중 가장 적합한 것을 사용하세요. 목록에 정확히 맞는 것이 없으면 가장 가까운 한글 용어를 사용하세요.
-   BCD, 레귤레이터, 슈트, 마스크, 스노클, 핀, 다이빙 컴퓨터, 웨이트 시스템, 부츠, 장갑, 후드, 다이빙 라이트, 게이지, 가방, 기타
+   ${EQUIPMENT_CATEGORIES.join(", ")}
 3. name(장비명)에는 브랜드명("${brand}")을 반복하지 말고 모델명만 기입하세요.
 4. price_retail(소비자 가격)은 통화 기호(₩, $, 원 등)나 천 단위 구분 콤마를 제거한 숫자만 기입하세요.
    - 사이즈/색상에 따라 가격이 다르게 표기된 경우, 가장 일반적으로(가장 많이) 표기된 가격 하나만 대표값으로 사용하세요.
