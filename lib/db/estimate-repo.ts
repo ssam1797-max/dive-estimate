@@ -101,7 +101,7 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
       updated_at: now,
     });
 
-    for (const item of params.items) {
+    params.items.forEach((item, index) => {
       mockStore.estimateItems.push({
         id: crypto.randomUUID(),
         estimate_id: id,
@@ -118,9 +118,10 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
         price_instructor: item.priceInstructor ?? null,
         price_center: item.priceCenter ?? null,
         price_cost: item.priceCost ?? null,
+        sort_order: index,
         created_at: now,
       });
-    }
+    });
 
     return id;
   }
@@ -207,7 +208,7 @@ export async function updateSavedEstimate(
     };
 
     mockStore.estimateItems = mockStore.estimateItems.filter((i) => i.estimate_id !== id);
-    for (const item of params.items) {
+    params.items.forEach((item, index) => {
       mockStore.estimateItems.push({
         id: crypto.randomUUID(),
         estimate_id: id,
@@ -224,9 +225,10 @@ export async function updateSavedEstimate(
         price_instructor: item.priceInstructor ?? null,
         price_center: item.priceCenter ?? null,
         price_cost: item.priceCost ?? null,
+        sort_order: index,
         created_at: now,
       });
-    }
+    });
 
     return id;
   }
@@ -312,7 +314,9 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
     );
     if (!estimate) return null;
 
-    const items = mockStore.estimateItems.filter((i) => i.estimate_id === id);
+    const items = mockStore.estimateItems
+      .filter((i) => i.estimate_id === id)
+      .sort((a, b) => a.sort_order - b.sort_order);
     const draftItems: EstimateItemDraft[] = items.map((i) => {
       const eq = mockStore.equipment.find((e) => e.id === i.equipment_id);
       return {
@@ -355,9 +359,10 @@ export async function getTemplateWithItems(id: string): Promise<TemplateDetail |
   const { data: items, error: itemsError } = await supabase
     .from("estimate_items")
     .select(
-      "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, equipment(brand, category, name, price_retail, override_discount_rate)"
+      "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, sort_order, equipment(brand, category, name, price_retail, override_discount_rate)"
     )
     .eq("estimate_id", id)
+    .order("sort_order", { ascending: true, nullsFirst: false })
     .order("created_at");
   if (itemsError) throw new Error("템플릿 항목을 불러오지 못했습니다.");
 
@@ -559,7 +564,9 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       getProfileById(estimate.provider_id),
       getProfileById(estimate.receiver_id),
     ]);
-    const items = mockStore.estimateItems.filter((i) => i.estimate_id === id);
+    const items = mockStore.estimateItems
+      .filter((i) => i.estimate_id === id)
+      .sort((a, b) => a.sort_order - b.sort_order);
 
     const detailItems: SavedEstimateDetail["items"] = items.map((i) => {
       const eq = mockStore.equipment.find((e) => e.id === i.equipment_id);
@@ -640,9 +647,10 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     supabase
       .from("estimate_items")
       .select(
-        "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, price_retail, price_instructor, price_center, price_cost, equipment(brand, category, name)"
+        "equipment_id, item_name, item_brand, item_category, color, size, quantity, unit_price, item_remarks, price_retail, price_instructor, price_center, price_cost, sort_order, equipment(brand, category, name)"
       )
       .eq("estimate_id", id)
+      .order("sort_order", { ascending: true, nullsFirst: false })
       .order("created_at")
       .then(({ data, error }) => {
         if (error) throw new Error("견적서 항목을 불러오지 못했습니다.");

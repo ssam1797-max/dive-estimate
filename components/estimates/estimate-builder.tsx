@@ -636,6 +636,10 @@ export function EstimateBuilder({
           onUnitPriceChange={actions.updateItemUnitPrice}
           onPriceRetailChange={actions.updateItemPriceRetail}
           onNameChange={actions.updateItemName}
+          onColorChange={actions.updateItemColor}
+          onSizeChange={actions.updateItemSize}
+          onMoveUp={actions.moveItemUp}
+          onMoveDown={actions.moveItemDown}
           onClearAll={actions.clearItems}
           disabled={isSaving}
         />

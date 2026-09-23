@@ -89,6 +89,8 @@ export interface MockEstimateItem {
   price_instructor: number | null;
   price_center: number | null;
   price_cost: number | null;
+  /** 견적서 내 표시 순서(0부터 시작) — 저장 시 배열 순서 그대로. */
+  sort_order: number;
   created_at: string;
 }
 

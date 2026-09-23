@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,10 @@ interface EstimateItemsTableProps {
   onUnitPriceChange: (clientId: string, unitPrice: number) => void;
   onPriceRetailChange: (clientId: string, priceRetail: number) => void;
   onNameChange: (clientId: string, name: string) => void;
+  onColorChange: (clientId: string, color: string) => void;
+  onSizeChange: (clientId: string, size: string) => void;
+  onMoveUp: (clientId: string) => void;
+  onMoveDown: (clientId: string) => void;
   onClearAll: () => void;
   disabled?: boolean;
 }
@@ -34,6 +38,10 @@ export function EstimateItemsTable({
   onUnitPriceChange,
   onPriceRetailChange,
   onNameChange,
+  onColorChange,
+  onSizeChange,
+  onMoveUp,
+  onMoveDown,
   onClearAll,
   disabled,
 }: EstimateItemsTableProps) {
@@ -73,9 +81,11 @@ export function EstimateItemsTable({
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-2 font-medium">순서</th>
                   <th className="py-2 pr-2 font-medium">브랜드 / 카테고리</th>
                   <th className="py-2 pr-2 font-medium">장비명</th>
-                  <th className="py-2 pr-2 font-medium">색상 / 사이즈</th>
+                  <th className="py-2 pr-2 font-medium">색상</th>
+                  <th className="py-2 pr-2 font-medium">사이즈</th>
                   <th className="py-2 pr-2 font-medium">수량</th>
                   <th className="py-2 pr-2 font-medium">소비자가격</th>
                   <th className="py-2 pr-2 font-medium">단가</th>
@@ -85,13 +95,39 @@ export function EstimateItemsTable({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => {
+                {items.map((item, index) => {
                   const discountRate = calculateDiscountRate(
                     item.priceRetail,
                     item.unitPrice
                   );
                   return (
                   <tr key={item.clientId} className="border-b last:border-0">
+                    <td className="py-2 pr-2 align-top">
+                      <div className="flex flex-col gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                          disabled={disabled || index === 0}
+                          onClick={() => onMoveUp(item.clientId)}
+                          aria-label={`${item.name} 위로 이동`}
+                        >
+                          <ArrowUp className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                          disabled={disabled || index === items.length - 1}
+                          onClick={() => onMoveDown(item.clientId)}
+                          aria-label={`${item.name} 아래로 이동`}
+                        >
+                          <ArrowDown className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
                     <td className="py-2 pr-2 align-top text-muted-foreground">
                       {item.brand}
                       <br />
@@ -105,8 +141,23 @@ export function EstimateItemsTable({
                         onChange={(event) => onNameChange(item.clientId, event.target.value)}
                       />
                     </td>
-                    <td className="py-2 pr-2 align-top text-muted-foreground">
-                      {item.color || "-"} / {item.size || "-"}
+                    <td className="py-2 pr-2 align-top">
+                      <Input
+                        value={item.color}
+                        disabled={disabled}
+                        className="w-20"
+                        placeholder="색상"
+                        onChange={(event) => onColorChange(item.clientId, event.target.value)}
+                      />
+                    </td>
+                    <td className="py-2 pr-2 align-top">
+                      <Input
+                        value={item.size}
+                        disabled={disabled}
+                        className="w-20"
+                        placeholder="사이즈"
+                        onChange={(event) => onSizeChange(item.clientId, event.target.value)}
+                      />
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <Input
@@ -190,7 +241,7 @@ export function EstimateItemsTable({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="pt-3 text-right font-medium">
+                  <td colSpan={8} className="pt-3 text-right font-medium">
                     합계
                   </td>
                   <td className="pt-3 text-lg font-semibold" colSpan={3}>

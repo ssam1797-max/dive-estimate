@@ -49,12 +49,15 @@ type Action =
   | { type: "UPDATE_ITEM_QUANTITY"; clientId: string; quantity: number }
   | { type: "UPDATE_ITEM_UNIT_PRICE"; clientId: string; unitPrice: number }
   | { type: "UPDATE_ITEM_NAME"; clientId: string; name: string }
+  | { type: "UPDATE_ITEM_COLOR"; clientId: string; color: string }
+  | { type: "UPDATE_ITEM_SIZE"; clientId: string; size: string }
   | {
       type: "UPDATE_ITEM_PRICE_RETAIL";
       clientId: string;
       priceRetail: number;
       discountPolicies: DiscountPolicyMap;
     }
+  | { type: "MOVE_ITEM"; clientId: string; direction: "up" | "down" }
   | { type: "LOAD_ITEMS"; items: EstimateItemDraft[] }
   | { type: "RESET_AFTER_SAVE" };
 
@@ -187,6 +190,33 @@ function reducer(
             : item
         ),
       };
+    case "UPDATE_ITEM_COLOR":
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.clientId === action.clientId
+            ? { ...item, color: action.color }
+            : item
+        ),
+      };
+    case "UPDATE_ITEM_SIZE":
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.clientId === action.clientId
+            ? { ...item, size: action.size }
+            : item
+        ),
+      };
+    case "MOVE_ITEM": {
+      const index = state.items.findIndex((item) => item.clientId === action.clientId);
+      if (index === -1) return state;
+      const targetIndex = action.direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= state.items.length) return state;
+      const items = [...state.items];
+      [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+      return { ...state, items };
+    }
     case "UPDATE_ITEM_PRICE_RETAIL":
       // 소비자가격(정가)을 고치면, 그 항목의 단가를 현재 기준 등급의 할인율로
       // 즉시 다시 계산한다 — SET_PRICE_TIER 가 전체 목록에 하는 일을 이
@@ -380,6 +410,24 @@ export function useEstimateBuilder(
       dispatch({ type: "UPDATE_ITEM_NAME", clientId, name }),
     []
   );
+  const updateItemColor = React.useCallback(
+    (clientId: string, color: string) =>
+      dispatch({ type: "UPDATE_ITEM_COLOR", clientId, color }),
+    []
+  );
+  const updateItemSize = React.useCallback(
+    (clientId: string, size: string) =>
+      dispatch({ type: "UPDATE_ITEM_SIZE", clientId, size }),
+    []
+  );
+  const moveItemUp = React.useCallback(
+    (clientId: string) => dispatch({ type: "MOVE_ITEM", clientId, direction: "up" }),
+    []
+  );
+  const moveItemDown = React.useCallback(
+    (clientId: string) => dispatch({ type: "MOVE_ITEM", clientId, direction: "down" }),
+    []
+  );
   const updateItemPriceRetail = React.useCallback(
     (clientId: string, priceRetail: number) =>
       dispatch({
@@ -428,6 +476,10 @@ export function useEstimateBuilder(
       updateItemQuantity,
       updateItemUnitPrice,
       updateItemName,
+      updateItemColor,
+      updateItemSize,
+      moveItemUp,
+      moveItemDown,
       updateItemPriceRetail,
       loadItems,
       clearItems,
