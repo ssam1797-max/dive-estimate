@@ -69,7 +69,8 @@ export function ExcelPreviewDialog({
         return {
           seq: index + 1,
           key: item.clientId,
-          name: `${item.brand} ${item.name}`,
+          // 견적서 표/거래명세서와 동일하게 브랜드 말머리 없이 순수 품명만 표시한다.
+          name: item.name,
           spec: formatSpec(item.color, item.size),
           unit: "개",
           quantity: item.quantity,

@@ -68,7 +68,8 @@ export async function POST(request: Request) {
 
       return {
         seq: index + 1,
-        name: `${item.brand} ${item.name}`,
+        // 견적서 표/거래명세서와 동일하게 브랜드 말머리 없이 순수 품명만 표시한다.
+        name: item.name,
         spec: [item.color, item.size].filter(Boolean).join(" / ") || "-",
         unit: item.unit ?? "개",
         quantity: item.quantity,
