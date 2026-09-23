@@ -204,7 +204,6 @@ function EstimateDetailDialog({
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-2 font-medium">브랜드 / 카테고리</th>
                     <th className="py-2 pr-2 font-medium">장비명</th>
                     <th className="py-2 pr-2 font-medium">색상 / 사이즈</th>
                     <th className="py-2 pr-2 font-medium">수량</th>
@@ -217,11 +216,6 @@ function EstimateDetailDialog({
                     const unitPrice = tierPriceOfSnapshot(item, tier);
                     return (
                       <tr key={index} className="border-b last:border-0">
-                        <td className="py-2 pr-2 align-top text-muted-foreground">
-                          {item.brand}
-                          <br />
-                          {item.category}
-                        </td>
                         <td className="py-2 pr-2 align-top font-medium">{item.name}</td>
                         <td className="py-2 pr-2 align-top text-muted-foreground">
                           {item.color || "-"} / {item.size || "-"}
@@ -237,7 +231,7 @@ function EstimateDetailDialog({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={5} className="pt-3 text-right font-medium">
+                    <td colSpan={4} className="pt-3 text-right font-medium">
                       합계
                     </td>
                     <td className="pt-3 text-lg font-semibold">

@@ -82,7 +82,6 @@ export function EstimateItemsTable({
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 pr-2 font-medium">순서</th>
-                  <th className="py-2 pr-2 font-medium">브랜드 / 카테고리</th>
                   <th className="py-2 pr-2 font-medium">장비명</th>
                   <th className="py-2 pr-2 font-medium">색상</th>
                   <th className="py-2 pr-2 font-medium">사이즈</th>
@@ -127,11 +126,6 @@ export function EstimateItemsTable({
                           <ArrowDown className="size-3.5" />
                         </Button>
                       </div>
-                    </td>
-                    <td className="py-2 pr-2 align-top text-muted-foreground">
-                      {item.brand}
-                      <br />
-                      {item.category}
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <Input
@@ -241,7 +235,7 @@ export function EstimateItemsTable({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={8} className="pt-3 text-right font-medium">
+                  <td colSpan={7} className="pt-3 text-right font-medium">
                     합계
                   </td>
                   <td className="pt-3 text-lg font-semibold" colSpan={3}>
