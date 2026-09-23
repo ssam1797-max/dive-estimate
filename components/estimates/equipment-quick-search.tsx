@@ -75,8 +75,12 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
       setLoading(true);
       setError(null);
       try {
+        // limit=0 은 "상위 20건 제한 없이 매칭되는 전체 결과" 요청이다
+        // (searchEquipment 의 unlimited 분기, fetchAllPages 로 상한 없이
+        // 가져온다) — 드롭다운 <ul> 은 max-h-72 overflow-y-auto 라 결과가
+        // 많아도 스크롤로 전부 확인할 수 있다.
         const res = await fetch(
-          `/api/equipment/search?q=${encodeURIComponent(debouncedQuery)}`,
+          `/api/equipment/search?q=${encodeURIComponent(debouncedQuery)}&limit=0`,
           { signal: controller.signal }
         );
         const body = await res.json();

@@ -18,6 +18,9 @@ export interface MockEquipment {
    *  이 필드가 추가되기 전 시드 데이터를 위해 optional로 두고, 읽는 쪽에서
    *  `?? false` 로 방어한다. */
   is_custom?: boolean;
+  /** 이 품목이 마지막으로 실제 견적서(템플릿 제외)에 저장된 시각. 검색 결과
+   *  정렬(최근 사용 우선)에 쓰인다. 한 번도 사용된 적 없으면 null. */
+  last_used_at?: string | null;
   created_at: string;
   updated_at: string;
 }

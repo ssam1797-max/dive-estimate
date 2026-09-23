@@ -123,6 +123,17 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
       });
     });
 
+    // 템플릿이 아닌 실제 견적서에 저장된 품목만 "사용됨"으로 기록한다 —
+    // SQL 버전(create_estimate_with_items, 00018 마이그레이션)과 동일한 규칙.
+    if (!params.templateName) {
+      const usedEquipmentIds = new Set(
+        params.items.map((item) => item.equipmentId).filter((v): v is string => Boolean(v))
+      );
+      for (const equipment of mockStore.equipment) {
+        if (usedEquipmentIds.has(equipment.id)) equipment.last_used_at = now;
+      }
+    }
+
     return id;
   }
 
@@ -229,6 +240,15 @@ export async function updateSavedEstimate(
         created_at: now,
       });
     });
+
+    // updateSavedEstimate 는 항상 실제 견적서(템플릿 제외)만 대상이므로
+    // 무조건 "사용됨"으로 기록한다 — SQL 버전과 동일한 규칙.
+    const usedEquipmentIds = new Set(
+      params.items.map((item) => item.equipmentId).filter((v): v is string => Boolean(v))
+    );
+    for (const equipment of mockStore.equipment) {
+      if (usedEquipmentIds.has(equipment.id)) equipment.last_used_at = now;
+    }
 
     return id;
   }
