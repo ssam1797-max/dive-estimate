@@ -7,10 +7,8 @@ import {
   Copy,
   Download,
   FileSpreadsheet,
-  FolderOpen,
   Loader2,
   Save,
-  Save as SaveTemplate,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -565,28 +563,7 @@ export function EstimateBuilder({
         disabled={isSaving}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSaving}
-            onClick={() => setTemplateSaveOpen(true)}
-          >
-            <SaveTemplate className="size-4" />
-            템플릿으로 저장
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSaving}
-            onClick={() => setTemplateLoadOpen(true)}
-          >
-            <FolderOpen className="size-4" />
-            템플릿 불러오기
-          </Button>
-        </div>
-
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {editContext ? (
           <div className="flex flex-wrap gap-2">
             <Button
