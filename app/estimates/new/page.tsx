@@ -15,6 +15,7 @@ import type {
 import { resolveViewableTier, tierPriceOfSnapshot, type DiscountPolicyMap } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import { getIsAdmin } from "@/lib/auth/admin-session";
+import { todayInSeoul } from "@/lib/estimates/date";
 
 export const metadata = {
   title: "견적서 작성",
@@ -32,11 +33,6 @@ interface PageData {
   templates: TemplateSummary[];
   discountPolicies: DiscountPolicyMap;
   loadError: string | null;
-}
-
-/** 서버 시간대와 무관하게 이 앱을 쓰는 다이빙샵 기준(한국) 오늘 날짜를 얻는다. */
-function todayInSeoul(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 }
 
 /**

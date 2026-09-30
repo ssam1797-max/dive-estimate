@@ -7,12 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import type { ProfileOption } from "@/lib/estimates/types";
-
-const NEW_RECEIVER_VALUE = "__new_receiver__";
 
 interface BasicInfoSectionProps {
   date: string;
@@ -57,6 +56,16 @@ export function BasicInfoSection({
   onRemarksChange,
   disabled,
 }: BasicInfoSectionProps) {
+  const receiverOptions: ComboboxOption[] = React.useMemo(
+    () =>
+      receivers.map((receiver) => ({
+        value: receiver.id,
+        label: receiver.name,
+        description: receiver.contact ?? undefined,
+      })),
+    [receivers]
+  );
+
   const [isAddingReceiver, setIsAddingReceiver] = React.useState(false);
   const [newReceiverName, setNewReceiverName] = React.useState("");
   const [isCreatingReceiver, setIsCreatingReceiver] = React.useState(false);
@@ -206,31 +215,33 @@ export function BasicInfoSection({
                 )}
               </form>
             ) : (
-              <Select
-                id="receiver-select"
-                value={receiverId}
-                disabled={disabled}
-                onChange={(event) => {
-                  if (event.target.value === NEW_RECEIVER_VALUE) {
-                    startAddingReceiver();
-                    return;
+              <div className="flex items-center gap-2">
+                <Combobox
+                  id="receiver-select"
+                  className="flex-1"
+                  options={receiverOptions}
+                  value={receiverId}
+                  onChange={onReceiverChange}
+                  disabled={disabled}
+                  placeholder={
+                    receivers.length === 0
+                      ? "등록된 수신자가 없습니다"
+                      : "공급받는자를 검색하세요"
                   }
-                  onReceiverChange(event.target.value);
-                }}
-              >
-                <option value="" disabled>
-                  {receivers.length === 0
-                    ? "등록된 수신자가 없습니다"
-                    : "공급받는자를 선택하세요"}
-                </option>
-                {receivers.map((receiver) => (
-                  <option key={receiver.id} value={receiver.id}>
-                    {receiver.name}
-                    {receiver.contact ? ` · ${receiver.contact}` : ""}
-                  </option>
-                ))}
-                <option value={NEW_RECEIVER_VALUE}>+ 새로 입력 및 등록...</option>
-              </Select>
+                  searchPlaceholder="이름으로 검색..."
+                  emptyMessage="일치하는 공급받는자가 없습니다."
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={disabled}
+                  onClick={startAddingReceiver}
+                  aria-label="새 공급받는자 등록"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </div>
             )}
           </div>
         </div>

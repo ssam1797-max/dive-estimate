@@ -11,6 +11,7 @@ import type { EstimateItemDraft } from "@/lib/estimates/types";
 import { resolveViewableTier, tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import { getIsAdmin } from "@/lib/auth/admin-session";
+import { todayInSeoul } from "@/lib/estimates/date";
 
 export const metadata = { title: "견적서 수정" };
 export const dynamic = "force-dynamic";
@@ -76,8 +77,12 @@ export default async function EditEstimatePage({
     editContext = {
       estimateId: estimate.id,
       initialData: {
-        date: estimate.date,
-        estimateNumber: estimate.estimateNumber,
+        // 이어서 수정해 저장하는 시점(오늘)의 날짜·번호로 갱신한다 — 원본
+        // 발행일/번호를 그대로 유지하지 않는다(app/estimates/new/page.tsx 의
+        // "이 견적서 복제" 흐름과 동일한 방식: 번호는 빈 문자열로 두면
+        // useEstimateBuilder 가 새 날짜 기준으로 자동 재발급한다).
+        date: todayInSeoul(),
+        estimateNumber: "",
         providerId: estimate.provider?.id ?? "",
         receiverId: estimate.receiver?.id ?? "",
         remarks: estimate.remarks,

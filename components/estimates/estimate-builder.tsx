@@ -174,7 +174,9 @@ export function EstimateBuilder({
   const { state, totalAmount, actions } = useEstimateBuilder(
     discountPolicies,
     editContext?.initialData ?? duplicateFrom,
-    { regenerateEstimateNumber: !!duplicateFrom }
+    // "이어서 수정"(editContext)과 "견적서 복제"(duplicateFrom) 둘 다 오늘
+    // 날짜 기준으로 번호를 새로 발급받아야 한다(원본 번호를 그대로 유지하지 않음).
+    { regenerateEstimateNumber: !!editContext || !!duplicateFrom }
   );
 
   // 화면에서 "새로 입력 및 등록"으로 즉시 추가한 공급받는자를 목록에 반영하기 위해
