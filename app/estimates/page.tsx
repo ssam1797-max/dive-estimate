@@ -2,6 +2,8 @@ import { listSavedEstimates } from "@/lib/db/estimate-repo";
 import { isMockMode } from "@/lib/db/is-mock";
 import { EstimateArchiveTable } from "@/components/estimates/estimate-archive-table";
 import type { SavedEstimateSummary } from "@/lib/estimates/types";
+import { getIsAdmin } from "@/lib/auth/admin-session";
+import { stripCostFromSummary } from "@/lib/estimates/adminVisibility";
 
 export const metadata = { title: "견적서 보관함" };
 export const dynamic = "force-dynamic";
@@ -10,9 +12,11 @@ export default async function EstimateArchivePage() {
   let estimates: SavedEstimateSummary[] = [];
   let loadError = false;
   const mockMode = isMockMode();
+  const isAdmin = await getIsAdmin();
 
   try {
-    estimates = await listSavedEstimates();
+    const rawEstimates = await listSavedEstimates();
+    estimates = rawEstimates.map((estimate) => stripCostFromSummary(estimate, isAdmin));
   } catch (error) {
     console.error("견적서 보관함 목록 조회 실패:", error);
     loadError = true;
@@ -40,7 +44,7 @@ export default async function EstimateArchivePage() {
           견적서 목록을 불러오지 못했습니다. 환경 설정을 확인해주세요.
         </p>
       ) : (
-        <EstimateArchiveTable initialEstimates={estimates} />
+        <EstimateArchiveTable initialEstimates={estimates} isAdmin={isAdmin} />
       )}
     </main>
   );

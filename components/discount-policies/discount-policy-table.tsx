@@ -85,10 +85,16 @@ function RateInput({
 export function DiscountPolicyTable({
   initialPolicies,
   allBrands,
+  isAdmin,
 }: {
   initialPolicies: PolicyRow[];
   allBrands: string[];
+  /** 관리자 모드 여부 — 원가 할인율 조회, 수정/저장/삭제/추가는 관리자 모드에서만 가능하다. */
+  isAdmin: boolean;
 }) {
+  const visibleRateFields = isAdmin
+    ? RATE_FIELDS
+    : RATE_FIELDS.filter((f) => f.key !== "rate_cost");
   const [rows, setRows] = React.useState<RowState[]>(() =>
     initialPolicies.map((p) => ({ values: { ...p }, status: "idle", errorMsg: null }))
   );
@@ -262,10 +268,23 @@ export function DiscountPolicyTable({
         />
       </div>
 
+      {!isAdmin && (
+        <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          관리자 모드에서만 원가 할인율을 확인하고, 수정/저장/추가/삭제할 수 있습니다.
+        </p>
+      )}
+
       {/* 헤더 */}
-      <div className="hidden grid-cols-[1fr_repeat(4,minmax(0,1fr))_auto] gap-3 rounded-t-lg border-b pb-2 sm:grid">
+      <div
+        className={cn(
+          "hidden gap-3 rounded-t-lg border-b pb-2 sm:grid",
+          isAdmin
+            ? "grid-cols-[1fr_repeat(4,minmax(0,1fr))_auto]"
+            : "grid-cols-[1fr_repeat(3,minmax(0,1fr))_auto]"
+        )}
+      >
         <span className="text-xs font-medium text-muted-foreground">브랜드</span>
-        {RATE_FIELDS.map((f) => (
+        {visibleRateFields.map((f) => (
           <span key={f.key} className="text-xs font-medium text-muted-foreground text-right">
             {f.label}
           </span>
@@ -303,16 +322,18 @@ export function DiscountPolicyTable({
                   {row.errorMsg}
                 </span>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground hover:text-destructive"
-                disabled={row.status === "saving"}
-                onClick={() => setDeleteTarget(row.values.brand)}
-                aria-label={`${row.values.brand} 삭제`}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+              {isAdmin && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-destructive"
+                  disabled={row.status === "saving"}
+                  onClick={() => setDeleteTarget(row.values.brand)}
+                  aria-label={`${row.values.brand} 삭제`}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -322,39 +343,41 @@ export function DiscountPolicyTable({
             </span>
             <Input
               value={row.values.aliases.join(", ")}
-              disabled={row.status === "saving"}
+              disabled={!isAdmin || row.status === "saving"}
               placeholder="예: SCUBAPRO, 스쿠버프로"
               onChange={(e) => updateRowAliases(row.values.brand, e.target.value)}
               aria-label={`${row.values.brand} 별칭`}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {RATE_FIELDS.map((f) => (
+          <div className={cn("grid grid-cols-2 gap-3", isAdmin ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+            {visibleRateFields.map((f) => (
               <RateInput
                 key={f.key}
                 label={f.label}
                 value={row.values[f.key]}
-                disabled={row.status === "saving"}
+                disabled={!isAdmin || row.status === "saving"}
                 onChange={(v) => updateRow(row.values.brand, f.key, v)}
               />
             ))}
           </div>
 
-          <Button
-            size="sm"
-            disabled={row.status === "saving"}
-            onClick={() => saveRow(row.values.brand)}
-            className={cn("self-start", row.status === "saving" && "opacity-70")}
-          >
-            {row.status === "saving" && <Loader2 className="animate-spin" />}
-            저장
-          </Button>
+          {isAdmin && (
+            <Button
+              size="sm"
+              disabled={row.status === "saving"}
+              onClick={() => saveRow(row.values.brand)}
+              className={cn("self-start", row.status === "saving" && "opacity-70")}
+            >
+              {row.status === "saving" && <Loader2 className="animate-spin" />}
+              저장
+            </Button>
+          )}
         </div>
       ))}
 
-      {/* 새 브랜드 추가 폼 */}
-      {showAddForm && (
+      {/* 새 브랜드 추가 폼 (관리자 모드 전용) */}
+      {isAdmin && showAddForm && (
         <div className="flex flex-col gap-3 rounded-lg border border-dashed p-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">브랜드</span>
@@ -422,7 +445,7 @@ export function DiscountPolicyTable({
         </div>
       )}
 
-      {!showAddForm && (
+      {isAdmin && !showAddForm && (
         <Button
           variant="outline"
           size="sm"

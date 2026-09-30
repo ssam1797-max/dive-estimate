@@ -21,6 +21,8 @@ import type { SavedEstimateDetail } from "@/lib/estimates/types";
 import {
   calculateDiscountRate,
   calculateInclusiveVat,
+  getAllowedPriceTiers,
+  resolveViewableTier,
   tierPriceOfSnapshot,
   PRICE_TIER_LABELS,
   type PriceTier,
@@ -32,6 +34,8 @@ function formatSpec(color: string, size: string): string {
 
 interface EstimatePrintViewProps {
   estimate: SavedEstimateDetail;
+  /** 관리자 모드 여부 — 원가("COST") 등급은 관리자 모드에서만 선택할 수 있다. */
+  isAdmin: boolean;
 }
 
 /**
@@ -41,8 +45,11 @@ interface EstimatePrintViewProps {
  * 등급의 문서만 그대로 인쇄된다(탭마다 별도로 렌더링해두는 게 아니라, 이미
  * 선택된 한 등급만 DOM에 그려져 있기 때문에 별도 print CSS 분기가 필요 없다).
  */
-export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
-  const [tier, setTier] = React.useState<PriceTier>(estimate.priceTier ?? "RETAIL");
+export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps) {
+  const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
+  const [tier, setTier] = React.useState<PriceTier>(
+    resolveViewableTier(estimate.priceTier, isAdmin)
+  );
   const [referenceTiers, setReferenceTiers] = React.useState<PriceTier[]>([]);
   const [documentMode, setDocumentMode] = React.useState<"estimate" | "deliveryNote">(
     "estimate"
@@ -146,8 +153,12 @@ export function EstimatePrintView({ estimate }: EstimatePrintViewProps) {
 
       {documentMode === "estimate" && (
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 print:hidden">
-          <BasisTierSelect value={tier} onChange={setTier} />
-          <ReferenceTierCheckboxes value={referenceTiers} onChange={setReferenceTiers} />
+          <BasisTierSelect value={tier} onChange={setTier} tiers={allowedPriceTiers} />
+          <ReferenceTierCheckboxes
+            value={referenceTiers}
+            onChange={setReferenceTiers}
+            tiers={allowedPriceTiers}
+          />
           {!hasTierSnapshot && (
             <p className="text-xs text-muted-foreground">
               이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 등급에 저장 당시 단가가 동일하게 표시됩니다.

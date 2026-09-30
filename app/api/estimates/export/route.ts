@@ -11,6 +11,7 @@ import {
   buildEstimateWorkbook,
   type WorkbookEstimateItem,
 } from "@/lib/estimates/buildEstimateWorkbook";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 
 /** POST /api/estimates/export - 견적서를 엑셀(.xlsx) 파일로 생성해 다운로드 응답으로 반환 */
 export async function POST(request: Request) {
@@ -36,11 +37,24 @@ export async function POST(request: Request) {
     const { estimateNumber, date, providerId, receiverId, remarks, priceTier, referenceTiers, items } =
       parsed.data;
 
-    const [provider, receiver, discountPolicies] = await Promise.all([
+    const [provider, receiver, discountPolicies, isAdmin] = await Promise.all([
       getProfileById(providerId),
       getProfileById(receiverId),
       getDiscountPolicyMap(),
+      getIsAdmin(),
     ]);
+
+    // 원가("COST") 등급은 UI에서 관리자 모드가 아니면 선택할 수 없지만, 이
+    // 라우트를 직접 호출하면 우회할 수 있으므로 서버에서도 한 번 더 막는다.
+    if (!isAdmin && priceTier === "COST") {
+      return NextResponse.json(
+        { error: "원가 기준 내보내기는 관리자 모드에서만 가능합니다." },
+        { status: 403 }
+      );
+    }
+    const allowedReferenceTiers = isAdmin
+      ? referenceTiers
+      : referenceTiers.filter((tier) => tier !== "COST");
 
     if (!provider) {
       return NextResponse.json(
@@ -78,7 +92,7 @@ export async function POST(request: Request) {
         vat: calculateInclusiveVat(amount),
         itemRemarks: item.itemRemarks,
         discountRate: calculateDiscountRate(item.priceRetail, effectiveUnitPrice),
-        referenceValues: referenceTiers.map((tier) =>
+        referenceValues: allowedReferenceTiers.map((tier) =>
           calculateEffectiveUnitPrice(
             item.priceRetail,
             item.brand,
@@ -97,7 +111,7 @@ export async function POST(request: Request) {
       receiver,
       remarks,
       priceTier,
-      referenceTierLabels: referenceTiers.map((tier) => PRICE_TIER_LABELS[tier]),
+      referenceTierLabels: allowedReferenceTiers.map((tier) => PRICE_TIER_LABELS[tier]),
       items: workbookItems,
     });
 

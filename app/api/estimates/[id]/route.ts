@@ -7,6 +7,8 @@ import {
 } from "@/lib/db/estimate-repo";
 import { saveRealEstimateSchema } from "@/lib/estimates/schema";
 import type { EstimateStatus } from "@/lib/estimates/types";
+import { getIsAdmin } from "@/lib/auth/admin-session";
+import { stripCostForViewer } from "@/lib/estimates/adminVisibility";
 
 const VALID_STATUSES: EstimateStatus[] = ["draft", "sent", "approved", "cancelled"];
 
@@ -17,7 +19,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const estimate = await getSavedEstimateDetail(id);
+    const [estimate, isAdmin] = await Promise.all([getSavedEstimateDetail(id), getIsAdmin()]);
 
     if (!estimate) {
       return NextResponse.json(
@@ -26,7 +28,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ estimate }, { status: 200 });
+    return NextResponse.json({ estimate: stripCostForViewer(estimate, isAdmin) }, { status: 200 });
   } catch (error) {
     console.error("견적서 상세 API 오류:", error);
     const message =

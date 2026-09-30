@@ -4,13 +4,18 @@ import {
   upsertDiscountPolicy,
 } from "@/lib/db/discount-policy-repo";
 import { z } from "zod";
+import { getIsAdmin, requireAdmin } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const policies = await getAllDiscountPolicies();
-    return NextResponse.json(policies);
+    const [policies, isAdmin] = await Promise.all([getAllDiscountPolicies(), getIsAdmin()]);
+    // 원가 할인율은 관리자 모드에서만 응답에 실어 보낸다.
+    const visible = isAdmin
+      ? policies
+      : policies.map((p) => ({ ...p, rate_cost: 0 }));
+    return NextResponse.json(visible);
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -27,6 +32,9 @@ const upsertSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     let body: unknown;
     try {

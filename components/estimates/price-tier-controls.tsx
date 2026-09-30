@@ -12,10 +12,13 @@ export function BasisTierSelect({
   value,
   onChange,
   disabled,
+  tiers = PRICE_TIERS,
 }: {
   value: PriceTier;
   onChange: (tier: PriceTier) => void;
   disabled?: boolean;
+  /** 선택 가능한 등급 목록. 기본은 전체 등급 — 관리자 모드가 아니면 getAllowedPriceTiers(false) 를 넘겨 "원가"를 제외한다. */
+  tiers?: PriceTier[];
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -29,7 +32,7 @@ export function BasisTierSelect({
         onChange={(event) => onChange(event.target.value as PriceTier)}
         className="w-28"
       >
-        {PRICE_TIERS.map((tier) => (
+        {tiers.map((tier) => (
           <option key={tier} value={tier}>
             {PRICE_TIER_LABELS[tier]}
           </option>
@@ -51,10 +54,13 @@ export function ReferenceTierCheckboxes({
   value,
   onChange,
   disabled,
+  tiers = PRICE_TIERS,
 }: {
   value: PriceTier[];
   onChange: (tiers: PriceTier[]) => void;
   disabled?: boolean;
+  /** 선택 가능한 등급 목록. 기본은 전체 등급 — 관리자 모드가 아니면 getAllowedPriceTiers(false) 를 넘겨 "원가"를 제외한다. */
+  tiers?: PriceTier[];
 }) {
   const toggle = (tier: PriceTier) => {
     onChange(
@@ -65,7 +71,7 @@ export function ReferenceTierCheckboxes({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="whitespace-nowrap text-sm font-medium">참고 가격 표시</span>
-      {PRICE_TIERS.map((tier) => (
+      {tiers.map((tier) => (
         <label key={tier} className="flex items-center gap-1.5 text-sm">
           <input
             type="checkbox"

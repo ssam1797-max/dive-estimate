@@ -12,8 +12,9 @@ import type {
   ProfileOption,
   TemplateSummary,
 } from "@/lib/estimates/types";
-import { tierPriceOfSnapshot, type DiscountPolicyMap } from "@/lib/estimates/pricing";
+import { resolveViewableTier, tierPriceOfSnapshot, type DiscountPolicyMap } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 
 export const metadata = {
   title: "견적서 작성",
@@ -48,13 +49,14 @@ function todayInSeoul(): string {
  */
 async function loadDuplicateSource(
   id: string,
-  catalog: EquipmentCatalogItem[]
+  catalog: EquipmentCatalogItem[],
+  isAdmin: boolean
 ): Promise<EstimateBuilderInitialData | null> {
   try {
     const estimate = await getSavedEstimateDetail(id);
     if (!estimate) return null;
 
-    const priceTier = estimate.priceTier ?? "RETAIL";
+    const priceTier = resolveViewableTier(estimate.priceTier, isAdmin);
     // 예외 할인율은 estimate_items 스냅샷에 없고 장비 마스터에만 있어,
     // 이미 불러온 catalog(최신 값)에서 equipmentId 로 찾아 채운다.
     const items: EstimateItemDraft[] = estimate.items.map((item) => ({
@@ -159,21 +161,38 @@ export default async function NewEstimatePage({
 }: {
   searchParams: Promise<{ duplicateFrom?: string }>;
 }) {
-  const { catalog, providers, receivers, templates, discountPolicies, loadError } =
-    await loadPageData();
+  const [{ catalog, providers, receivers, templates, discountPolicies, loadError }, isAdmin] =
+    await Promise.all([loadPageData(), getIsAdmin()]);
   const { duplicateFrom: duplicateFromId } = await searchParams;
   const duplicateFrom = duplicateFromId
-    ? await loadDuplicateSource(duplicateFromId, catalog)
+    ? await loadDuplicateSource(duplicateFromId, catalog, isAdmin)
     : null;
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 sm:p-8">
       <div>
         <h1 className="text-2xl font-semibold">견적서 작성</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          기본 정보를 입력하고 장비를 담아 견적서를 작성하세요. 자주 쓰는
-          구성은 템플릿으로 저장해두면 다음에 바로 불러올 수 있습니다.
-        </p>
+        <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 text-sm text-muted-foreground">
+          <li>
+            기본정보를 모두 입력해주세요. 발행일, 견적서 번호는 자동으로
+            입력됩니다. 공급자는 아무거나 선택하셔도 되구요. &apos;공급받는
+            자&apos;는 꼭 작성자 본인으로 해주시고 없으면 새로 입력 및 등록하셔서
+            해주세요.
+          </li>
+          <li>
+            장비추가에서 키워드 통합검색으로 검색하시면 되고 검색이 되셨으면
+            아래 +견적목록에 추가를 눌러서 견적목록을 완성해주세요.
+          </li>
+          <li>견적하고싶은 품목이 모두 완성되었으면 견적서 저장을 눌러서 저장해주시면됩니다.</li>
+          <li>
+            할인율이 수시로 바뀌고 아직 할인율을 지정하지 않는 품목도 있으니
+            관리자가 확인후 연락드리도록 하겠습니다.
+          </li>
+          <li>
+            견적서 작성후 위쪽에 탭을 클릭하시면 소비자가격, 퐁당 샵가격,
+            공급받을 수 있는 가격을 확인하실 수 있습니다.
+          </li>
+        </ol>
       </div>
 
       {loadError ? (
@@ -187,6 +206,7 @@ export default async function NewEstimatePage({
           receivers={receivers}
           initialTemplates={templates}
           discountPolicies={discountPolicies}
+          isAdmin={isAdmin}
           duplicateFrom={duplicateFrom ?? undefined}
         />
       )}

@@ -3,6 +3,7 @@ import { crawlScubaproCatalog } from "@/lib/crawler/scubaproCrawler";
 import { upsertEquipment } from "@/lib/equipment/upsertEquipment";
 import { SCUBAPRO_SYNC_BRAND } from "@/lib/equipment/constants";
 import type { EquipmentImportSummary } from "@/lib/equipment/types";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 // 여러 카테고리 페이지를 순차적으로(요청 간 딜레이를 두고) 크롤링하므로
 // 기본 제한보다 넉넉한 처리 시간이 필요합니다.
@@ -10,6 +11,9 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const catalogYear = new Date().getFullYear();
 

@@ -5,6 +5,7 @@ import type {
   EquipmentImportItemResult,
   EquipmentImportSummary,
 } from "@/lib/equipment/types";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 // 최상위 카테고리 하나를 여러 페이지로 나눠 순차 크롤링하고, 이어서 브랜드별로
 // 나눠 upsert 하므로(요청 수가 많음) 기본 제한보다 넉넉한 처리 시간이 필요합니다.
@@ -12,6 +13,9 @@ export const runtime = "nodejs";
 export const maxDuration = 240;
 
 export async function POST() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const catalogYear = new Date().getFullYear();
     const crawlResult = await crawlPongdangCatalog();

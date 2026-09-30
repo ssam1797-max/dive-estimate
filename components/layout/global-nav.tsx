@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import { AdminModeButton } from "@/components/layout/admin-mode-button";
 
 const NAV_ITEMS = [
   { emoji: "📄", label: "견적서 작성", href: "/estimates/new" },
@@ -67,6 +68,8 @@ export function GlobalNav() {
             </Link>
           );
         })}
+
+        <AdminModeButton />
       </nav>
     </header>
   );

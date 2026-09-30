@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GlobalNav } from "@/components/layout/global-nav";
+import { AdminModeProvider } from "@/components/layout/admin-mode-context";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -38,15 +40,19 @@ export const viewport: Viewport = {
   themeColor: "#0C4A6E",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const isAdmin = await getIsAdmin();
+
   return (
     <html
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <GlobalNav />
-        {children}
+        <AdminModeProvider isAdmin={isAdmin}>
+          <GlobalNav />
+          {children}
+        </AdminModeProvider>
       </body>
     </html>
   );

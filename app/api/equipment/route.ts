@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { insertEquipment } from "@/lib/db/equipment-repo";
 import { equipmentCreateSchema } from "@/lib/equipment/schema";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     let body: unknown;
     try {

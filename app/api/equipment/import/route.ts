@@ -8,6 +8,7 @@ import {
   MAX_PDF_FILE_SIZE_BYTES,
 } from "@/lib/equipment/constants";
 import type { EquipmentImportSummary } from "@/lib/equipment/types";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 // pdf-parse 는 Node.js 전용 API(파일 시스템, 네이티브 모듈)를 사용하므로
 // Edge 런타임이 아닌 Node.js 런타임에서 실행되어야 합니다.
@@ -17,6 +18,9 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     let formData: FormData;
     try {

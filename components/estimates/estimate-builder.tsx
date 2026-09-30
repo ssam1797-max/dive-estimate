@@ -35,6 +35,7 @@ import type {
 } from "@/lib/estimates/types";
 import {
   calculateEffectiveUnitPrice,
+  getAllowedPriceTiers,
   type DiscountPolicyMap,
   type PriceTier,
 } from "@/lib/estimates/pricing";
@@ -45,6 +46,8 @@ interface EstimateBuilderProps {
   receivers: ProfileOption[];
   initialTemplates: TemplateSummary[];
   discountPolicies: DiscountPolicyMap;
+  /** 관리자 모드 여부 — 원가("COST") 등급은 관리자 모드에서만 선택할 수 있다. */
+  isAdmin: boolean;
   /**
    * 저장된 견적서를 "이어서 수정" 하는 경우에만 전달한다. 없으면(undefined)
    * 기존과 완전히 동일한 "신규 견적서 작성" 화면으로 동작한다 — 저장 버튼도
@@ -162,9 +165,11 @@ export function EstimateBuilder({
   receivers: initialReceivers,
   initialTemplates,
   discountPolicies,
+  isAdmin,
   editContext,
   duplicateFrom,
 }: EstimateBuilderProps) {
+  const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
   const router = useRouter();
   const { state, totalAmount, actions } = useEstimateBuilder(
     discountPolicies,
@@ -620,11 +625,13 @@ export function EstimateBuilder({
             value={state.priceTier}
             onChange={actions.setPriceTier}
             disabled={isSaving || isExporting}
+            tiers={allowedPriceTiers}
           />
           <ReferenceTierCheckboxes
             value={state.referenceTiers}
             onChange={actions.setReferenceTiers}
             disabled={isSaving || isExporting}
+            tiers={allowedPriceTiers}
           />
         </div>
 

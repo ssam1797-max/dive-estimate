@@ -24,10 +24,12 @@ import type {
   SavedEstimateDetail,
   SavedEstimateSummary,
 } from "@/lib/estimates/types";
-import { tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
+import { getAllowedPriceTiers, tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 
 interface EstimateArchiveTableProps {
   initialEstimates: SavedEstimateSummary[];
+  /** 관리자 모드 여부 — 원가("COST") 등급은 관리자 모드에서만 선택할 수 있다. */
+  isAdmin: boolean;
 }
 
 const STATUS_LABELS: Record<EstimateStatus, string> = {
@@ -290,7 +292,8 @@ function EstimateDetailDialog({
 }
 
 /** [견적서 저장] 으로 저장한 견적서 목록. 행을 누르면 담겼던 장비 내역을 볼 수 있습니다. */
-export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableProps) {
+export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArchiveTableProps) {
+  const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
   const [estimates, setEstimates] = React.useState(initialEstimates);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [rowDeleteTarget, setRowDeleteTarget] = React.useState<string | null>(null);
@@ -368,7 +371,7 @@ export function EstimateArchiveTable({ initialEstimates }: EstimateArchiveTableP
 
   return (
     <>
-      <PriceTierSelect value={tier} onChange={setTier} />
+      <PriceTierSelect value={tier} onChange={setTier} tiers={allowedPriceTiers} />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">

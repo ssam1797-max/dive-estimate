@@ -8,8 +8,9 @@ import { listTemplateSummaries } from "@/lib/estimates/templateQueries";
 import { getSavedEstimateDetail } from "@/lib/db/estimate-repo";
 import { EstimateBuilder } from "@/components/estimates/estimate-builder";
 import type { EstimateItemDraft } from "@/lib/estimates/types";
-import { tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
+import { resolveViewableTier, tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 
 export const metadata = { title: "견적서 수정" };
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function EditEstimatePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const isAdmin = await getIsAdmin();
 
   let loadError: string | null = null;
   let catalog: Awaited<ReturnType<typeof getEquipmentCatalog>> = [];
@@ -48,7 +50,7 @@ export default async function EditEstimatePage({
     templates = templatesData;
     discountPolicies = discountPoliciesData;
 
-    const priceTier: PriceTier = estimate.priceTier ?? "RETAIL";
+    const priceTier: PriceTier = resolveViewableTier(estimate.priceTier, isAdmin);
 
     // 예외 할인율은 estimate_items 에 저장돼 있지 않고 장비 마스터
     // (equipment.override_discount_rate)에만 있다 — 이미 같이 불러온
@@ -112,6 +114,7 @@ export default async function EditEstimatePage({
           receivers={receivers}
           initialTemplates={templates}
           discountPolicies={discountPolicies}
+          isAdmin={isAdmin}
           editContext={editContext}
         />
       )}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteDiscountPolicy } from "@/lib/db/discount-policy-repo";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
@@ -7,6 +8,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ brand: string }> }
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const { brand } = await params;
     await deleteDiscountPolicy(decodeURIComponent(brand));

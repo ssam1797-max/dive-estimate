@@ -15,6 +15,29 @@ export const PRICE_TIER_LABELS: Record<PriceTier, string> = {
   COST: "원가",
 };
 
+/**
+ * 화면에 선택 가능한 등급 목록. 관리자 모드가 아니면 "원가"(COST)는 원가
+ * 보안 정책상 아예 선택지에서 제외한다 — 등급 탭/체크박스 등 모든 등급
+ * 선택 UI가 이 함수를 통해 옵션을 구성해야 한다.
+ */
+export function getAllowedPriceTiers(isAdmin: boolean): PriceTier[] {
+  return isAdmin ? PRICE_TIERS : PRICE_TIERS.filter((tier) => tier !== "COST");
+}
+
+/**
+ * 저장된 견적서를 비관리자가 열람/수정할 때 쓸 "표시 등급"을 정한다.
+ * 저장 당시 등급이 원가(COST)였더라도 비관리자에게는 그대로 보여주지
+ * 않고 소비자가(RETAIL)로 대체한다(단가 입력칸 등에 원가 숫자가 그대로
+ * 노출되는 것을 막기 위함).
+ */
+export function resolveViewableTier(
+  savedTier: PriceTier | null | undefined,
+  isAdmin: boolean
+): PriceTier {
+  const tier = savedTier ?? "RETAIL";
+  return !isAdmin && tier === "COST" ? "RETAIL" : tier;
+}
+
 /** discount_policies 1행에 해당하는 브랜드별 할인율 (%) */
 export interface BrandDiscountRates {
   rate_retail: number;

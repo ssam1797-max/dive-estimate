@@ -5,6 +5,7 @@ import {
   deleteEquipment,
 } from "@/lib/db/equipment-repo";
 import { equipmentUpdateSchema } from "@/lib/equipment/schema";
+import { requireAdmin } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PUT(request: Request, { params }: RouteParams) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const { id } = await params;
 
@@ -94,6 +98,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     const deleted = await deleteEquipment(id);

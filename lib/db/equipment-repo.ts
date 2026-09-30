@@ -146,6 +146,16 @@ function sanitizeSearchQuery(raw: string): string {
 }
 
 /**
+ * 검색어에서 공백을 전부 제거한 변형을 함께 만든다 — "스쿠버 프로"로 검색해도
+ * 공백 없이 저장된 "스쿠버프로"가 걸리도록, 원본 검색어와 공백 제거 검색어
+ * 둘 다로 매칭을 시도한다(둘이 같으면 중복 없이 하나만 사용).
+ */
+function buildSearchQueryVariants(query: string): string[] {
+  const noSpace = query.replace(/\s+/g, "");
+  return noSpace && noSpace !== query ? [query, noSpace] : [query];
+}
+
+/**
  * 검색 결과 정렬 우선순위: ① 최근 사용 일시(last_used_at) 내림차순(최근
  * 사용한 적 없으면 맨 뒤) → ② 수동 등록/수정(is_custom=true) 우선 → ③
  * 브랜드/품명 가나다순. "자주 쓰는 품목이 검색할 때마다 상단에 뜬다"는
@@ -181,13 +191,15 @@ export async function searchEquipment(
   );
 
   if (isMockMode()) {
-    const lower = query.toLowerCase();
+    const lowerVariants = buildSearchQueryVariants(query).map((v) => v.toLowerCase());
     const matched = mockStore.equipment
-      .filter(
-        (e) =>
-          e.brand.toLowerCase().includes(lower) ||
-          e.category.toLowerCase().includes(lower) ||
-          e.name.toLowerCase().includes(lower)
+      .filter((e) =>
+        lowerVariants.some(
+          (v) =>
+            e.brand.toLowerCase().includes(v) ||
+            e.category.toLowerCase().includes(v) ||
+            e.name.toLowerCase().includes(v)
+        )
       )
       .sort(compareBySearchPriority);
     return {
@@ -219,6 +231,13 @@ export async function searchEquipment(
     override_discount_rate: number | string | null;
   }
 
+  // "스쿠버 프로"(공백 있음)로 검색해도 "스쿠버프로"(공백 없이 저장)가
+  // 걸리도록, 원본 검색어와 공백 제거 검색어 각각에 대한 3개 컬럼 ilike
+  // 조건을 모두 OR로 묶는다.
+  const orFilter = buildSearchQueryVariants(query)
+    .flatMap((v) => [`brand.ilike.%${v}%`, `category.ilike.%${v}%`, `name.ilike.%${v}%`])
+    .join(",");
+
   const buildQuery = (from: number, to: number) =>
     supabase
       .from("equipment")
@@ -226,7 +245,7 @@ export async function searchEquipment(
         "id, brand, category, name, price_retail, colors, sizes, override_discount_rate",
         { count: "exact" }
       )
-      .or(`brand.ilike.%${query}%,category.ilike.%${query}%,name.ilike.%${query}%`)
+      .or(orFilter)
       // 최근 사용 우선 → 수동 등록/수정 우선 → 브랜드/품명 가나다순.
       // (nullsFirst: false 로, 한 번도 안 쓴 품목을 맨 뒤로 보낸다.)
       .order("last_used_at", { ascending: false, nullsFirst: false })

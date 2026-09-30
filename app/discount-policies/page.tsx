@@ -3,6 +3,7 @@ import { getEquipmentBrands } from "@/lib/db/equipment-repo";
 import { isMockMode } from "@/lib/db/is-mock";
 import { DiscountPolicyTable } from "@/components/discount-policies/discount-policy-table";
 import type { PolicyRow } from "@/components/discount-policies/discount-policy-table";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 
 export const metadata = { title: "브랜드별 할인율 설정" };
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function DiscountPoliciesPage() {
   let allBrands: string[] = [];
   let loadError = false;
   const mockMode = isMockMode();
+  const isAdmin = await getIsAdmin();
 
   try {
     const [rawPolicies, eqBrands] = await Promise.all([
@@ -24,7 +26,8 @@ export default async function DiscountPoliciesPage() {
       rate_retail: p.rate_retail,
       rate_instructor: p.rate_instructor,
       rate_center: p.rate_center,
-      rate_cost: p.rate_cost,
+      // 원가 할인율은 관리자 모드에서만 화면/응답에 실어 보낸다.
+      rate_cost: isAdmin ? p.rate_cost : 0,
     }));
     allBrands = [...new Set([...eqBrands, ...rawPolicies.map((p) => p.brand)])].sort();
   } catch {
@@ -58,7 +61,7 @@ export default async function DiscountPoliciesPage() {
           데이터를 불러오지 못했습니다. 환경 설정을 확인해주세요.
         </p>
       ) : (
-        <DiscountPolicyTable initialPolicies={policies} allBrands={allBrands} />
+        <DiscountPolicyTable initialPolicies={policies} allBrands={allBrands} isAdmin={isAdmin} />
       )}
     </main>
   );
