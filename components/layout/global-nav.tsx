@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { AdminModeButton } from "@/components/layout/admin-mode-button";
+import { useAdminMode } from "@/components/layout/admin-mode-context";
 
 const NAV_ITEMS = [
-  { emoji: "📄", label: "견적서 작성", href: "/estimates/new" },
-  { emoji: "🗄️", label: "견적서 보관함", href: "/estimates" },
-  { emoji: "🏢", label: "공급자/고객 관리", href: "/profiles" },
-  { emoji: "📉", label: "브랜드 할인율 설정", href: "/discount-policies" },
-  { emoji: "📥", label: "장비 동기화/등록", href: "/equipment/import" },
+  { emoji: "📄", label: "견적서 작성", href: "/estimates/new", adminOnly: false },
+  { emoji: "🗄️", label: "견적서 보관함", href: "/estimates", adminOnly: false },
+  { emoji: "🏢", label: "공급자/고객 관리", href: "/profiles", adminOnly: false },
+  { emoji: "📉", label: "브랜드 할인율 설정", href: "/discount-policies", adminOnly: true },
+  { emoji: "📥", label: "장비 동기화/등록", href: "/equipment/import", adminOnly: true },
 ] as const;
 
 /**
@@ -35,6 +36,8 @@ function findActiveHref(pathname: string): string | null {
 export function GlobalNav() {
   const pathname = usePathname();
   const activeHref = findActiveHref(pathname);
+  const isAdmin = useAdminMode();
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 print:hidden">
@@ -49,7 +52,7 @@ export function GlobalNav() {
           다이빙 견적 시스템
         </Link>
 
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = item.href === activeHref;
           return (
             <Link

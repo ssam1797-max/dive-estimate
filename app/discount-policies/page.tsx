@@ -15,23 +15,24 @@ export default async function DiscountPoliciesPage() {
   const mockMode = isMockMode();
   const isAdmin = await getIsAdmin();
 
-  try {
-    const [rawPolicies, eqBrands] = await Promise.all([
-      getAllDiscountPolicies(),
-      getEquipmentBrands(),
-    ]);
-    policies = rawPolicies.map((p) => ({
-      brand: p.brand,
-      aliases: p.aliases,
-      rate_retail: p.rate_retail,
-      rate_instructor: p.rate_instructor,
-      rate_center: p.rate_center,
-      // 원가 할인율은 관리자 모드에서만 화면/응답에 실어 보낸다.
-      rate_cost: isAdmin ? p.rate_cost : 0,
-    }));
-    allBrands = [...new Set([...eqBrands, ...rawPolicies.map((p) => p.brand)])].sort();
-  } catch {
-    loadError = true;
+  if (isAdmin) {
+    try {
+      const [rawPolicies, eqBrands] = await Promise.all([
+        getAllDiscountPolicies(),
+        getEquipmentBrands(),
+      ]);
+      policies = rawPolicies.map((p) => ({
+        brand: p.brand,
+        aliases: p.aliases,
+        rate_retail: p.rate_retail,
+        rate_instructor: p.rate_instructor,
+        rate_center: p.rate_center,
+        rate_cost: p.rate_cost,
+      }));
+      allBrands = [...new Set([...eqBrands, ...rawPolicies.map((p) => p.brand)])].sort();
+    } catch {
+      loadError = true;
+    }
   }
 
   return (
@@ -56,7 +57,12 @@ export default async function DiscountPoliciesPage() {
         </div>
       )}
 
-      {loadError ? (
+      {!isAdmin ? (
+        <p className="rounded-md border border-dashed bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+          브랜드 할인율 설정은 관리자 모드에서만 이용할 수 있습니다. 상단
+          &quot;관리자 모드&quot; 버튼으로 로그인해주세요.
+        </p>
+      ) : loadError ? (
         <p className="text-sm text-destructive">
           데이터를 불러오지 못했습니다. 환경 설정을 확인해주세요.
         </p>

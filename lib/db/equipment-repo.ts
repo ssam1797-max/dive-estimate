@@ -145,14 +145,36 @@ function sanitizeSearchQuery(raw: string): string {
   return raw.replace(/[,()"'\\%_]/g, " ").trim();
 }
 
+/** 공백을 전부 제거하고 소문자로 통일한 비교용 키 — "스쿠버 프로"(검색어)와
+ *  "스쿠버프로"(저장값), 또는 그 반대(저장값에 공백이 있고 검색어에는 없는
+ *  경우, 예: "곰 후드" ↔ "곰후드")를 모두 같은 값으로 취급하기 위함. */
+function stripWhitespace(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
 /**
- * 검색어에서 공백을 전부 제거한 변형을 함께 만든다 — "스쿠버 프로"로 검색해도
- * 공백 없이 저장된 "스쿠버프로"가 걸리도록, 원본 검색어와 공백 제거 검색어
- * 둘 다로 매칭을 시도한다(둘이 같으면 중복 없이 하나만 사용).
+ * Postgres ILIKE 패턴에서 (공백 제거한) 검색어의 글자 하나하나 사이에 `%`를
+ * 끼워 넣은 "느슨한" 패턴을 만든다 — 예: "곰후드" → "%곰%후%드%". 이러면
+ * 글자 사이에 공백이든 다른 글자든 뭐가 오든 일단 걸려든다. ILIKE는 컬럼
+ * 값 자체의 공백을 제거하고 비교할 수 없으므로(PostgREST 필터는 컬럼을
+ * 그대로 비교할 뿐 표현식을 계산하지 못함), 이 느슨한 패턴으로 DB에서
+ * 후보를 넓게 추린 뒤 matchesIgnoringWhitespace 로 정확히 다시 거른다.
  */
-function buildSearchQueryVariants(query: string): string[] {
-  const noSpace = query.replace(/\s+/g, "");
-  return noSpace && noSpace !== query ? [query, noSpace] : [query];
+function buildLooseIlikePattern(query: string): string {
+  const chars = Array.from(stripWhitespace(query));
+  return chars.length > 0 ? `%${chars.join("%")}%` : "%";
+}
+
+/** brand/category/name 중 하나라도 공백을 무시했을 때 검색어를 포함하면 매칭으로 본다. */
+function matchesIgnoringWhitespace(
+  row: { brand: string; category: string; name: string },
+  noSpaceQuery: string
+): boolean {
+  return (
+    stripWhitespace(row.brand).includes(noSpaceQuery) ||
+    stripWhitespace(row.category).includes(noSpaceQuery) ||
+    stripWhitespace(row.name).includes(noSpaceQuery)
+  );
 }
 
 /**
@@ -191,16 +213,9 @@ export async function searchEquipment(
   );
 
   if (isMockMode()) {
-    const lowerVariants = buildSearchQueryVariants(query).map((v) => v.toLowerCase());
+    const noSpaceQuery = stripWhitespace(query);
     const matched = mockStore.equipment
-      .filter((e) =>
-        lowerVariants.some(
-          (v) =>
-            e.brand.toLowerCase().includes(v) ||
-            e.category.toLowerCase().includes(v) ||
-            e.name.toLowerCase().includes(v)
-        )
-      )
+      .filter((e) => matchesIgnoringWhitespace(e, noSpaceQuery))
       .sort(compareBySearchPriority);
     return {
       items: (unlimited ? matched : matched.slice(0, cappedLimit)).map((e) => ({
@@ -231,12 +246,19 @@ export async function searchEquipment(
     override_discount_rate: number | string | null;
   }
 
-  // "스쿠버 프로"(공백 있음)로 검색해도 "스쿠버프로"(공백 없이 저장)가
-  // 걸리도록, 원본 검색어와 공백 제거 검색어 각각에 대한 3개 컬럼 ilike
-  // 조건을 모두 OR로 묶는다.
-  const orFilter = buildSearchQueryVariants(query)
-    .flatMap((v) => [`brand.ilike.%${v}%`, `category.ilike.%${v}%`, `name.ilike.%${v}%`])
-    .join(",");
+  // ILIKE는 컬럼 값 자체의 공백을 제거하고 비교하지 못하므로, 글자 사이에
+  // 무엇이 오든 걸리는 느슨한 패턴으로 DB에서 후보를 넓게 추린다("곰후드"로
+  // 검색해도 "곰 후드"가 걸리도록). 이 느슨한 패턴은 오탐(글자 순서만 맞고
+  // 실제로는 공백 무시 비교에 실패하는 값)을 포함할 수 있어, 전량을 받아
+  // matchesIgnoringWhitespace 로 다시 정확히 거른 뒤에야 최종 개수/페이지를
+  // 확정한다 — 그래서 limit 이 있어도 항상 전량(fetchAllPages)을 먼저 가져온다.
+  const noSpaceQuery = stripWhitespace(query);
+  const loosePattern = buildLooseIlikePattern(query);
+  const orFilter = [
+    `brand.ilike.${loosePattern}`,
+    `category.ilike.${loosePattern}`,
+    `name.ilike.${loosePattern}`,
+  ].join(",");
 
   const buildQuery = (from: number, to: number) =>
     supabase
@@ -254,18 +276,10 @@ export async function searchEquipment(
       .order("name", { ascending: true })
       .range(from, to);
 
-  let rows: EquipmentSearchRow[];
-  let total: number;
-
-  if (unlimited) {
-    rows = await fetchAllPages<EquipmentSearchRow>(buildQuery);
-    total = rows.length;
-  } else {
-    const { data, error, count } = await buildQuery(0, cappedLimit - 1);
-    if (error) throw error;
-    rows = (data ?? []) as EquipmentSearchRow[];
-    total = count ?? rows.length;
-  }
+  const candidates = await fetchAllPages<EquipmentSearchRow>(buildQuery);
+  const filtered = candidates.filter((row) => matchesIgnoringWhitespace(row, noSpaceQuery));
+  const total = filtered.length;
+  const rows = unlimited ? filtered : filtered.slice(0, cappedLimit);
 
   const items = rows.map((row) => ({
     id: row.id,
