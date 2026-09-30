@@ -3,7 +3,6 @@ import { getEquipmentBrands } from "@/lib/db/equipment-repo";
 import { isMockMode } from "@/lib/db/is-mock";
 import { DiscountPolicyTable } from "@/components/discount-policies/discount-policy-table";
 import type { PolicyRow } from "@/components/discount-policies/discount-policy-table";
-import { PongdangShopSyncButton } from "@/components/discount-policies/pongdang-shop-sync-button";
 
 export const metadata = { title: "브랜드별 할인율 설정" };
 export const dynamic = "force-dynamic";
@@ -59,17 +58,7 @@ export default async function DiscountPoliciesPage() {
           데이터를 불러오지 못했습니다. 환경 설정을 확인해주세요.
         </p>
       ) : (
-        <>
-          <div className="flex flex-col gap-2 rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground">
-              퐁당닷컴 상품 목록에 공개적으로 표시되는 할인율(예: &quot;30%↓&quot;)을
-              그대로 읽어와 브랜드별 평균을 내고, 공급가 탭에 자동 반영합니다.
-              로그인이 필요 없어 별도 설정 없이 바로 사용할 수 있습니다.
-            </p>
-            <PongdangShopSyncButton />
-          </div>
-          <DiscountPolicyTable initialPolicies={policies} allBrands={allBrands} />
-        </>
+        <DiscountPolicyTable initialPolicies={policies} allBrands={allBrands} />
       )}
     </main>
   );

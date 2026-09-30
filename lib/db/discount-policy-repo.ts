@@ -14,7 +14,7 @@ export interface DiscountPolicy {
   rate_instructor: number;
   rate_center: number;
   rate_cost: number;
-  /** 사용자가 "브랜드 할인율 설정" 화면에서 직접 저장했으면 true — 퐁당닷컴 동기화가 덮어쓰지 않는다. */
+  /** 사용자가 "브랜드 할인율 설정" 화면에서 직접 저장했으면 true. */
   is_custom: boolean;
 }
 
@@ -70,28 +70,6 @@ export async function getDiscountPolicyMap(): Promise<DiscountPolicyMap> {
   return buildDiscountPolicyMap(list);
 }
 
-/** 대소문자뿐 아니라 앞뒤/연속 공백 차이도 무시하고 비교하기 위한 키. */
-function normalizeBrandKey(brand: string): string {
-  return brand.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/**
- * 원본(크롤러가 수집한) 브랜드 문자열로 기존 정책을 찾는다. brand 필드 자체뿐
- * 아니라 별칭(aliases)도 확인해서, "마레스"로 조회해도 "Mares" 정책 행을
- * 찾아낸다 — 자동 동기화가 별칭이 등록된 브랜드에 중복 행을 만들지 않게 하기 위함.
- */
-export async function findDiscountPolicyByBrandOrAlias(
-  rawBrand: string
-): Promise<DiscountPolicy | undefined> {
-  const target = normalizeBrandKey(rawBrand);
-  const list = await getAllDiscountPolicies();
-  return list.find(
-    (p) =>
-      normalizeBrandKey(p.brand) === target ||
-      p.aliases.some((alias) => normalizeBrandKey(alias) === target)
-  );
-}
-
 // ── 브랜드 목록 (정책이 있는 브랜드만) ───────────────────────────────────────
 
 export async function getDiscountPolicyBrands(): Promise<string[]> {
@@ -126,11 +104,6 @@ export interface UpsertDiscountPolicyInput {
  * 저장한 것으로 간주해 is_custom=true 를 강제로 써넣는다("직접 등록"
  * 화면이 항상 is_custom=true 를 강제하는 equipment-repo.ts 의
  * insertEquipment/updateEquipment 와 같은 패턴).
- *
- * 자동 동기화(퐁당닷컴)는 이 옵션 없이 호출한다 — payload 에 is_custom
- * 키 자체를 넣지 않으면, upsert 의 ON CONFLICT DO UPDATE 가 기존 값을
- * 그대로 두고(신규 삽입일 때만 컬럼 기본값 false 가 적용된다), 자동
- * 동기화가 실수로 보호 플래그를 되돌리는 일이 없다.
  */
 export async function upsertDiscountPolicy(
   rawInput: UpsertDiscountPolicyInput,
