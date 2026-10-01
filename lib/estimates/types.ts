@@ -153,6 +153,8 @@ export interface SavedEstimateSummary {
    */
   totalsByTier: Record<PriceTier, number>;
   createdAt: string;
+  /** 작성 시 설정한 수정/삭제 보호 비밀번호가 있으면 true (해시 값 자체는 클라이언트로 내려주지 않는다). */
+  hasEditPassword: boolean;
 }
 
 /** 견적서 보관함 상세 조회 시 항목 1건 */

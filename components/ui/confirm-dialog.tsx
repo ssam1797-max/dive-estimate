@@ -23,6 +23,8 @@ interface ConfirmDialogProps {
   /** 삭제처럼 되돌릴 수 없는 작업이면 destructive(기본값). */
   variant?: ButtonProps["variant"];
   onConfirm: () => Promise<void> | void;
+  /** 설명과 확인/취소 버튼 사이에 추가로 보여줄 내용(예: 비밀번호 입력칸). */
+  children?: React.ReactNode;
 }
 
 /**
@@ -40,6 +42,7 @@ export function ConfirmDialog({
   cancelLabel = "취소",
   variant = "destructive",
   onConfirm,
+  children,
 }: ConfirmDialogProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -75,6 +78,8 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+
+        {children}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

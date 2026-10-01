@@ -70,6 +70,8 @@ export interface MockEstimate {
   price_tier: string | null;
   /** "draft"|"sent"|"approved"|"cancelled". 템플릿 행에는 의미 없음. */
   status: string;
+  /** 수정/삭제 보호 비밀번호 해시("salt:hash"). null이면 보호 없음(템플릿 포함). */
+  edit_password_hash: string | null;
   created_at: string;
   updated_at: string;
 }

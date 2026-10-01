@@ -10,7 +10,7 @@ export interface ToastState {
   message: string;
 }
 
-const AUTO_DISMISS_MS = 4000;
+const DEFAULT_AUTO_DISMISS_MS = 4000;
 
 /**
  * 별도 Toast 라이브러리 없이, 화면 우측 하단에 잠깐 떴다 사라지는
@@ -19,15 +19,18 @@ const AUTO_DISMISS_MS = 4000;
 export function InlineToast({
   toast,
   onDismiss,
+  durationMs = DEFAULT_AUTO_DISMISS_MS,
 }: {
   toast: ToastState | null;
   onDismiss: () => void;
+  /** 자동으로 사라지기까지의 시간(ms). 기본 4000ms. */
+  durationMs?: number;
 }) {
   React.useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(onDismiss, AUTO_DISMISS_MS);
+    const timer = setTimeout(onDismiss, durationMs);
     return () => clearTimeout(timer);
-  }, [toast, onDismiss]);
+  }, [toast, onDismiss, durationMs]);
 
   if (!toast) return null;
 

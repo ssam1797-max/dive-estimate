@@ -9,6 +9,7 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { EquipmentQuickSearch } from "@/components/estimates/equipment-quick-search";
 import { ManualItemForm } from "@/components/estimates/manual-item-form";
 import { Input } from "@/components/ui/input";
+import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { EquipmentCatalogItem, EstimateItemDraft } from "@/lib/estimates/types";
@@ -58,6 +59,7 @@ export function EquipmentPicker({
   const [size, setSize] = React.useState("");
   const [quantity, setQuantity] = React.useState(1);
   const [itemRemarks, setItemRemarks] = React.useState("");
+  const [toast, setToast] = React.useState<ToastState | null>(null);
 
   // 최근 사용한 브랜드/카테고리/장비(localStorage 기록)를 드롭다운 맨 위로
   // 올리기 위한 외부 스토어 구독. 서버 렌더링에서는 항상 빈 배열을 쓰고,
@@ -233,6 +235,8 @@ export function EquipmentPicker({
     setSize("");
     setQuantity(1);
     setItemRemarks("");
+
+    setToast({ tone: "success", message: "견적 목록에 추가되었습니다." });
   };
 
   return (
@@ -392,6 +396,8 @@ export function EquipmentPicker({
           disabled={disabled}
         />
       </CardContent>
+
+      <InlineToast toast={toast} onDismiss={() => setToast(null)} durationMs={1800} />
     </Card>
   );
 }

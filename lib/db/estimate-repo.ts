@@ -62,6 +62,8 @@ interface SaveEstimateParams {
   templateName: string | null;
   priceTier: PriceTier | null;
   items: SaveEstimateItemPayload[];
+  /** 수정/삭제 보호 비밀번호 해시("salt:hash"). 템플릿 저장 시에는 보통 null. */
+  editPasswordHash?: string | null;
 }
 
 export async function saveEstimate(params: SaveEstimateParams): Promise<string> {
@@ -97,6 +99,7 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
       template_name: params.templateName,
       price_tier: params.priceTier,
       status: "draft",
+      edit_password_hash: params.editPasswordHash ?? null,
       created_at: now,
       updated_at: now,
     });
@@ -167,7 +170,20 @@ export async function saveEstimate(params: SaveEstimateParams): Promise<string> 
     if (error.code === "23505") throw new Error("이미 사용된 견적서 번호입니다.");
     throw new Error("견적서 저장 중 오류가 발생했습니다.");
   }
-  return data as string;
+  const id = data as string;
+
+  // create_estimate_with_items RPC 는 edit_password_hash 를 모르므로(기존
+  // RPC 시그니처를 건드리지 않기 위해), 생성 직후 한 번 더 갱신한다. 템플릿
+  // 저장 등 비밀번호가 없는 호출은 editPasswordHash 가 비어 있어 건너뛴다.
+  if (params.editPasswordHash) {
+    const { error: pwError } = await supabase
+      .from("estimates")
+      .update({ edit_password_hash: params.editPasswordHash })
+      .eq("id", id);
+    if (pwError) throw new Error("견적서 비밀번호 저장 중 오류가 발생했습니다.");
+  }
+
+  return id;
 }
 
 // ── 견적서 수정("이어서 작성" 후 덮어쓰기 저장) ────────────────────────────────
@@ -284,6 +300,38 @@ export async function updateSavedEstimate(
     throw new Error("견적서 수정 중 오류가 발생했습니다.");
   }
   return data as string;
+}
+
+// ── 수정/삭제 보호 비밀번호 확인 ────────────────────────────────────────────────
+
+export interface EstimateEditAuth {
+  /** 작성 시 설정한 보호 비밀번호 해시("salt:hash"). 없으면(레거시 견적서) null. */
+  editPasswordHash: string | null;
+}
+
+/**
+ * 수정(PUT)/삭제(DELETE)/비밀번호 확인(verify-password) 라우트가 공통으로
+ * 쓰는 조회 — 해당 견적서(템플릿 제외)의 비밀번호 해시만 가져온다. 해시
+ * 자체는 서버 라우트 안에서만 비교에 쓰이고 클라이언트로는 절대 내려주지 않는다.
+ */
+export async function getEstimateEditAuth(id: string): Promise<EstimateEditAuth | null> {
+  if (isMockMode()) {
+    const row = mockStore.estimates.find((e) => e.id === id && !e.template_name);
+    if (!row) return null;
+    return { editPasswordHash: row.edit_password_hash };
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { data, error } = await supabase
+    .from("estimates")
+    .select("edit_password_hash")
+    .eq("id", id)
+    .is("template_name", null)
+    .maybeSingle();
+  if (error) throw new Error("견적서 정보를 불러오지 못했습니다.");
+  if (!data) return null;
+  return { editPasswordHash: (data as { edit_password_hash: string | null }).edit_password_hash };
 }
 
 // ── 템플릿 목록 ───────────────────────────────────────────────────────────────
@@ -503,6 +551,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
             e.total_amount
           ),
           createdAt: e.created_at,
+          hasEditPassword: e.edit_password_hash !== null,
         };
       });
   }
@@ -517,7 +566,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
   const { data, error } = await supabase
     .from("estimates")
     .select(
-      "id, estimate_number, date, total_amount, status, created_at, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
+      "id, estimate_number, date, total_amount, status, created_at, edit_password_hash, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
     )
     .is("template_name", null)
     .order("created_at", { ascending: false });
@@ -530,6 +579,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
     total_amount: number | string;
     status: EstimateStatus;
     created_at: string;
+    edit_password_hash: string | null;
     provider: { name: string }[] | { name: string } | null;
     receiver: { name: string }[] | { name: string } | null;
     estimate_items: {
@@ -563,6 +613,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
       totalAmount,
       totalsByTier: computeTotalsByTier(items, totalAmount),
       createdAt: row.created_at,
+      hasEditPassword: row.edit_password_hash !== null,
     };
   });
 }
@@ -633,6 +684,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       provider,
       receiver,
       priceTier: (estimate.price_tier as PriceTier | null) ?? null,
+      hasEditPassword: estimate.edit_password_hash !== null,
     };
   }
 
@@ -640,7 +692,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
   const supabase = await createAdminClient();
   const { data: estimate, error: estimateError } = await supabase
     .from("estimates")
-    .select("id, estimate_number, date, remarks, total_amount, status, created_at, provider_id, receiver_id, price_tier")
+    .select("id, estimate_number, date, remarks, total_amount, status, created_at, provider_id, receiver_id, price_tier, edit_password_hash")
     .eq("id", id)
     .is("template_name", null)
     .maybeSingle();
@@ -659,6 +711,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     provider_id: string;
     receiver_id: string;
     price_tier: string | null;
+    edit_password_hash: string | null;
   };
 
   const [provider, receiver, items] = await Promise.all([
@@ -738,6 +791,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     items: detailItems,
     provider,
     receiver,
+    hasEditPassword: row.edit_password_hash !== null,
   };
 }
 

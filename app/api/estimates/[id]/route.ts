@@ -9,6 +9,7 @@ import { saveRealEstimateSchema } from "@/lib/estimates/schema";
 import type { EstimateStatus } from "@/lib/estimates/types";
 import { getIsAdmin } from "@/lib/auth/admin-session";
 import { stripCostForViewer } from "@/lib/estimates/adminVisibility";
+import { checkEstimateEditAccess } from "@/lib/estimates/estimateAccess";
 
 const VALID_STATUSES: EstimateStatus[] = ["draft", "sent", "approved", "cancelled"];
 
@@ -62,6 +63,11 @@ export async function PUT(
         { error: parsed.error.issues.map((issue) => issue.message).join(" ") },
         { status: 400 }
       );
+    }
+
+    const access = await checkEstimateEditAccess(id, parsed.data.currentPassword);
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
     }
 
     const updatedId = await updateSavedEstimate(id, {
@@ -120,11 +126,23 @@ export async function PATCH(
 
 /** DELETE /api/estimates/[id] - 견적서 보관함에서 견적서 1건 삭제 */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    // 삭제 요청은 바디가 없을 수도 있다(관리자 모드/비밀번호 없는 레거시 견적서).
+    const body = await request.json().catch(() => ({}));
+    const currentPassword =
+      typeof (body as { currentPassword?: unknown })?.currentPassword === "string"
+        ? (body as { currentPassword: string }).currentPassword
+        : undefined;
+
+    const access = await checkEstimateEditAccess(id, currentPassword);
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
+
     const deleted = await deleteSavedEstimate(id);
 
     if (!deleted) {

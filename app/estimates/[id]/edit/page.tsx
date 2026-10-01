@@ -7,6 +7,7 @@ import {
 import { listTemplateSummaries } from "@/lib/estimates/templateQueries";
 import { getSavedEstimateDetail } from "@/lib/db/estimate-repo";
 import { EstimateBuilder } from "@/components/estimates/estimate-builder";
+import { EstimateEditGate } from "@/components/estimates/estimate-edit-gate";
 import type { EstimateItemDraft } from "@/lib/estimates/types";
 import { resolveViewableTier, tierPriceOfSnapshot, type PriceTier } from "@/lib/estimates/pricing";
 import type { EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
@@ -31,6 +32,10 @@ export default async function EditEstimatePage({
   let templates: Awaited<ReturnType<typeof listTemplateSummaries>> = [];
   let discountPolicies: Awaited<ReturnType<typeof getDiscountPolicyMap>> = {};
   let editContext: { estimateId: string; initialData: EstimateBuilderInitialData } | null = null;
+  // 관리자 모드가 아니고, 저장 시 비밀번호를 설정해둔 견적서만 비밀번호
+  // 확인 게이트를 거친다 — 이 기능 추가 이전에 저장된(비밀번호 없는)
+  // 견적서는 기존처럼 그대로 수정할 수 있다(소급 적용하지 않음).
+  let needsPasswordGate = false;
 
   try {
     const [estimate, catalogData, providersData, receiversData, templatesData, discountPoliciesData] =
@@ -45,6 +50,7 @@ export default async function EditEstimatePage({
 
     if (!estimate) notFound();
 
+    needsPasswordGate = !isAdmin && estimate.hasEditPassword;
     catalog = catalogData;
     providers = providersData;
     receivers = receiversData;
@@ -112,6 +118,19 @@ export default async function EditEstimatePage({
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           {loadError ?? "견적서를 불러오지 못했습니다."}
         </div>
+      ) : needsPasswordGate ? (
+        <EstimateEditGate
+          estimateId={editContext.estimateId}
+          builderProps={{
+            catalog,
+            providers,
+            receivers,
+            initialTemplates: templates,
+            discountPolicies,
+            isAdmin,
+            editContext,
+          }}
+        />
       ) : (
         <EstimateBuilder
           catalog={catalog}

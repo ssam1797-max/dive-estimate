@@ -22,6 +22,7 @@ import {
   ReferenceTierCheckboxes,
 } from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
+import { EstimatePasswordDialog } from "@/components/estimates/estimate-password-dialog";
 import { useEstimateBuilder, type EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import type {
   EquipmentCatalogItem,
@@ -54,6 +55,12 @@ interface EstimateBuilderProps {
   editContext?: {
     estimateId: string;
     initialData: EstimateBuilderInitialData;
+    /**
+     * 비밀번호로 보호된 견적서를 "이어서 수정" 화면 진입 시 미리 확인받은
+     * 비밀번호(EstimateEditGate 가 검증 완료 후 전달). 관리자 모드이거나
+     * 애초에 비밀번호가 없던 견적서면 undefined.
+     */
+    currentPassword?: string;
   };
   /**
    * 저장된 견적서를 "복제"해서 새 견적서 작성 화면을 시작하는 경우에만
@@ -204,27 +211,23 @@ export function EstimateBuilder({
     [receivers, state.receiverId]
   );
 
-  const handleSaveEstimate = async () => {
-    setSaveError(null);
-    setSavedEstimateNumber(null);
+  /** 저장 전 공통 검증. 문제가 있으면 에러 메시지를, 없으면 null 을 돌려준다. */
+  const validateBeforeSave = (): string | null => {
+    if (!state.providerId) return "공급자를 선택해주세요.";
+    if (!state.receiverId) return "공급받는자를 선택해주세요.";
+    if (!state.estimateNumber) return "견적서 번호가 아직 생성되지 않았습니다. 잠시 후 다시 시도해주세요.";
+    if (state.items.length === 0) return "장비를 1개 이상 담아주세요.";
+    return null;
+  };
 
-    if (!state.providerId) {
-      setSaveError("공급자를 선택해주세요.");
-      return;
-    }
-    if (!state.receiverId) {
-      setSaveError("공급받는자를 선택해주세요.");
-      return;
-    }
-    if (!state.estimateNumber) {
-      setSaveError("견적서 번호가 아직 생성되지 않았습니다. 잠시 후 다시 시도해주세요.");
-      return;
-    }
-    if (state.items.length === 0) {
-      setSaveError("장비를 1개 이상 담아주세요.");
-      return;
-    }
+  // 신규 저장("견적서 저장")과 "새 견적서로 복사 저장"은 둘 다 새 견적서
+  // 행을 만들므로, 저장 직전에 수정/삭제 보호 비밀번호를 새로 설정받아야
+  // 한다 — 어느 버튼을 눌렀는지에 따라 비밀번호 확인 후 실행할 동작만 다르다.
+  const [pendingPasswordAction, setPendingPasswordAction] = React.useState<
+    "save" | "saveAsCopy" | null
+  >(null);
 
+  const performSaveEstimate = async (password: string) => {
     setIsSaving(true);
     try {
       const response = await fetch("/api/estimates", {
@@ -238,6 +241,7 @@ export function EstimateBuilder({
           remarks: state.remarks,
           priceTier: state.priceTier,
           items: toItemPayloads(state.items, discountPolicies, state.priceTier),
+          editPassword: password,
         }),
       });
 
@@ -249,23 +253,23 @@ export function EstimateBuilder({
 
       setSavedEstimateNumber(state.estimateNumber);
       actions.resetAfterSave();
-    } catch (error) {
-      console.error("견적서 저장 실패:", error);
-      setSaveError(
-        error instanceof Error ? error.message : "견적서 저장 중 오류가 발생했습니다."
-      );
+      setPendingPasswordAction(null);
     } finally {
       setIsSaving(false);
     }
   };
 
-  /** 저장 전 공통 검증. 문제가 있으면 에러 메시지를, 없으면 null 을 돌려준다. */
-  const validateBeforeSave = (): string | null => {
-    if (!state.providerId) return "공급자를 선택해주세요.";
-    if (!state.receiverId) return "공급받는자를 선택해주세요.";
-    if (!state.estimateNumber) return "견적서 번호가 아직 생성되지 않았습니다. 잠시 후 다시 시도해주세요.";
-    if (state.items.length === 0) return "장비를 1개 이상 담아주세요.";
-    return null;
+  const handleSaveEstimate = () => {
+    setSaveError(null);
+    setSavedEstimateNumber(null);
+
+    const validationError = validateBeforeSave();
+    if (validationError) {
+      setSaveError(validationError);
+      return;
+    }
+
+    setPendingPasswordAction("save");
   };
 
   /** [수정 저장(덮어쓰기)] — 기존 견적서 id 를 유지한 채 estimates/estimate_items 를 갱신한다. */
@@ -292,6 +296,7 @@ export function EstimateBuilder({
           remarks: state.remarks,
           priceTier: state.priceTier,
           items: toItemPayloads(state.items, discountPolicies, state.priceTier),
+          currentPassword: editContext.currentPassword,
         }),
       });
 
@@ -318,15 +323,7 @@ export function EstimateBuilder({
    * "신규 저장"(POST /api/estimates, create_estimate_with_items) 흐름을
    * 그대로 재사용한다 — 복사 저장 전용 서버 로직을 따로 만들지 않는다.
    */
-  const handleSaveAsCopy = async () => {
-    setSaveError(null);
-
-    const validationError = validateBeforeSave();
-    if (validationError) {
-      setSaveError(validationError);
-      return;
-    }
-
+  const performSaveAsCopy = async (password: string) => {
     setIsSaving(true);
     try {
       const numberResponse = await fetch(
@@ -349,6 +346,7 @@ export function EstimateBuilder({
           remarks: state.remarks,
           priceTier: state.priceTier,
           items: toItemPayloads(state.items, discountPolicies, state.priceTier),
+          editPassword: password,
         }),
       });
 
@@ -358,14 +356,23 @@ export function EstimateBuilder({
         throw new Error(body?.error ?? "새 견적서로 저장하지 못했습니다.");
       }
 
+      setPendingPasswordAction(null);
       router.push(`/estimates/${body.id}/print`);
-    } catch (error) {
-      console.error("새 견적서로 복사 저장 실패:", error);
-      setSaveError(
-        error instanceof Error ? error.message : "새 견적서로 저장하는 중 오류가 발생했습니다."
-      );
+    } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSaveAsCopy = () => {
+    setSaveError(null);
+
+    const validationError = validateBeforeSave();
+    if (validationError) {
+      setSaveError(validationError);
+      return;
+    }
+
+    setPendingPasswordAction("saveAsCopy");
   };
 
   const handleSaveTemplate = async (templateName: string) => {
@@ -682,6 +689,19 @@ export function EstimateBuilder({
         referenceTiers={state.referenceTiers}
         items={state.items}
         discountPolicies={discountPolicies}
+      />
+
+      <EstimatePasswordDialog
+        open={pendingPasswordAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingPasswordAction(null);
+        }}
+        title="견적서 비밀번호 설정"
+        description="나중에 이 견적서를 수정하거나 삭제할 때 필요합니다."
+        onSubmit={async (password) => {
+          if (pendingPasswordAction === "save") await performSaveEstimate(password);
+          else if (pendingPasswordAction === "saveAsCopy") await performSaveAsCopy(password);
+        }}
       />
     </div>
   );

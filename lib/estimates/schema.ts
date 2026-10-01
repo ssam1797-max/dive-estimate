@@ -54,6 +54,11 @@ export const saveRealEstimateSchema = z.object({
     message: "가격 등급을 선택해주세요.",
   }),
   items: z.array(saveEstimateItemSchema).min(1, "장비를 1개 이상 담아주세요."),
+  // 신규 저장(POST)에서 수정/삭제 보호용 비밀번호를 새로 설정할 때 쓴다.
+  // 수정(PUT) 요청에는 포함되지 않는다 — 기존 비밀번호를 바꾸지 않음.
+  editPassword: z.string().optional(),
+  // 수정(PUT)에서 기존에 설정된 비밀번호를 확인할 때 쓴다(관리자 모드면 생략 가능).
+  currentPassword: z.string().optional(),
 });
 
 /** 템플릿 저장 요청 검증 스키마 */

@@ -79,8 +79,12 @@ function formatCurrency(amount: number): string {
   return `₩${Math.round(amount).toLocaleString("ko-KR")}`;
 }
 
-async function deleteEstimate(id: string): Promise<void> {
-  const response = await fetch(`/api/estimates/${id}`, { method: "DELETE" });
+async function deleteEstimate(id: string, currentPassword?: string): Promise<void> {
+  const response = await fetch(`/api/estimates/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword }),
+  });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? "삭제에 실패했습니다.");
@@ -103,12 +107,14 @@ async function updateEstimateStatus(id: string, status: EstimateStatus): Promise
 function EstimateDetailDialog({
   estimateId,
   tier,
+  isAdmin,
   onOpenChange,
   onDeleted,
   onStatusChanged,
 }: {
   estimateId: string;
   tier: PriceTier;
+  isAdmin: boolean;
   onOpenChange: (open: boolean) => void;
   onDeleted: (id: string) => void;
   onStatusChanged: (id: string, status: EstimateStatus) => void;
@@ -116,6 +122,7 @@ function EstimateDetailDialog({
   const [detail, setDetail] = React.useState<SavedEstimateDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
+  const [deletePassword, setDeletePassword] = React.useState("");
   const [isChangingStatus, setIsChangingStatus] = React.useState(false);
 
   React.useEffect(() => {
@@ -146,7 +153,7 @@ function EstimateDetailDialog({
   }, [estimateId]);
 
   const handleDelete = async () => {
-    await deleteEstimate(estimateId);
+    await deleteEstimate(estimateId, deletePassword);
     onDeleted(estimateId);
     onOpenChange(false);
   };
@@ -282,11 +289,27 @@ function EstimateDetailDialog({
       </DialogContent>
       <ConfirmDialog
         open={confirmDeleteOpen}
-        onOpenChange={setConfirmDeleteOpen}
+        onOpenChange={(open) => {
+          setConfirmDeleteOpen(open);
+          if (!open) setDeletePassword("");
+        }}
         title="이 견적서를 삭제할까요?"
         description="삭제하면 되돌릴 수 없습니다."
         onConfirm={handleDelete}
-      />
+      >
+        {!isAdmin && detail?.hasEditPassword && (
+          <Input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            autoFocus
+            value={deletePassword}
+            onChange={(event) => setDeletePassword(event.target.value.replace(/\D/g, ""))}
+            placeholder="견적서 비밀번호"
+            aria-label="견적서 비밀번호"
+          />
+        )}
+      </ConfirmDialog>
     </Dialog>
   );
 }
@@ -297,6 +320,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
   const [estimates, setEstimates] = React.useState(initialEstimates);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [rowDeleteTarget, setRowDeleteTarget] = React.useState<string | null>(null);
+  const [rowDeletePassword, setRowDeletePassword] = React.useState("");
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [tier, setTier] = React.useState<PriceTier>("RETAIL");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -340,10 +364,10 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
     }
   };
 
-  const handleRowDelete = async (id: string) => {
+  const handleRowDelete = async (id: string, password?: string) => {
     setRowError(null);
     try {
-      await deleteEstimate(id);
+      await deleteEstimate(id, password);
       setEstimates((prev) => prev.filter((e) => e.id !== id));
     } catch (deleteError) {
       setRowError(
@@ -533,6 +557,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
         <EstimateDetailDialog
           estimateId={selectedId}
           tier={tier}
+          isAdmin={isAdmin}
           onOpenChange={(open) => {
             if (!open) setSelectedId(null);
           }}
@@ -544,14 +569,28 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
       <ConfirmDialog
         open={rowDeleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setRowDeleteTarget(null);
+          setRowDeleteTarget(open ? rowDeleteTarget : null);
+          if (!open) setRowDeletePassword("");
         }}
         title="이 견적서를 삭제할까요?"
         description="삭제하면 되돌릴 수 없습니다."
         onConfirm={() => {
-          if (rowDeleteTarget) return handleRowDelete(rowDeleteTarget);
+          if (rowDeleteTarget) return handleRowDelete(rowDeleteTarget, rowDeletePassword);
         }}
-      />
+      >
+        {!isAdmin && estimates.find((e) => e.id === rowDeleteTarget)?.hasEditPassword && (
+          <Input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            autoFocus
+            value={rowDeletePassword}
+            onChange={(event) => setRowDeletePassword(event.target.value.replace(/\D/g, ""))}
+            placeholder="견적서 비밀번호"
+            aria-label="견적서 비밀번호"
+          />
+        )}
+      </ConfirmDialog>
     </>
   );
 }
