@@ -20,11 +20,6 @@ interface EquipmentQuickSearchProps {
 
 const DEBOUNCE_MS = 180;
 
-function formatVariant(item: EquipmentCatalogItem): string {
-  const parts = [...item.colors, ...item.sizes];
-  return parts.length > 0 ? parts.join(" / ") : "-";
-}
-
 /**
  * 품목 추가 영역 상단에 독립적으로 얹는 "키워드 통합 검색" — 브랜드/카테고리
  * 구분 없이 검색어 하나로 장비를 바로 찾는 자동완성 드롭다운. 자체 로컬
@@ -158,12 +153,15 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
 
           {!error && results.length > 0 && (
             <>
-              {/* 열 제목은 sm 이상(표 레이아웃)에서만 의미가 있다 — 모바일 카드형에는 없음. */}
-              <div className="hidden gap-2 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_1.4fr_1fr_auto]">
+              {/*
+                브랜드/제품명 2열만 남긴다 — 규격·단가는 완전히 제거해 제품명에
+                너비를 최대한 내준다. 브랜드 칸을 auto 가 아니라 고정폭(4.5rem)
+                으로 둬야, 행마다 따로인 grid 컨테이너들 사이에서도 제품명이
+                시작되는 위치가 전부 같아져 표처럼 줄이 맞는다.
+              */}
+              <div className="grid grid-cols-[4.5rem_1fr] gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
                 <span>브랜드</span>
                 <span>제품명</span>
-                <span>규격</span>
-                <span className="text-right">단가</span>
               </div>
               <ul className="max-h-72 overflow-y-auto p-1" role="listbox">
                 {results.map((item) => (
@@ -171,39 +169,15 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                     <button
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className="block w-full rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground sm:px-2 sm:py-1.5"
+                      className="grid w-full grid-cols-[4.5rem_1fr] items-start gap-3 rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground"
                     >
-                      {/* 모바일(768px 미만): 제품명이 잘리지 않도록 줄바꿈되는 카드형 */}
-                      <div className="flex flex-col gap-1 sm:hidden">
-                        <span className="text-sm font-medium leading-snug break-words">
-                          {item.name}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
-                          <span>브랜드: {item.brand}</span>
-                          {formatVariant(item) !== "-" && (
-                            <>
-                              <span aria-hidden="true">·</span>
-                              <span>규격: {formatVariant(item)}</span>
-                            </>
-                          )}
-                          <span aria-hidden="true">·</span>
-                          <span className="font-medium text-foreground">
-                            ₩{item.price_retail.toLocaleString("ko-KR")}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* sm 이상: 브랜드/제품명/규격/단가 4열 표 레이아웃 */}
-                      <div className="hidden items-center gap-2 text-sm sm:grid sm:grid-cols-[1fr_1.4fr_1fr_auto]">
-                        <span className="truncate text-muted-foreground">{item.brand}</span>
-                        <span className="truncate font-medium">{item.name}</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {formatVariant(item)}
-                        </span>
-                        <span className="whitespace-nowrap text-right text-xs">
-                          ₩{item.price_retail.toLocaleString("ko-KR")}
-                        </span>
-                      </div>
+                      <span className="break-words pt-0.5 text-xs text-muted-foreground">
+                        {item.brand}
+                      </span>
+                      {/* min-w-0 이 없으면 grid 아이템이 내용 너비만큼 늘어나 줄바꿈 대신 넘쳐버린다. */}
+                      <span className="min-w-0 break-words text-sm font-medium leading-snug">
+                        {item.name}
+                      </span>
                     </button>
                   </li>
                 ))}
