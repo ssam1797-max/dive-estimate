@@ -4,7 +4,6 @@ import * as React from "react";
 import { Loader2, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 
 interface EquipmentQuickSearchProps {
@@ -148,7 +147,7 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
       </div>
 
       {showDropdown && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md sm:min-w-[420px]">
+        <div className="absolute z-20 mt-1 w-full max-w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md sm:min-w-[420px]">
           {error && <p className="px-3 py-3 text-sm text-destructive">{error}</p>}
 
           {!error && !loading && results.length === 0 && (
@@ -159,7 +158,8 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
 
           {!error && results.length > 0 && (
             <>
-              <div className="grid grid-cols-[1fr_1.4fr_1fr_auto] gap-2 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+              {/* 열 제목은 sm 이상(표 레이아웃)에서만 의미가 있다 — 모바일 카드형에는 없음. */}
+              <div className="hidden gap-2 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_1.4fr_1fr_auto]">
                 <span>브랜드</span>
                 <span>제품명</span>
                 <span>규격</span>
@@ -171,18 +171,39 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                     <button
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className={cn(
-                        "grid w-full grid-cols-[1fr_1.4fr_1fr_auto] items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                      )}
+                      className="block w-full rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground sm:px-2 sm:py-1.5"
                     >
-                      <span className="truncate text-muted-foreground">{item.brand}</span>
-                      <span className="truncate font-medium">{item.name}</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {formatVariant(item)}
-                      </span>
-                      <span className="whitespace-nowrap text-right text-xs">
-                        ₩{item.price_retail.toLocaleString("ko-KR")}
-                      </span>
+                      {/* 모바일(768px 미만): 제품명이 잘리지 않도록 줄바꿈되는 카드형 */}
+                      <div className="flex flex-col gap-1 sm:hidden">
+                        <span className="text-sm font-medium leading-snug break-words">
+                          {item.name}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                          <span>브랜드: {item.brand}</span>
+                          {formatVariant(item) !== "-" && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>규격: {formatVariant(item)}</span>
+                            </>
+                          )}
+                          <span aria-hidden="true">·</span>
+                          <span className="font-medium text-foreground">
+                            ₩{item.price_retail.toLocaleString("ko-KR")}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* sm 이상: 브랜드/제품명/규격/단가 4열 표 레이아웃 */}
+                      <div className="hidden items-center gap-2 text-sm sm:grid sm:grid-cols-[1fr_1.4fr_1fr_auto]">
+                        <span className="truncate text-muted-foreground">{item.brand}</span>
+                        <span className="truncate font-medium">{item.name}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {formatVariant(item)}
+                        </span>
+                        <span className="whitespace-nowrap text-right text-xs">
+                          ₩{item.price_retail.toLocaleString("ko-KR")}
+                        </span>
+                      </div>
                     </button>
                   </li>
                 ))}
