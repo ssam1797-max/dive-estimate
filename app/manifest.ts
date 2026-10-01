@@ -10,7 +10,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "다이빙 장비 견적 시스템",
     short_name: "다이빙 견적",
     description: "스마트 다이빙 장비 관리 및 멀티 가격 견적 시스템",
-    start_url: "/",
+    start_url: "/estimates/new",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#0C4A6E",
