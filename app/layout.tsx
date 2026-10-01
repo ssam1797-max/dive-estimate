@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GlobalNav } from "@/components/layout/global-nav";
@@ -40,19 +41,41 @@ export const viewport: Viewport = {
   themeColor: "#0C4A6E",
 };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
+/**
+ * 관리자 쿠키 조회(getIsAdmin)는 cookies() 를 읽는 런타임 데이터 접근이다.
+ * 이걸 RootLayout 본문에서 직접 await 하면(예전 코드) "레이아웃이 런타임
+ * 데이터에 접근하면 그 아래 라우트의 loading.tsx 가 폴백을 보여주지 못한다"
+ * 는 Next.js의 공식 제약에 걸려, 페이지 이동 시 app/loading.tsx 스피너가
+ * 전혀 뜨지 않는 원인이 된다. 이 컴포넌트로 분리해 자체 Suspense 경계
+ * 안에 가둬야, {children} 쪽 라우트의 loading.tsx 가 레이아웃과 무관하게
+ * 독립적으로 동작한다.
+ */
+async function AdminNavSection() {
   const isAdmin = await getIsAdmin();
+  return (
+    <AdminModeProvider isAdmin={isAdmin}>
+      <GlobalNav />
+    </AdminModeProvider>
+  );
+}
 
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AdminModeProvider isAdmin={isAdmin}>
-          <GlobalNav />
-          {children}
-        </AdminModeProvider>
+        <Suspense
+          fallback={
+            <AdminModeProvider isAdmin={false}>
+              <GlobalNav />
+            </AdminModeProvider>
+          }
+        >
+          <AdminNavSection />
+        </Suspense>
+        {children}
       </body>
     </html>
   );
