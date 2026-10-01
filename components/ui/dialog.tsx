@@ -87,7 +87,7 @@ function DialogContent({
   return (
     <div
       className={cn(
-        "relative flex max-h-[85vh] flex-col gap-4 overflow-y-auto rounded-lg border bg-background p-6 shadow-lg",
+        "relative flex max-h-[85vh] flex-col gap-4 overflow-y-auto rounded-lg border bg-background p-4 shadow-lg sm:p-6",
         className
       )}
     >
@@ -118,7 +118,7 @@ function DialogDescription({ children }: { children: React.ReactNode }) {
 
 function DialogFooter({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex justify-end gap-2 pt-2">{children}</div>
+    <div className="flex flex-wrap justify-end gap-2 pt-2">{children}</div>
   );
 }
 

@@ -132,7 +132,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
         }
       />
 
-      <div className="mx-auto flex w-full max-w-4xl gap-2 px-4 print:hidden">
+      <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 px-4 print:hidden">
         <Button
           type="button"
           variant={documentMode === "estimate" ? "default" : "outline"}

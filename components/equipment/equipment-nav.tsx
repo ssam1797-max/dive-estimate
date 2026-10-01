@@ -14,7 +14,7 @@ export function EquipmentNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex border-b" aria-label="장비 등록 방식">
+    <nav className="flex overflow-x-auto border-b" aria-label="장비 등록 방식">
       {TABS.map((tab) => {
         const isActive = pathname === tab.href;
         return (
@@ -22,7 +22,7 @@ export function EquipmentNav() {
             key={tab.href}
             href={tab.href}
             className={cn(
-              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+              "shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
               isActive
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"

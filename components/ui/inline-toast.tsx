@@ -39,7 +39,7 @@ export function InlineToast({
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-2 rounded-lg border p-3 text-sm shadow-lg",
+        "fixed bottom-4 right-4 left-4 z-50 flex items-start gap-2 rounded-lg border p-3 text-sm shadow-lg sm:left-auto sm:w-auto sm:max-w-sm",
         toast.tone === "success"
           ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
           : "border-destructive/40 bg-destructive/5 text-destructive"

@@ -37,12 +37,12 @@ export function PrintControls({ estimateId, fileName }: PrintControlsProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pt-4 print:hidden">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Link href="/estimates" className={buttonVariants({ variant: "outline" })}>
           <ArrowLeft className="size-4" />
           보관함으로
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {estimateId && (
             <Link
               href={`/estimates/${estimateId}/edit`}

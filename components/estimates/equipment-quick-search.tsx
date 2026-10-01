@@ -148,7 +148,7 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
       </div>
 
       {showDropdown && (
-        <div className="absolute z-20 mt-1 w-full min-w-[420px] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md sm:min-w-[420px]">
           {error && <p className="px-3 py-3 text-sm text-destructive">{error}</p>}
 
           {!error && !loading && results.length === 0 && (

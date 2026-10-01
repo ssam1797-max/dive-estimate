@@ -175,6 +175,9 @@ function EstimateDetailDialog({
     }
   };
 
+  // 비밀번호가 없는(비밀번호 기능 도입 이전) 견적서는 관리자 모드에서만 수정/삭제할 수 있다.
+  const canModify = isAdmin || Boolean(detail?.hasEditPassword);
+
   return (
     <Dialog open onOpenChange={onOpenChange} widthClassName="max-w-2xl">
       <DialogContent onClose={() => onOpenChange(false)}>
@@ -255,8 +258,10 @@ function EstimateDetailDialog({
               <Button
                 type="button"
                 variant="ghost"
+                disabled={!canModify}
                 onClick={() => setConfirmDeleteOpen(true)}
                 className="mr-auto text-muted-foreground hover:text-destructive"
+                title={canModify ? undefined : "비밀번호가 없는 견적서는 관리자 모드에서만 삭제할 수 있습니다."}
               >
                 <Trash2 className="size-4" />
                 삭제
@@ -268,13 +273,27 @@ function EstimateDetailDialog({
                 <Copy className="size-4" />
                 복제
               </Link>
-              <Link
-                href={`/estimates/${detail.id}/edit`}
-                className={buttonVariants({ variant: "outline" })}
-              >
-                <Pencil className="size-4" />
-                이어서 수정
-              </Link>
+              {canModify ? (
+                <Link
+                  href={`/estimates/${detail.id}/edit`}
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  <Pencil className="size-4" />
+                  이어서 수정
+                </Link>
+              ) : (
+                <span
+                  aria-disabled="true"
+                  title="비밀번호가 없는 견적서는 관리자 모드에서만 수정할 수 있습니다."
+                  className={buttonVariants({
+                    variant: "outline",
+                    className: "cursor-not-allowed opacity-50",
+                  })}
+                >
+                  <Pencil className="size-4" />
+                  이어서 수정
+                </span>
+              )}
               <Link
                 href={`/estimates/${detail.id}/print`}
                 target="_blank"
@@ -408,13 +427,13 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
             aria-label="견적서 검색"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             type="date"
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
             aria-label="시작일"
-            className="w-[9.5rem]"
+            className="w-[8.5rem] sm:w-[9.5rem]"
           />
           <span className="text-sm text-muted-foreground">~</span>
           <Input
@@ -422,7 +441,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
             aria-label="종료일"
-            className="w-[9.5rem]"
+            className="w-[8.5rem] sm:w-[9.5rem]"
           />
           <Select
             value={statusFilter}
@@ -467,7 +486,9 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
               </tr>
             </thead>
             <tbody>
-              {filteredEstimates.map((estimate) => (
+              {filteredEstimates.map((estimate) => {
+                const canModifyRow = isAdmin || estimate.hasEditPassword;
+                return (
                 <tr
                   key={estimate.id}
                   onClick={() => setSelectedId(estimate.id)}
@@ -505,18 +526,33 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                       >
                         <Copy className="size-3.5" />
                       </Link>
-                      <Link
-                        href={`/estimates/${estimate.id}/edit`}
-                        aria-label={`${estimate.estimateNumber} 이어서 수정`}
-                        onClick={(event) => event.stopPropagation()}
-                        className={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                          className: "size-7 text-muted-foreground hover:text-foreground",
-                        })}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Link>
+                      {canModifyRow ? (
+                        <Link
+                          href={`/estimates/${estimate.id}/edit`}
+                          aria-label={`${estimate.estimateNumber} 이어서 수정`}
+                          onClick={(event) => event.stopPropagation()}
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon",
+                            className: "size-7 text-muted-foreground hover:text-foreground",
+                          })}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Link>
+                      ) : (
+                        <span
+                          aria-disabled="true"
+                          title="비밀번호가 없는 견적서는 관리자 모드에서만 수정할 수 있습니다."
+                          onClick={(event) => event.stopPropagation()}
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon",
+                            className: "size-7 cursor-not-allowed text-muted-foreground/40",
+                          })}
+                        >
+                          <Pencil className="size-3.5" />
+                        </span>
+                      )}
                       <Link
                         href={`/estimates/${estimate.id}/print`}
                         target="_blank"
@@ -534,19 +570,22 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                         type="button"
                         variant="ghost"
                         size="icon"
+                        disabled={!canModifyRow}
                         className="size-7 text-muted-foreground hover:text-destructive"
                         onClick={(event) => {
                           event.stopPropagation();
                           setRowDeleteTarget(estimate.id);
                         }}
                         aria-label={`${estimate.estimateNumber} 삭제`}
+                        title={canModifyRow ? undefined : "비밀번호가 없는 견적서는 관리자 모드에서만 삭제할 수 있습니다."}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </CardContent>
