@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GlobalNav } from "@/components/layout/global-nav";
 import { AdminModeProvider } from "@/components/layout/admin-mode-context";
+import { NavigationLoadingOverlay } from "@/components/layout/navigation-loading-overlay";
 import { getIsAdmin } from "@/lib/auth/admin-session";
 import "./globals.css";
 
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AdminNavSection />
         </Suspense>
         {children}
+        <NavigationLoadingOverlay />
       </body>
     </html>
   );
