@@ -874,7 +874,9 @@ export function EstimateBuilder({
           onClick={() =>
             cartSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
-          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 print:hidden"
+          // 우측 하단은 Netlify 배포 사이트의 "Powered by Netlify" 배지가
+          // 차지하고 있어(실제 배포본에서 확인), 겹치지 않도록 좌측 하단에 둔다.
+          className="fixed bottom-6 left-4 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 print:hidden"
         >
           🛒 장바구니 ({state.items.length}개)
         </button>
