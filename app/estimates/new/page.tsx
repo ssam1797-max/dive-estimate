@@ -165,7 +165,7 @@ export default async function NewEstimatePage({
     : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 sm:p-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 sm:p-8">
       <h1 className="text-2xl font-semibold">견적서 작성</h1>
 
       {loadError ? (

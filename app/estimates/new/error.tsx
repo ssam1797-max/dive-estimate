@@ -21,7 +21,7 @@ export default function EstimateNewError({
   }, [error]);
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6 sm:p-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6 sm:p-8">
       <h1 className="text-2xl font-semibold">견적서 작성</h1>
       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
         <p className="font-medium">화면을 표시하는 중 오류가 발생했습니다.</p>

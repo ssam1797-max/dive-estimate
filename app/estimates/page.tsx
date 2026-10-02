@@ -23,7 +23,7 @@ export default async function EstimateArchivePage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6 sm:p-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 sm:p-8">
       <div>
         <h1 className="text-2xl font-semibold">견적서 보관함</h1>
         <p className="mt-1 text-sm text-muted-foreground">
