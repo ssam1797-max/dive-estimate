@@ -172,7 +172,10 @@ export function EstimateItemsTable({
                           step={1}
                           value={item.quantity}
                           disabled={disabled}
-                          className="w-14 text-center"
+                          // 양옆에 이미 증감 버튼이 있어 브라우저 기본 스피너 화살표가
+                          // 필요 없는데, 숫자가 세 자리가 되면 그 화살표가 숫자 위에
+                          // 겹쳐 보이던 문제가 있었다 — 기본 스피너를 꺼서 해결.
+                          className="w-16 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           onChange={(event) =>
                             onQuantityChange(
                               item.clientId,
