@@ -22,9 +22,12 @@ import { TemplateLoadDialog } from "@/components/estimates/template-load-dialog"
 import { BasisTierSelect } from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
 import { EstimatePasswordDialog } from "@/components/estimates/estimate-password-dialog";
+import { OrderCompleteDialog } from "@/components/estimates/order-complete-dialog";
+import { generateRandomEstimatePassword } from "@/lib/estimates/estimatePasswordRules";
 import { useEstimateBuilder, type EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import type {
   EquipmentCatalogItem,
+  EstimateItemDraft,
   ExportEstimateItemPayload,
   ProfileOption,
   SaveEstimateItemPayload,
@@ -121,6 +124,24 @@ function toItemPayloads(
       priceCost: tierPrice("COST"),
     };
   });
+}
+
+/** 주문 완료 모달의 "카톡 공유/복사" 버튼에 쓸 주문 내역 텍스트를 만든다. */
+function buildOrderSummaryText(
+  items: EstimateItemDraft[],
+  totalAmount: number,
+  contact: PurchaseRequestContact
+): string {
+  const lines = [
+    "[구매요청 주문내역]",
+    ...items.map(
+      (item) => `- ${item.name} x${item.quantity} : ₩${Math.round(item.unitPrice * item.quantity).toLocaleString("ko-KR")}`
+    ),
+    `합계: ₩${Math.round(totalAmount).toLocaleString("ko-KR")}`,
+    `받는분: ${contact.name} (${contact.phone})`,
+    `배송지: ${contact.address}`,
+  ];
+  return lines.join("\n");
 }
 
 function toExportItemPayloads(
@@ -230,14 +251,15 @@ export function EstimateBuilder({
   // 신규 저장("견적서 저장")과 "새 견적서로 복사 저장"은 둘 다 새 견적서
   // 행을 만들므로, 저장 직전에 수정/삭제 보호 비밀번호를 새로 설정받아야
   // 한다 — 어느 버튼을 눌렀는지에 따라 비밀번호 확인 후 실행할 동작만 다르다.
+  // ("장바구니에서 구매요청"은 고객이 직접 비밀번호를 정할 필요가 없어
+  // 별도로 처리한다 — 아래 orderCompleteInfo 참고.)
   const [pendingPasswordAction, setPendingPasswordAction] = React.useState<
-    "save" | "saveAsCopy" | "purchaseRequest" | null
+    "save" | "saveAsCopy" | null
   >(null);
-  /** "장바구니에서 구매요청" 확인 시 새로 등록한 공급받는자 id 등을 비밀번호 확인 전까지 잠시 들고 있는다. */
-  const [pendingPurchaseInfo, setPendingPurchaseInfo] = React.useState<{
-    providerId: string;
-    receiverId: string;
-    remarks: string;
+  /** 구매요청 접수 성공 시 주문 완료 모달에 보여줄 정보. */
+  const [orderCompleteInfo, setOrderCompleteInfo] = React.useState<{
+    totalAmount: number;
+    summaryText: string;
   } | null>(null);
 
   const performSaveEstimate = async (password: string) => {
@@ -495,8 +517,11 @@ export function EstimateBuilder({
    * 공급자를 그대로 쓰고(정식 견적서가 아니라 접수용이라 굳이 고를 필요가
    * 없다), 입력한 이름/전화번호/배송주소로 공급받는자를 새로 등록한 뒤,
    * 비고에 "[장바구니 구매요청]" 표시를 남겨 보관함에서 구분할 수 있게
-   * 한다. 실제 저장은 비밀번호 확인 다이얼로그를 거쳐
-   * performPurchaseRequestSave 가 수행한다.
+   * 한다. 고객이 직접 비밀번호를 정하는 단계 없이(무작위로 하나 만들어
+   * 화면에 보여주지 않고 저장만 해둔다 — 관리자 모드는 이 값과 무관하게
+   * 항상 수정/삭제 가능) 바로 저장하고, 성공하면 다른 페이지로 옮기지 않고
+   * 그 자리에서 주문 완료 모달을 띄운다. 장바구니 비우기는 모달을 닫을 때
+   * 한다(performPurchaseRequestConfirm).
    */
   const handlePurchaseRequestSubmit = async (contact: PurchaseRequestContact) => {
     if (state.items.length === 0) {
@@ -510,7 +535,7 @@ export function EstimateBuilder({
       throw new Error("등록된 공급자가 없습니다. [공급자/고객 관리] 화면에서 먼저 등록해주세요.");
     }
 
-    const response = await fetch("/api/profiles", {
+    const profileResponse = await fetch("/api/profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -526,11 +551,11 @@ export function EstimateBuilder({
         email: "",
       }),
     });
-    const body = await response.json();
-    if (!response.ok) {
-      throw new Error(body?.error ?? "구매요청 접수자 등록에 실패했습니다.");
+    const profileBody = await profileResponse.json();
+    if (!profileResponse.ok) {
+      throw new Error(profileBody?.error ?? "구매요청 접수자 등록에 실패했습니다.");
     }
-    const createdReceiver = body.profile as ProfileOption;
+    const createdReceiver = profileBody.profile as ProfileOption;
     setReceivers((prev) =>
       [...prev, createdReceiver].sort((a, b) => a.name.localeCompare(b.name, "ko"))
     );
@@ -538,47 +563,42 @@ export function EstimateBuilder({
     const remarksParts = ["[장바구니 구매요청]"];
     if (contact.address) remarksParts.push(`배송지: ${contact.address}`);
 
-    setPendingPurchaseInfo({
-      providerId: defaultProvider.id,
-      receiverId: createdReceiver.id,
-      remarks: remarksParts.join(" "),
-    });
-    setPendingPasswordAction("purchaseRequest");
-  };
-
-  const performPurchaseRequestSave = async (password: string) => {
-    if (!pendingPurchaseInfo) return;
     setIsSaving(true);
     try {
-      const response = await fetch("/api/estimates", {
+      const estimateResponse = await fetch("/api/estimates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           estimateNumber: state.estimateNumber,
           date: state.date,
-          providerId: pendingPurchaseInfo.providerId,
-          receiverId: pendingPurchaseInfo.receiverId,
-          remarks: pendingPurchaseInfo.remarks,
+          providerId: defaultProvider.id,
+          receiverId: createdReceiver.id,
+          remarks: remarksParts.join(" "),
           priceTier: state.priceTier,
           items: toItemPayloads(state.items, discountPolicies, state.priceTier),
-          editPassword: password,
+          editPassword: generateRandomEstimatePassword(),
         }),
       });
-
-      const body = await response.json();
-
-      if (!response.ok) {
-        throw new Error(body?.error ?? "구매요청 접수에 실패했습니다.");
+      const estimateBody = await estimateResponse.json();
+      if (!estimateResponse.ok) {
+        throw new Error(estimateBody?.error ?? "구매요청 접수에 실패했습니다.");
       }
 
-      setSavedEstimateNumber(state.estimateNumber);
-      actions.resetAfterSave();
-      setPendingPasswordAction(null);
-      setPendingPurchaseInfo(null);
-      setBottomFormMode("none");
+      setOrderCompleteInfo({
+        totalAmount,
+        summaryText: buildOrderSummaryText(state.items, totalAmount, contact),
+      });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  /** 주문 완료 모달의 "확인" — 장바구니/폼을 초기화하고 모달을 닫는다. */
+  const performPurchaseRequestConfirm = () => {
+    setSavedEstimateNumber(state.estimateNumber);
+    actions.resetAfterSave();
+    setOrderCompleteInfo(null);
+    setBottomFormMode("none");
   };
 
   const handleDownloadExcel = async () => {
@@ -861,18 +881,21 @@ export function EstimateBuilder({
       <EstimatePasswordDialog
         open={pendingPasswordAction !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setPendingPasswordAction(null);
-            setPendingPurchaseInfo(null);
-          }
+          if (!open) setPendingPasswordAction(null);
         }}
         title="견적서 비밀번호 설정"
         description="나중에 이 견적서를 수정하거나 삭제할 때 필요합니다."
         onSubmit={async (password) => {
           if (pendingPasswordAction === "save") await performSaveEstimate(password);
           else if (pendingPasswordAction === "saveAsCopy") await performSaveAsCopy(password);
-          else if (pendingPasswordAction === "purchaseRequest") await performPurchaseRequestSave(password);
         }}
+      />
+
+      <OrderCompleteDialog
+        open={orderCompleteInfo !== null}
+        totalAmount={orderCompleteInfo?.totalAmount ?? 0}
+        orderSummaryText={orderCompleteInfo?.summaryText ?? ""}
+        onConfirm={performPurchaseRequestConfirm}
       />
 
       {state.items.length > 0 && (

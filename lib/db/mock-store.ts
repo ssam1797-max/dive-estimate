@@ -99,12 +99,19 @@ export interface MockEstimateItem {
   created_at: string;
 }
 
+export interface MockBankAccountSettings {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+}
+
 export interface MockStore {
   equipment: MockEquipment[];
   discountPolicies: MockDiscountPolicy[];
   profiles: MockProfile[];
   estimates: MockEstimate[];
   estimateItems: MockEstimateItem[];
+  bankAccount: MockBankAccountSettings;
 }
 
 // ── 시드 데이터 ───────────────────────────────────────────────────────────────
@@ -274,6 +281,7 @@ function createStore(): MockStore {
     profiles: structuredClone(SEED_PROFILES),
     estimates: [],
     estimateItems: [],
+    bankAccount: { bankName: "", accountNumber: "", accountHolder: "" },
   };
 }
 
