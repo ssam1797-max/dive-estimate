@@ -18,7 +18,6 @@ import { EstimateItemsTable } from "@/components/estimates/estimate-items-table"
 import { PurchaseRequestForm, type PurchaseRequestContact } from "@/components/estimates/purchase-request-form";
 import { TemplateSaveDialog } from "@/components/estimates/template-save-dialog";
 import { TemplateLoadDialog } from "@/components/estimates/template-load-dialog";
-import { BasisTierSelect } from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
 import { EstimatePasswordDialog } from "@/components/estimates/estimate-password-dialog";
 import { OrderCompleteDialog } from "@/components/estimates/order-complete-dialog";
@@ -36,7 +35,6 @@ import type {
 } from "@/lib/estimates/types";
 import {
   calculateEffectiveUnitPrice,
-  getAllowedPriceTiers,
   type DiscountPolicyMap,
   type PriceTier,
 } from "@/lib/estimates/pricing";
@@ -190,11 +188,9 @@ export function EstimateBuilder({
   receivers: initialReceivers,
   initialTemplates,
   discountPolicies,
-  isAdmin,
   editContext,
   duplicateFrom,
 }: EstimateBuilderProps) {
-  const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
   const router = useRouter();
   const { state, totalAmount, actions } = useEstimateBuilder(
     discountPolicies,
@@ -709,15 +705,6 @@ export function EstimateBuilder({
         disabled={isSaving}
       />
 
-      <div className="rounded-md border p-3">
-        <BasisTierSelect
-          value={state.priceTier}
-          onChange={actions.setPriceTier}
-          disabled={isSaving || isExporting}
-          tiers={allowedPriceTiers}
-        />
-      </div>
-
       {editContext && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex flex-wrap gap-2">
@@ -744,6 +731,7 @@ export function EstimateBuilder({
         <EstimateItemsTable
           items={state.items}
           totalAmount={totalAmount}
+          discountPolicies={discountPolicies}
           onRemove={actions.removeItem}
           onQuantityChange={actions.updateItemQuantity}
           onUnitPriceChange={actions.updateItemUnitPrice}
@@ -751,6 +739,7 @@ export function EstimateBuilder({
           onNameChange={actions.updateItemName}
           onColorChange={actions.updateItemColor}
           onSizeChange={actions.updateItemSize}
+          onItemRemarksChange={actions.updateItemRemarks}
           onMoveUp={actions.moveItemUp}
           onMoveDown={actions.moveItemDown}
           onClearAll={actions.clearItems}

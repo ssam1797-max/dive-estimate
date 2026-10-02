@@ -51,6 +51,7 @@ type Action =
   | { type: "UPDATE_ITEM_NAME"; clientId: string; name: string }
   | { type: "UPDATE_ITEM_COLOR"; clientId: string; color: string }
   | { type: "UPDATE_ITEM_SIZE"; clientId: string; size: string }
+  | { type: "UPDATE_ITEM_REMARKS"; clientId: string; itemRemarks: string }
   | {
       type: "UPDATE_ITEM_PRICE_RETAIL";
       clientId: string;
@@ -103,7 +104,9 @@ function createInitialState(initialData?: EstimateBuilderInitialData): EstimateB
     providerId: "",
     receiverId: "",
     remarks: "",
-    priceTier: "RETAIL",
+    // "기준 등급" 선택 UI가 없어진 뒤로, 새 견적서는 항상 공급가격(CENTER)을
+    // 기준으로 단가를 계산한다 — 장바구니 테이블의 "공급가격" 칼럼과 일치.
+    priceTier: "CENTER",
     referenceTiers: [],
     items: [],
   };
@@ -196,6 +199,15 @@ function reducer(
         items: state.items.map((item) =>
           item.clientId === action.clientId
             ? { ...item, color: action.color }
+            : item
+        ),
+      };
+    case "UPDATE_ITEM_REMARKS":
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.clientId === action.clientId
+            ? { ...item, itemRemarks: action.itemRemarks }
             : item
         ),
       };
@@ -415,6 +427,11 @@ export function useEstimateBuilder(
       dispatch({ type: "UPDATE_ITEM_COLOR", clientId, color }),
     []
   );
+  const updateItemRemarks = React.useCallback(
+    (clientId: string, itemRemarks: string) =>
+      dispatch({ type: "UPDATE_ITEM_REMARKS", clientId, itemRemarks }),
+    []
+  );
   const updateItemSize = React.useCallback(
     (clientId: string, size: string) =>
       dispatch({ type: "UPDATE_ITEM_SIZE", clientId, size }),
@@ -478,6 +495,7 @@ export function useEstimateBuilder(
       updateItemName,
       updateItemColor,
       updateItemSize,
+      updateItemRemarks,
       moveItemUp,
       moveItemDown,
       updateItemPriceRetail,

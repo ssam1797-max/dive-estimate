@@ -8,11 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import type { EstimateItemDraft } from "@/lib/estimates/types";
-import { calculateDiscountRate, formatDiscountRate } from "@/lib/estimates/pricing";
+import {
+  calculateDiscountRate,
+  calculateEffectiveUnitPrice,
+  formatDiscountRate,
+  type DiscountPolicyMap,
+} from "@/lib/estimates/pricing";
 
 interface EstimateItemsTableProps {
   items: EstimateItemDraft[];
   totalAmount: number;
+  /** "퐁당샵가격" 참고 열을 계산하기 위한 브랜드별 할인율 정책. */
+  discountPolicies: DiscountPolicyMap;
   onRemove: (clientId: string) => void;
   onQuantityChange: (clientId: string, quantity: number) => void;
   onUnitPriceChange: (clientId: string, unitPrice: number) => void;
@@ -23,6 +30,7 @@ interface EstimateItemsTableProps {
   onMoveUp: (clientId: string) => void;
   onMoveDown: (clientId: string) => void;
   onClearAll: () => void;
+  onItemRemarksChange: (clientId: string, itemRemarks: string) => void;
   disabled?: boolean;
 }
 
@@ -33,6 +41,7 @@ function formatCurrency(amount: number): string {
 export function EstimateItemsTable({
   items,
   totalAmount,
+  discountPolicies,
   onRemove,
   onQuantityChange,
   onUnitPriceChange,
@@ -43,6 +52,7 @@ export function EstimateItemsTable({
   onMoveUp,
   onMoveDown,
   onClearAll,
+  onItemRemarksChange,
   disabled,
 }: EstimateItemsTableProps) {
   const [confirmClearOpen, setConfirmClearOpen] = React.useState(false);
@@ -78,16 +88,15 @@ export function EstimateItemsTable({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 pr-2 font-medium">순서</th>
-                  <th className="py-2 pr-2 font-medium">장비명</th>
-                  <th className="py-2 pr-2 font-medium">색상</th>
-                  <th className="py-2 pr-2 font-medium">사이즈</th>
+                  <th className="py-2 pr-2 font-medium">제품 정보</th>
                   <th className="py-2 pr-2 font-medium">수량</th>
                   <th className="py-2 pr-2 font-medium">소비자가격</th>
-                  <th className="py-2 pr-2 font-medium">단가</th>
+                  <th className="py-2 pr-2 font-medium">퐁당샵가격</th>
+                  <th className="py-2 pr-2 font-medium">공급가격</th>
                   <th className="py-2 pr-2 font-medium">소계</th>
                   <th className="py-2 pr-2 font-medium">비고</th>
                   <th className="py-2 pr-2 font-medium text-right">삭제</th>
@@ -98,6 +107,13 @@ export function EstimateItemsTable({
                   const discountRate = calculateDiscountRate(
                     item.priceRetail,
                     item.unitPrice
+                  );
+                  const shopPrice = calculateEffectiveUnitPrice(
+                    item.priceRetail,
+                    item.brand,
+                    "INSTRUCTOR",
+                    discountPolicies,
+                    item.overrideDiscountRate
                   );
                   return (
                   <tr key={item.clientId} className="border-b last:border-0">
@@ -128,30 +144,33 @@ export function EstimateItemsTable({
                       </div>
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      <Input
-                        value={item.name}
-                        disabled={disabled}
-                        className="w-36 font-medium"
-                        onChange={(event) => onNameChange(item.clientId, event.target.value)}
-                      />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <Input
-                        value={item.color}
-                        disabled={disabled}
-                        className="w-20"
-                        placeholder="색상"
-                        onChange={(event) => onColorChange(item.clientId, event.target.value)}
-                      />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <Input
-                        value={item.size}
-                        disabled={disabled}
-                        className="w-20"
-                        placeholder="사이즈"
-                        onChange={(event) => onSizeChange(item.clientId, event.target.value)}
-                      />
+                      <div className="flex flex-col gap-1.5">
+                        {item.brand && (
+                          <span className="text-xs text-muted-foreground">{item.brand}</span>
+                        )}
+                        <Input
+                          value={item.name}
+                          disabled={disabled}
+                          className="w-40 font-medium"
+                          onChange={(event) => onNameChange(item.clientId, event.target.value)}
+                        />
+                        <div className="flex gap-1.5">
+                          <Input
+                            value={item.color}
+                            disabled={disabled}
+                            className="w-[4.75rem]"
+                            placeholder="색상"
+                            onChange={(event) => onColorChange(item.clientId, event.target.value)}
+                          />
+                          <Input
+                            value={item.size}
+                            disabled={disabled}
+                            className="w-[4.75rem]"
+                            placeholder="사이즈"
+                            onChange={(event) => onSizeChange(item.clientId, event.target.value)}
+                          />
+                        </div>
+                      </div>
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <div className="flex items-center gap-1">
@@ -212,6 +231,9 @@ export function EstimateItemsTable({
                         }
                       />
                     </td>
+                    <td className="py-2 pr-2 align-top text-muted-foreground">
+                      {formatCurrency(shopPrice)}
+                    </td>
                     <td className="py-2 pr-2 align-top">
                       <Input
                         type="number"
@@ -241,8 +263,16 @@ export function EstimateItemsTable({
                         </p>
                       )}
                     </td>
-                    <td className="py-2 pr-2 align-top text-muted-foreground">
-                      {item.itemRemarks || "-"}
+                    <td className="py-2 pr-2 align-top">
+                      <Input
+                        value={item.itemRemarks}
+                        disabled={disabled}
+                        className="w-28"
+                        placeholder="예: 10% 할인"
+                        onChange={(event) =>
+                          onItemRemarksChange(item.clientId, event.target.value)
+                        }
+                      />
                     </td>
                     <td className="py-2 pr-2 align-top text-right">
                       <Button
