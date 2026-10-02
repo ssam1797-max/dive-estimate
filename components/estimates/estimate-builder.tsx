@@ -9,18 +9,17 @@ import {
   FileSpreadsheet,
   Loader2,
   Save,
+  ShoppingCart,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { BasicInfoSection } from "@/components/estimates/basic-info-section";
 import { EquipmentPicker } from "@/components/estimates/equipment-picker";
 import { EstimateItemsTable } from "@/components/estimates/estimate-items-table";
+import { PurchaseRequestForm, type PurchaseRequestContact } from "@/components/estimates/purchase-request-form";
 import { TemplateSaveDialog } from "@/components/estimates/template-save-dialog";
 import { TemplateLoadDialog } from "@/components/estimates/template-load-dialog";
-import {
-  BasisTierSelect,
-  ReferenceTierCheckboxes,
-} from "@/components/estimates/price-tier-controls";
+import { BasisTierSelect } from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
 import { EstimatePasswordDialog } from "@/components/estimates/estimate-password-dialog";
 import { useEstimateBuilder, type EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
@@ -202,6 +201,14 @@ export function EstimateBuilder({
   const [isExporting, setIsExporting] = React.useState(false);
   const [exportError, setExportError] = React.useState<string | null>(null);
 
+  // 신규 작성(!editContext) 화면의 쇼핑몰식 흐름 전용 — "장바구니에서
+  // 구매요청"/"견적서 만들기" 버튼 중 어느 쪽을 눌렀는지, 그 아래 어떤
+  // 입력 폼을 보여줄지를 결정한다. "이어서 수정" 화면에서는 쓰지 않는다.
+  const [bottomFormMode, setBottomFormMode] = React.useState<"none" | "purchaseRequest" | "basicInfo">(
+    "none"
+  );
+  const cartSectionRef = React.useRef<HTMLDivElement>(null);
+
   const selectedProvider = React.useMemo(
     () => providers.find((provider) => provider.id === state.providerId) ?? null,
     [providers, state.providerId]
@@ -224,8 +231,14 @@ export function EstimateBuilder({
   // 행을 만들므로, 저장 직전에 수정/삭제 보호 비밀번호를 새로 설정받아야
   // 한다 — 어느 버튼을 눌렀는지에 따라 비밀번호 확인 후 실행할 동작만 다르다.
   const [pendingPasswordAction, setPendingPasswordAction] = React.useState<
-    "save" | "saveAsCopy" | null
+    "save" | "saveAsCopy" | "purchaseRequest" | null
   >(null);
+  /** "장바구니에서 구매요청" 확인 시 새로 등록한 공급받는자 id 등을 비밀번호 확인 전까지 잠시 들고 있는다. */
+  const [pendingPurchaseInfo, setPendingPurchaseInfo] = React.useState<{
+    providerId: string;
+    receiverId: string;
+    remarks: string;
+  } | null>(null);
 
   const performSaveEstimate = async (password: string) => {
     setIsSaving(true);
@@ -254,6 +267,7 @@ export function EstimateBuilder({
       setSavedEstimateNumber(state.estimateNumber);
       actions.resetAfterSave();
       setPendingPasswordAction(null);
+      setBottomFormMode("none");
     } finally {
       setIsSaving(false);
     }
@@ -476,6 +490,97 @@ export function EstimateBuilder({
     return created;
   };
 
+  /**
+   * [장바구니에서 구매요청] 폼의 "확인" — 공급자는 묻지 않고 등록된 첫
+   * 공급자를 그대로 쓰고(정식 견적서가 아니라 접수용이라 굳이 고를 필요가
+   * 없다), 입력한 이름/전화번호/배송주소로 공급받는자를 새로 등록한 뒤,
+   * 비고에 "[장바구니 구매요청]" 표시를 남겨 보관함에서 구분할 수 있게
+   * 한다. 실제 저장은 비밀번호 확인 다이얼로그를 거쳐
+   * performPurchaseRequestSave 가 수행한다.
+   */
+  const handlePurchaseRequestSubmit = async (contact: PurchaseRequestContact) => {
+    if (state.items.length === 0) {
+      throw new Error("장바구니가 비어 있습니다.");
+    }
+    if (!state.estimateNumber) {
+      throw new Error("견적서 번호가 아직 생성되지 않았습니다. 잠시 후 다시 시도해주세요.");
+    }
+    const defaultProvider = providers[0];
+    if (!defaultProvider) {
+      throw new Error("등록된 공급자가 없습니다. [공급자/고객 관리] 화면에서 먼저 등록해주세요.");
+    }
+
+    const response = await fetch("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "RECEIVER",
+        name: contact.name,
+        contact: contact.phone,
+        address: contact.address,
+        stampUrl: "",
+        businessNumber: "",
+        representative: "",
+        businessType: "",
+        businessCategory: "",
+        email: "",
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      throw new Error(body?.error ?? "구매요청 접수자 등록에 실패했습니다.");
+    }
+    const createdReceiver = body.profile as ProfileOption;
+    setReceivers((prev) =>
+      [...prev, createdReceiver].sort((a, b) => a.name.localeCompare(b.name, "ko"))
+    );
+
+    const remarksParts = ["[장바구니 구매요청]"];
+    if (contact.address) remarksParts.push(`배송지: ${contact.address}`);
+
+    setPendingPurchaseInfo({
+      providerId: defaultProvider.id,
+      receiverId: createdReceiver.id,
+      remarks: remarksParts.join(" "),
+    });
+    setPendingPasswordAction("purchaseRequest");
+  };
+
+  const performPurchaseRequestSave = async (password: string) => {
+    if (!pendingPurchaseInfo) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/estimates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estimateNumber: state.estimateNumber,
+          date: state.date,
+          providerId: pendingPurchaseInfo.providerId,
+          receiverId: pendingPurchaseInfo.receiverId,
+          remarks: pendingPurchaseInfo.remarks,
+          priceTier: state.priceTier,
+          items: toItemPayloads(state.items, discountPolicies, state.priceTier),
+          editPassword: password,
+        }),
+      });
+
+      const body = await response.json();
+
+      if (!response.ok) {
+        throw new Error(body?.error ?? "구매요청 접수에 실패했습니다.");
+      }
+
+      setSavedEstimateNumber(state.estimateNumber);
+      actions.resetAfterSave();
+      setPendingPasswordAction(null);
+      setPendingPurchaseInfo(null);
+      setBottomFormMode("none");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDownloadExcel = async () => {
     setExportError(null);
 
@@ -543,25 +648,28 @@ export function EstimateBuilder({
 
   return (
     <div className="flex flex-col gap-6">
-      <BasicInfoSection
-        date={state.date}
-        onDateChange={actions.setDate}
-        estimateNumber={state.estimateNumber}
-        isEstimateNumberLoading={state.isEstimateNumberLoading}
-        estimateNumberError={state.estimateNumberError}
-        onRetryEstimateNumber={actions.retryEstimateNumber}
-        providers={providers}
-        providerId={state.providerId}
-        onProviderChange={actions.setProviderId}
-        receivers={receivers}
-        receiverId={state.receiverId}
-        onReceiverChange={actions.setReceiverId}
-        onCreateReceiver={handleCreateReceiver}
-        remarks={state.remarks}
-        onRemarksChange={actions.setRemarks}
-        disabled={isSaving}
-      />
+      {editContext && (
+        <BasicInfoSection
+          date={state.date}
+          onDateChange={actions.setDate}
+          estimateNumber={state.estimateNumber}
+          isEstimateNumberLoading={state.isEstimateNumberLoading}
+          estimateNumberError={state.estimateNumberError}
+          onRetryEstimateNumber={actions.retryEstimateNumber}
+          providers={providers}
+          providerId={state.providerId}
+          onProviderChange={actions.setProviderId}
+          receivers={receivers}
+          receiverId={state.receiverId}
+          onReceiverChange={actions.setReceiverId}
+          onCreateReceiver={handleCreateReceiver}
+          remarks={state.remarks}
+          onRemarksChange={actions.setRemarks}
+          disabled={isSaving}
+        />
+      )}
 
+      {/* "장비 추가"를 화면 맨 위로 — 쇼핑몰처럼 장비부터 담고, 정보 입력은 맨 마지막에 한다. */}
       <EquipmentPicker
         catalog={catalog}
         onAdd={actions.addItem}
@@ -570,8 +678,17 @@ export function EstimateBuilder({
         disabled={isSaving}
       />
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {editContext ? (
+      <div className="rounded-md border p-3">
+        <BasisTierSelect
+          value={state.priceTier}
+          onChange={actions.setPriceTier}
+          disabled={isSaving || isExporting}
+          tiers={allowedPriceTiers}
+        />
+      </div>
+
+      {editContext && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -587,13 +704,8 @@ export function EstimateBuilder({
               수정 저장 (덮어쓰기)
             </Button>
           </div>
-        ) : (
-          <Button type="button" onClick={handleSaveEstimate} disabled={isSaving}>
-            {isSaving ? <Loader2 className="animate-spin" /> : <Save className="size-4" />}
-            견적서 저장
-          </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {saveError && <p className="text-sm text-destructive">{saveError}</p>}
 
@@ -605,22 +717,7 @@ export function EstimateBuilder({
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-          <BasisTierSelect
-            value={state.priceTier}
-            onChange={actions.setPriceTier}
-            disabled={isSaving || isExporting}
-            tiers={allowedPriceTiers}
-          />
-          <ReferenceTierCheckboxes
-            value={state.referenceTiers}
-            onChange={actions.setReferenceTiers}
-            disabled={isSaving || isExporting}
-            tiers={allowedPriceTiers}
-          />
-        </div>
-
+      <div ref={cartSectionRef}>
         <EstimateItemsTable
           items={state.items}
           totalAmount={totalAmount}
@@ -637,6 +734,69 @@ export function EstimateBuilder({
           disabled={isSaving}
         />
       </div>
+
+      {!editContext && (
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={isSaving || state.items.length === 0}
+              onClick={() =>
+                setBottomFormMode((prev) => (prev === "purchaseRequest" ? "none" : "purchaseRequest"))
+              }
+            >
+              <ShoppingCart className="size-4" />
+              장바구니에서 구매요청
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={isSaving || state.items.length === 0}
+              onClick={() =>
+                setBottomFormMode((prev) => (prev === "basicInfo" ? "none" : "basicInfo"))
+              }
+            >
+              <Save className="size-4" />
+              견적서 만들기
+            </Button>
+          </div>
+
+          {bottomFormMode === "purchaseRequest" && (
+            <PurchaseRequestForm disabled={isSaving} onSubmit={handlePurchaseRequestSubmit} />
+          )}
+
+          {bottomFormMode === "basicInfo" && (
+            <>
+              <BasicInfoSection
+                date={state.date}
+                onDateChange={actions.setDate}
+                estimateNumber={state.estimateNumber}
+                isEstimateNumberLoading={state.isEstimateNumberLoading}
+                estimateNumberError={state.estimateNumberError}
+                onRetryEstimateNumber={actions.retryEstimateNumber}
+                providers={providers}
+                providerId={state.providerId}
+                onProviderChange={actions.setProviderId}
+                receivers={receivers}
+                receiverId={state.receiverId}
+                onReceiverChange={actions.setReceiverId}
+                onCreateReceiver={handleCreateReceiver}
+                remarks={state.remarks}
+                onRemarksChange={actions.setRemarks}
+                disabled={isSaving}
+              />
+              <div className="flex justify-end">
+                <Button type="button" onClick={handleSaveEstimate} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="animate-spin" /> : <Save className="size-4" />}
+                  확인 (견적서 저장)
+                </Button>
+              </div>
+            </>
+          )}
+        </>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-4">
         <div className="flex flex-wrap gap-2">
@@ -694,15 +854,31 @@ export function EstimateBuilder({
       <EstimatePasswordDialog
         open={pendingPasswordAction !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingPasswordAction(null);
+          if (!open) {
+            setPendingPasswordAction(null);
+            setPendingPurchaseInfo(null);
+          }
         }}
         title="견적서 비밀번호 설정"
         description="나중에 이 견적서를 수정하거나 삭제할 때 필요합니다."
         onSubmit={async (password) => {
           if (pendingPasswordAction === "save") await performSaveEstimate(password);
           else if (pendingPasswordAction === "saveAsCopy") await performSaveAsCopy(password);
+          else if (pendingPasswordAction === "purchaseRequest") await performPurchaseRequestSave(password);
         }}
       />
+
+      {state.items.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            cartSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 print:hidden"
+        >
+          🛒 장바구니 ({state.items.length}개)
+        </button>
+      )}
     </div>
   );
 }

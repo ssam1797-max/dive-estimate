@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,7 +50,7 @@ export function EstimateItemsTable({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle>견적 목록 ({items.length}건)</CardTitle>
+        <CardTitle>🛒 장바구니 ({items.length}건)</CardTitle>
         <Button
           type="button"
           variant="ghost"
@@ -154,20 +154,44 @@ export function EstimateItemsTable({
                       />
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      <Input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={item.quantity}
-                        disabled={disabled}
-                        className="w-20"
-                        onChange={(event) =>
-                          onQuantityChange(
-                            item.clientId,
-                            Math.max(1, Number(event.target.value) || 1)
-                          )
-                        }
-                      />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          disabled={disabled || item.quantity <= 1}
+                          onClick={() => onQuantityChange(item.clientId, item.quantity - 1)}
+                          aria-label={`${item.name} 수량 줄이기`}
+                        >
+                          <Minus className="size-3.5" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={item.quantity}
+                          disabled={disabled}
+                          className="w-14 text-center"
+                          onChange={(event) =>
+                            onQuantityChange(
+                              item.clientId,
+                              Math.max(1, Number(event.target.value) || 1)
+                            )
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          disabled={disabled}
+                          onClick={() => onQuantityChange(item.clientId, item.quantity + 1)}
+                          aria-label={`${item.name} 수량 늘리기`}
+                        >
+                          <Plus className="size-3.5" />
+                        </Button>
+                      </div>
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <Input

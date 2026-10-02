@@ -236,7 +236,7 @@ export function EquipmentPicker({
     setQuantity(1);
     setItemRemarks("");
 
-    setToast({ tone: "success", message: "견적 목록에 추가되었습니다." });
+    setToast({ tone: "success", message: "장바구니에 담았습니다." });
   };
 
   return (
@@ -385,7 +385,7 @@ export function EquipmentPicker({
           className="self-start"
         >
           <Plus />
-          견적 목록에 추가
+          장바구니에 담기
         </Button>
 
         <ManualItemForm

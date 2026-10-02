@@ -283,7 +283,7 @@ export function ManualItemForm({
 
       <Button type="button" onClick={handleSubmit} disabled={disabled} className="self-start">
         <Plus className="size-4" />
-        견적 목록에 추가
+        장바구니에 담기
       </Button>
     </div>
   );
