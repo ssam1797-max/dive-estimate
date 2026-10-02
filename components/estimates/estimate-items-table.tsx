@@ -257,17 +257,16 @@ export function EstimateItemsTable({
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={7} className="pt-3 text-right font-medium">
-                    합계
-                  </td>
-                  <td className="pt-3 text-lg font-semibold" colSpan={3}>
-                    {formatCurrency(totalAmount)}
-                  </td>
-                </tr>
-              </tfoot>
             </table>
+          </div>
+        )}
+        {items.length > 0 && (
+          // 합계는 가로 스크롤되는 테이블 밖에 둔다 — 테이블 안(tfoot)에 있으면
+          // 화면이 좁을 때 오른쪽으로 스크롤해야만 보여서 "최종가격이 안 보인다"는
+          // 문제가 있었다.
+          <div className="mt-3 flex items-center justify-end gap-3 border-t pt-3">
+            <span className="font-medium">합계</span>
+            <span className="text-lg font-semibold">{formatCurrency(totalAmount)}</span>
           </div>
         )}
       </CardContent>
