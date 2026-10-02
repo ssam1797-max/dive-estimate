@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Script from "next/script";
 import { CheckCircle2, Copy, Share2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,24 @@ interface BankAccountSettings {
   accountNumber: string;
   accountHolder: string;
 }
+
+declare global {
+  interface Window {
+    Kakao?: {
+      init: (key: string) => void;
+      isInitialized: () => boolean;
+      Share: {
+        sendDefault: (options: {
+          objectType: "text";
+          text: string;
+          link: { mobileWebUrl: string; webUrl: string };
+        }) => void;
+      };
+    };
+  }
+}
+
+const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
 
 interface OrderCompleteDialogProps {
   open: boolean;
@@ -45,6 +64,12 @@ export function OrderCompleteDialog({
 }: OrderCompleteDialogProps) {
   const [bankAccount, setBankAccount] = React.useState<BankAccountSettings | null>(null);
   const [copiedField, setCopiedField] = React.useState<"account" | "summary" | null>(null);
+
+  const handleKakaoReady = () => {
+    if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized()) {
+      window.Kakao.init(KAKAO_JS_KEY);
+    }
+  };
 
   React.useEffect(() => {
     if (!open) return;
@@ -78,7 +103,27 @@ export function OrderCompleteDialog({
     }
   };
 
+  /**
+   * 카카오톡 공유. 카카오 개발자 키(NEXT_PUBLIC_KAKAO_JS_KEY)가 설정돼 있으면
+   * 카카오의 "카카오톡 공유하기" API로 보낸다 — 로그인 후 친구/채팅방을 골라
+   * 바로 전달되므로, PC에서도 실제 카카오톡으로 공유된다. 키가 없거나 SDK
+   * 로드에 실패하면(설정 전/네트워크 문제) OS 공유 시트(navigator.share, 모바일
+   * 한정)나 클립보드 복사로 대체한다 — Windows PC의 navigator.share는 카카오톡이
+   * 등록돼 있지 않은 OS 공유창만 떠서 실질적으로 쓸모가 없다.
+   */
   const handleShare = async () => {
+    if (window.Kakao?.isInitialized()) {
+      try {
+        window.Kakao.Share.sendDefault({
+          objectType: "text",
+          text: orderSummaryText,
+          link: { mobileWebUrl: window.location.origin, webUrl: window.location.origin },
+        });
+        return;
+      } catch {
+        // 카카오 공유 호출이 실패하면(팝업 차단 등) 아래 대체 수단으로 넘어간다.
+      }
+    }
     if (navigator.share) {
       try {
         await navigator.share({ text: orderSummaryText });
@@ -94,6 +139,13 @@ export function OrderCompleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onConfirm()} widthClassName="max-w-md">
+      {KAKAO_JS_KEY && (
+        <Script
+          src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js"
+          strategy="lazyOnload"
+          onReady={handleKakaoReady}
+        />
+      )}
       <DialogContent onClose={onConfirm}>
         <DialogHeader>
           <DialogTitle>
