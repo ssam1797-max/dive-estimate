@@ -522,7 +522,16 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                   <td className="px-4 py-3 text-right font-medium">
                     {formatCurrency(estimate.totalsByTier[tier])}
                   </td>
-                  <td className="px-4 py-3">
+                  <td
+                    className="px-4 py-3"
+                    // 비활성화된(disabled) 삭제 버튼을 클릭하면, 버튼 자체의
+                    // onClick(stopPropagation 포함)은 React가 호출해주지 않는데도
+                    // 클릭 이벤트 자체는 그대로 이 셀을 거쳐 <tr> 까지 버블링돼
+                    // 행 클릭(상세보기 "불러오는 중..." 열기)이 그대로 실행되던
+                    // 버그가 있었다 — 셀 전체에서 한 번에 막는다(개별 버튼이
+                    // 비활성화인지와 무관하게 항상 동작).
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <div className="flex items-center justify-end gap-1">
                       <Link
                         href={`/estimates/new?duplicateFrom=${estimate.id}`}
