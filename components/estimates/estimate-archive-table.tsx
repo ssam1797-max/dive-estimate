@@ -175,8 +175,13 @@ function EstimateDetailDialog({
     }
   };
 
-  // 비밀번호가 없는(비밀번호 기능 도입 이전) 견적서는 관리자 모드에서만 수정/삭제할 수 있다.
-  const canModify = isAdmin || Boolean(detail?.hasEditPassword);
+  // 비밀번호가 없는(비밀번호 기능 도입 이전) 견적서, 그리고 [장바구니
+  // 구매요청]으로 접수돼 고객이 모르는 무작위 비밀번호가 걸린 견적서는
+  // 관리자 모드에서만 수정/삭제할 수 있다.
+  const canModify = isAdmin || Boolean(detail?.hasEditPassword && !detail.isPurchaseRequest);
+  const lockedReason = detail?.isPurchaseRequest
+    ? "장바구니 구매요청으로 접수된 주문은 관리자 모드에서만 수정/삭제할 수 있습니다."
+    : "비밀번호가 없는 견적서는 관리자 모드에서만 수정/삭제할 수 있습니다.";
 
   return (
     <Dialog open onOpenChange={onOpenChange} widthClassName="max-w-2xl">
@@ -261,7 +266,7 @@ function EstimateDetailDialog({
                 disabled={!canModify}
                 onClick={() => setConfirmDeleteOpen(true)}
                 className="mr-auto text-muted-foreground hover:text-destructive"
-                title={canModify ? undefined : "비밀번호가 없는 견적서는 관리자 모드에서만 삭제할 수 있습니다."}
+                title={canModify ? undefined : lockedReason}
               >
                 <Trash2 className="size-4" />
                 삭제
@@ -284,7 +289,7 @@ function EstimateDetailDialog({
               ) : (
                 <span
                   aria-disabled="true"
-                  title="비밀번호가 없는 견적서는 관리자 모드에서만 수정할 수 있습니다."
+                  title={lockedReason}
                   className={buttonVariants({
                     variant: "outline",
                     className: "cursor-not-allowed opacity-50",
@@ -316,7 +321,7 @@ function EstimateDetailDialog({
         description="삭제하면 되돌릴 수 없습니다."
         onConfirm={handleDelete}
       >
-        {!isAdmin && detail?.hasEditPassword && (
+        {!isAdmin && detail?.hasEditPassword && !detail?.isPurchaseRequest && (
           <Input
             type="password"
             inputMode="numeric"
@@ -346,6 +351,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<EstimateStatus | "all">("all");
+  const rowDeleteTargetEstimate = estimates.find((e) => e.id === rowDeleteTarget);
 
   // 공급받는자명 또는 견적서 번호로 검색하고, 발행일 범위/상태로 좁힌다.
   // 목록을 전부 미리 불러온 상태(initialEstimates)에서 클라이언트 쪽에서만
@@ -487,7 +493,11 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
             </thead>
             <tbody>
               {filteredEstimates.map((estimate) => {
-                const canModifyRow = isAdmin || estimate.hasEditPassword;
+                const canModifyRow =
+                  isAdmin || (estimate.hasEditPassword && !estimate.isPurchaseRequest);
+                const lockedRowReason = estimate.isPurchaseRequest
+                  ? "장바구니 구매요청으로 접수된 주문은 관리자 모드에서만 수정/삭제할 수 있습니다."
+                  : "비밀번호가 없는 견적서는 관리자 모드에서만 수정/삭제할 수 있습니다.";
                 return (
                 <tr
                   key={estimate.id}
@@ -542,7 +552,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                       ) : (
                         <span
                           aria-disabled="true"
-                          title="비밀번호가 없는 견적서는 관리자 모드에서만 수정할 수 있습니다."
+                          title={lockedRowReason}
                           onClick={(event) => event.stopPropagation()}
                           className={buttonVariants({
                             variant: "ghost",
@@ -577,7 +587,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                           setRowDeleteTarget(estimate.id);
                         }}
                         aria-label={`${estimate.estimateNumber} 삭제`}
-                        title={canModifyRow ? undefined : "비밀번호가 없는 견적서는 관리자 모드에서만 삭제할 수 있습니다."}
+                        title={canModifyRow ? undefined : lockedRowReason}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
@@ -617,7 +627,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
           if (rowDeleteTarget) return handleRowDelete(rowDeleteTarget, rowDeletePassword);
         }}
       >
-        {!isAdmin && estimates.find((e) => e.id === rowDeleteTarget)?.hasEditPassword && (
+        {!isAdmin && rowDeleteTargetEstimate?.hasEditPassword && !rowDeleteTargetEstimate.isPurchaseRequest && (
           <Input
             type="password"
             inputMode="numeric"

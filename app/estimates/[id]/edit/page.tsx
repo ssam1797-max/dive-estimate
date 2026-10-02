@@ -35,10 +35,15 @@ export default async function EditEstimatePage({
   let editContext: { estimateId: string; initialData: EstimateBuilderInitialData } | null = null;
   // 관리자 모드가 아니고, 저장 시 비밀번호를 설정해둔 견적서는 비밀번호
   // 확인 게이트를 거친다. 비밀번호 기능 도입 이전에 저장돼 비밀번호 자체가
-  // 없는 견적서는 대조할 값이 없으므로, 관리자 모드가 아니면 아예 수정할
-  // 수 없다(읽기 전용 열람만 허용 — 소급으로 자유 수정을 허용하지 않는다).
+  // 없는 견적서, 그리고 [장바구니 구매요청]으로 접수돼 고객이 모르는 무작위
+  // 비밀번호가 걸린 견적서는 대조할 방법이 없으므로, 관리자 모드가 아니면
+  // 아예 수정할 수 없다(읽기 전용 열람만 허용 — 소급으로 자유 수정을
+  // 허용하지 않는다). 후자를 비밀번호 입력 게이트로 보내면 고객이 모르는
+  // 비밀번호를 요구하는 꼴이라 혼란스러우므로 구매요청 건은 항상
+  // "관리자 전용" 잠금으로 보낸다.
   let needsPasswordGate = false;
   let needsAdminOnlyLock = false;
+  let isPurchaseRequestEstimate = false;
 
   try {
     const [estimate, catalogData, providersData, receiversData, templatesData, discountPoliciesData] =
@@ -53,8 +58,10 @@ export default async function EditEstimatePage({
 
     if (!estimate) notFound();
 
-    needsPasswordGate = !isAdmin && estimate.hasEditPassword;
-    needsAdminOnlyLock = !isAdmin && !estimate.hasEditPassword;
+    needsPasswordGate = !isAdmin && estimate.hasEditPassword && !estimate.isPurchaseRequest;
+    needsAdminOnlyLock =
+      !isAdmin && (!estimate.hasEditPassword || estimate.isPurchaseRequest);
+    isPurchaseRequestEstimate = estimate.isPurchaseRequest;
     catalog = catalogData;
     providers = providersData;
     receivers = receiversData;
@@ -124,8 +131,10 @@ export default async function EditEstimatePage({
         </div>
       ) : needsAdminOnlyLock ? (
         <p className="rounded-md border border-dashed bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-          비밀번호가 설정되지 않은(이전에 저장된) 견적서입니다. 수정은
-          관리자 모드에서만 가능합니다. 내용만 확인하려면{" "}
+          {isPurchaseRequestEstimate
+            ? "장바구니 구매요청으로 접수된 주문입니다."
+            : "비밀번호가 설정되지 않은(이전에 저장된) 견적서입니다."}{" "}
+          수정은 관리자 모드에서만 가능합니다. 내용만 확인하려면{" "}
           <Link href={`/estimates/${editContext.estimateId}/print`} className="underline" target="_blank">
             읽기 전용으로 보기
           </Link>

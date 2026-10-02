@@ -3,6 +3,18 @@
  */
 import type { PriceTier } from "@/lib/estimates/pricing";
 
+/**
+ * [장바구니에서 구매요청]으로 저장한 견적서임을 표시하는 비고 태그. 고객이
+ * 직접 정하지 않은 무작위 비밀번호가 걸려 있어(estimate-builder.tsx 참고)
+ * 사실상 관리자만 수정/삭제할 수 있는데, 보관함 화면에서 "비밀번호 입력"
+ * 대신 "관리자 전용" 안내를 보여주려면 이 태그로 구매요청 건을 구분해야 한다.
+ */
+export const PURCHASE_REQUEST_REMARKS_TAG = "[장바구니 구매요청]";
+
+export function isPurchaseRequestRemarks(remarks: string | null | undefined): boolean {
+  return Boolean(remarks?.startsWith(PURCHASE_REQUEST_REMARKS_TAG));
+}
+
 /** 3단계 장비 선택(브랜드 → 카테고리 → 장비명)의 원본 데이터 1건 */
 export interface EquipmentCatalogItem {
   id: string;
@@ -155,6 +167,13 @@ export interface SavedEstimateSummary {
   createdAt: string;
   /** 작성 시 설정한 수정/삭제 보호 비밀번호가 있으면 true (해시 값 자체는 클라이언트로 내려주지 않는다). */
   hasEditPassword: boolean;
+  /**
+   * [장바구니에서 구매요청]으로 생성된 견적서면 true — 고객이 직접 정하지
+   * 않은 무작위 비밀번호가 걸려 있어 hasEditPassword 는 true 이지만, 그
+   * 비밀번호를 아는 사람이 아무도 없으므로(관리자 제외) 보관함 화면에서
+   * "비밀번호 입력"이 아니라 "관리자 전용" 안내를 보여줘야 한다.
+   */
+  isPurchaseRequest: boolean;
 }
 
 /** 견적서 보관함 상세 조회 시 항목 1건 */

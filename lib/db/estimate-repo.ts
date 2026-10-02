@@ -11,6 +11,7 @@ import type {
   EstimateStatus,
 } from "@/lib/estimates/types";
 import type { SaveEstimateItemPayload } from "@/lib/estimates/types";
+import { isPurchaseRequestRemarks } from "@/lib/estimates/types";
 import type { PriceTier } from "@/lib/estimates/pricing";
 
 // ── 견적서 번호 생성 ──────────────────────────────────────────────────────────
@@ -552,6 +553,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
           ),
           createdAt: e.created_at,
           hasEditPassword: e.edit_password_hash !== null,
+          isPurchaseRequest: isPurchaseRequestRemarks(e.remarks),
         };
       });
   }
@@ -566,7 +568,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
   const { data, error } = await supabase
     .from("estimates")
     .select(
-      "id, estimate_number, date, total_amount, status, created_at, edit_password_hash, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
+      "id, estimate_number, date, remarks, total_amount, status, created_at, edit_password_hash, provider:provider_id(name), receiver:receiver_id(name), estimate_items(quantity, unit_price, price_retail, price_instructor, price_center, price_cost)"
     )
     .is("template_name", null)
     .order("created_at", { ascending: false });
@@ -576,6 +578,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
     id: string;
     estimate_number: string;
     date: string;
+    remarks: string | null;
     total_amount: number | string;
     status: EstimateStatus;
     created_at: string;
@@ -614,6 +617,7 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
       totalsByTier: computeTotalsByTier(items, totalAmount),
       createdAt: row.created_at,
       hasEditPassword: row.edit_password_hash !== null,
+      isPurchaseRequest: isPurchaseRequestRemarks(row.remarks),
     };
   });
 }
@@ -685,6 +689,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       receiver,
       priceTier: (estimate.price_tier as PriceTier | null) ?? null,
       hasEditPassword: estimate.edit_password_hash !== null,
+      isPurchaseRequest: isPurchaseRequestRemarks(estimate.remarks),
     };
   }
 
@@ -792,6 +797,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     provider,
     receiver,
     hasEditPassword: row.edit_password_hash !== null,
+    isPurchaseRequest: isPurchaseRequestRemarks(row.remarks),
   };
 }
 

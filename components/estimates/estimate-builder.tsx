@@ -33,6 +33,7 @@ import type {
   TemplateDetail,
   TemplateSummary,
 } from "@/lib/estimates/types";
+import { PURCHASE_REQUEST_REMARKS_TAG } from "@/lib/estimates/types";
 import {
   calculateEffectiveUnitPrice,
   type DiscountPolicyMap,
@@ -562,7 +563,7 @@ export function EstimateBuilder({
       [...prev, createdReceiver].sort((a, b) => a.name.localeCompare(b.name, "ko"))
     );
 
-    const remarksParts = ["[장바구니 구매요청]"];
+    const remarksParts = [PURCHASE_REQUEST_REMARKS_TAG];
     if (contact.address) remarksParts.push(`배송지: ${contact.address}`);
 
     setIsSaving(true);
