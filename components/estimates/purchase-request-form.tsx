@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import Script from "next/script";
+import { Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,16 +24,39 @@ interface PurchaseRequestFormProps {
   onSubmit: (contact: PurchaseRequestContact) => Promise<void>;
 }
 
+interface DaumPostcodeData {
+  zonecode: string;
+  roadAddress: string;
+  jibunAddress: string;
+}
+
+declare global {
+  interface Window {
+    daum?: {
+      Postcode: new (options: { oncomplete: (data: DaumPostcodeData) => void }) => {
+        open: () => void;
+      };
+    };
+  }
+}
+
 /**
  * [장바구니에서 구매요청] 버튼을 누르면 나타나는 하단 폼 — 이름/전화번호/
  * 배송주소만 받는다. 공급자·공급받는자 등 정식 견적서 입력 항목을 몰라도
  * 되도록, 받는 분 정보만으로 장바구니 내용을 접수한다. 입력값은
  * localStorage 에 저장해 다음에 다시 열었을 때 자동으로 채워준다.
+ *
+ * 배송주소는 오배송을 막기 위해 직접 타이핑하지 않고, 카카오(다음) 우편번호
+ * 서비스 팝업에서 검색해 고른 도로명주소만 기본주소로 쓰고 상세주소(동/호수
+ * 등)만 직접 입력하게 한다.
  */
 export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormProps) {
   const [name, setName] = React.useState("");
   const [phone, setPhone] = React.useState("");
-  const [address, setAddress] = React.useState("");
+  const [zonecode, setZonecode] = React.useState("");
+  const [baseAddress, setBaseAddress] = React.useState("");
+  const [addressDetail, setAddressDetail] = React.useState("");
+  const [isPostcodeReady, setIsPostcodeReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -40,15 +64,33 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (!saved) return;
-      const parsed = JSON.parse(saved) as Partial<PurchaseRequestContact>;
+      const parsed = JSON.parse(saved) as {
+        name?: string;
+        phone?: string;
+        zonecode?: string;
+        baseAddress?: string;
+        addressDetail?: string;
+      };
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(parsed.name ?? "");
       setPhone(parsed.phone ?? "");
-      setAddress(parsed.address ?? "");
+      setZonecode(parsed.zonecode ?? "");
+      setBaseAddress(parsed.baseAddress ?? "");
+      setAddressDetail(parsed.addressDetail ?? "");
     } catch {
       // localStorage 접근 실패(시크릿 모드 등)는 무시 — 빈 값으로 시작한다.
     }
   }, []);
+
+  const openAddressSearch = () => {
+    if (!window.daum?.Postcode) return;
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        setZonecode(data.zonecode);
+        setBaseAddress(data.roadAddress || data.jibunAddress);
+      },
+    }).open();
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -60,11 +102,23 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
       setError("전화번호를 입력해주세요.");
       return;
     }
+    if (!baseAddress.trim()) {
+      setError("배송주소를 검색해 입력해주세요.");
+      return;
+    }
+
+    const fullAddress = [
+      zonecode && `[${zonecode}]`,
+      baseAddress.trim(),
+      addressDetail.trim(),
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ name, phone, address })
+        JSON.stringify({ name, phone, zonecode, baseAddress, addressDetail })
       );
     } catch {
       // 다음 입력 자동완성이 안 될 뿐, 접수 자체에는 지장 없다.
@@ -72,7 +126,7 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
 
     setIsSubmitting(true);
     try {
-      await onSubmit({ name: name.trim(), phone: phone.trim(), address: address.trim() });
+      await onSubmit({ name: name.trim(), phone: phone.trim(), address: fullAddress });
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : "처리 중 오류가 발생했습니다."
@@ -84,6 +138,11 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
 
   return (
     <Card>
+      <Script
+        src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"
+        strategy="lazyOnload"
+        onReady={() => setIsPostcodeReady(true)}
+      />
       <CardHeader>
         <CardTitle>구매요청 정보</CardTitle>
       </CardHeader>
@@ -116,13 +175,33 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="purchase-address">배송주소</Label>
+          <Label htmlFor="purchase-address">배송주소 *</Label>
+          <div className="flex gap-2">
+            <Input
+              id="purchase-address"
+              value={zonecode ? `[${zonecode}] ${baseAddress}` : baseAddress}
+              readOnly
+              onClick={openAddressSearch}
+              disabled={disabled || isSubmitting}
+              placeholder="주소 검색 버튼을 눌러주세요"
+              className="cursor-pointer bg-muted/40"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openAddressSearch}
+              disabled={disabled || isSubmitting || !isPostcodeReady}
+              className="shrink-0"
+            >
+              <Search className="size-4" />
+              주소 검색
+            </Button>
+          </div>
           <Input
-            id="purchase-address"
-            value={address}
+            value={addressDetail}
             disabled={disabled || isSubmitting}
-            onChange={(event) => setAddress(event.target.value)}
-            placeholder="배송받으실 주소를 입력하세요 (선택)"
+            onChange={(event) => setAddressDetail(event.target.value)}
+            placeholder="상세주소 (동/호수 등, 선택)"
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
