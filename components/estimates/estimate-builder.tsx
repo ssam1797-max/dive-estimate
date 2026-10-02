@@ -647,7 +647,13 @@ export function EstimateBuilder({
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div
+      className={
+        // 장바구니에 담긴 게 있으면 좌하단 플로팅 버튼이 떠서, 페이지 맨
+        // 아래 콘텐츠(엑셀 미리보기 버튼 등)를 가릴 수 있어 여백을 더 둔다.
+        state.items.length > 0 ? "flex flex-col gap-6 pb-24" : "flex flex-col gap-6"
+      }
+    >
       {editContext && (
         <BasicInfoSection
           date={state.date}
