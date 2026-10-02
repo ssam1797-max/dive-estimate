@@ -135,6 +135,22 @@ export function DiscountPolicyTable({
     );
   }, [rows, searchQuery]);
 
+  // 검색창은 기본적으로 "이미 할인율이 등록된 브랜드"만 찾는다(filteredRows).
+  // 장비 마스터에는 있지만 아직 할인율을 한 번도 설정한 적 없는 브랜드는
+  // rows 에 없어 검색해도 안 보였다 — 그래서 여기서 따로 찾아 보여주고
+  // 바로 추가할 수 있게 한다.
+  const unconfiguredMatches = React.useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query) return [];
+    return suggestedBrands.filter((brand) => matchesKoreanSearch(brand, query));
+  }, [suggestedBrands, searchQuery]);
+
+  const startAddingBrand = (brand: string) => {
+    setNewBrand(brand);
+    setAddError(null);
+    setShowAddForm(true);
+  };
+
   const updateRow = (
     brand: string,
     key: keyof Pick<PolicyRow, "rate_retail" | "rate_instructor" | "rate_center" | "rate_cost">,
@@ -298,10 +314,39 @@ export function DiscountPolicyTable({
         </p>
       )}
 
-      {rows.length > 0 && filteredRows.length === 0 && (
+      {rows.length > 0 && filteredRows.length === 0 && unconfiguredMatches.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
           &quot;{searchQuery}&quot;와 일치하는 브랜드가 없습니다.
         </p>
+      )}
+
+      {/* 장비 마스터에는 있지만 할인율을 아직 설정한 적 없는 브랜드 — 검색어와
+          일치하면 여기 보여주고 바로 추가할 수 있게 한다. */}
+      {unconfiguredMatches.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
+          <p className="text-xs text-muted-foreground">
+            장비 목록에는 있지만 아직 할인율이 설정되지 않은 브랜드입니다.
+          </p>
+          {unconfiguredMatches.map((brand) =>
+            isAdmin ? (
+              <Button
+                key={brand}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => startAddingBrand(brand)}
+              >
+                <Plus className="size-4" />
+                {brand} 할인율 설정하기
+              </Button>
+            ) : (
+              <span key={brand} className="text-sm font-medium">
+                {brand}
+              </span>
+            )
+          )}
+        </div>
       )}
 
       {/* 행 목록 */}
