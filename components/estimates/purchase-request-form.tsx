@@ -6,6 +6,7 @@ import { Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -33,8 +34,12 @@ interface DaumPostcodeData {
 declare global {
   interface Window {
     daum?: {
-      Postcode: new (options: { oncomplete: (data: DaumPostcodeData) => void }) => {
-        open: () => void;
+      Postcode: new (options: {
+        oncomplete: (data: DaumPostcodeData) => void;
+        width?: string | number;
+        height?: string | number;
+      }) => {
+        embed: (element: HTMLElement) => void;
       };
     };
   }
@@ -57,6 +62,7 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
   const [baseAddress, setBaseAddress] = React.useState("");
   const [addressDetail, setAddressDetail] = React.useState("");
   const [isPostcodeReady, setIsPostcodeReady] = React.useState(false);
+  const [isAddressSearchOpen, setIsAddressSearchOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -84,13 +90,28 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
 
   const openAddressSearch = () => {
     if (!window.daum?.Postcode) return;
+    setIsAddressSearchOpen(true);
+  };
+
+  /**
+   * 팝업 창(window.open)으로 띄우는 기본 방식 대신, 모달 안에 검색창을 직접
+   * 그려 넣는(embed) 방식을 쓴다 — 팝업 차단 설정이나 모바일 브라우저의
+   * 팝업 제약에 영향받지 않고 항상 똑같이 동작하게 하기 위해서다. 모달이
+   * 열릴 때마다(= 이 div 가 새로 마운트될 때마다) 콜백 ref 로 그 자리에서
+   * 바로 임베드한다.
+   */
+  const setPostcodeContainer = React.useCallback((node: HTMLDivElement | null) => {
+    if (!node || !window.daum?.Postcode) return;
     new window.daum.Postcode({
       oncomplete: (data) => {
         setZonecode(data.zonecode);
         setBaseAddress(data.roadAddress || data.jibunAddress);
+        setIsAddressSearchOpen(false);
       },
-    }).open();
-  };
+      width: "100%",
+      height: "100%",
+    }).embed(node);
+  }, []);
 
   const handleSubmit = async () => {
     setError(null);
@@ -215,6 +236,19 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
           확인
         </Button>
       </CardContent>
+
+      <Dialog
+        open={isAddressSearchOpen}
+        onOpenChange={setIsAddressSearchOpen}
+        widthClassName="max-w-lg"
+      >
+        <DialogContent onClose={() => setIsAddressSearchOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>배송지 주소 검색</DialogTitle>
+          </DialogHeader>
+          <div ref={setPostcodeContainer} className="h-[420px] w-full" />
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
