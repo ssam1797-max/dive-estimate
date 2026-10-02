@@ -22,8 +22,6 @@ interface EstimateItemsTableProps {
   discountPolicies: DiscountPolicyMap;
   onRemove: (clientId: string) => void;
   onQuantityChange: (clientId: string, quantity: number) => void;
-  onUnitPriceChange: (clientId: string, unitPrice: number) => void;
-  onPriceRetailChange: (clientId: string, priceRetail: number) => void;
   onNameChange: (clientId: string, name: string) => void;
   onColorChange: (clientId: string, color: string) => void;
   onSizeChange: (clientId: string, size: string) => void;
@@ -44,8 +42,6 @@ export function EstimateItemsTable({
   discountPolicies,
   onRemove,
   onQuantityChange,
-  onUnitPriceChange,
-  onPriceRetailChange,
   onNameChange,
   onColorChange,
   onSizeChange,
@@ -216,39 +212,13 @@ export function EstimateItemsTable({
                       </div>
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      <Input
-                        type="number"
-                        min={0}
-                        step={100}
-                        value={item.priceRetail}
-                        disabled={disabled}
-                        className="w-28"
-                        onChange={(event) =>
-                          onPriceRetailChange(
-                            item.clientId,
-                            Math.max(0, Number(event.target.value) || 0)
-                          )
-                        }
-                      />
+                      {formatCurrency(item.priceRetail)}
                     </td>
                     <td className="py-2 pr-2 align-top text-muted-foreground">
                       {formatCurrency(shopPrice)}
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      <Input
-                        type="number"
-                        min={0}
-                        step={100}
-                        value={item.unitPrice}
-                        disabled={disabled}
-                        className="w-28"
-                        onChange={(event) =>
-                          onUnitPriceChange(
-                            item.clientId,
-                            Math.max(0, Number(event.target.value) || 0)
-                          )
-                        }
-                      />
+                      {formatCurrency(item.unitPrice)}
                       {discountRate > 0 && (
                         <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                           {formatDiscountRate(discountRate)}%↓

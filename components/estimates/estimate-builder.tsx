@@ -734,8 +734,6 @@ export function EstimateBuilder({
           discountPolicies={discountPolicies}
           onRemove={actions.removeItem}
           onQuantityChange={actions.updateItemQuantity}
-          onUnitPriceChange={actions.updateItemUnitPrice}
-          onPriceRetailChange={actions.updateItemPriceRetail}
           onNameChange={actions.updateItemName}
           onColorChange={actions.updateItemColor}
           onSizeChange={actions.updateItemSize}
