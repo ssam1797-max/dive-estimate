@@ -39,7 +39,10 @@ export function InlineToast({
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-4 right-4 left-4 z-50 flex items-start gap-2 rounded-lg border p-3 text-sm shadow-lg sm:left-auto sm:w-auto sm:max-w-sm",
+        // bottom-4 가 아니라 bottom-20 인 이유: Netlify 배포 사이트가 우측
+        // 하단에 자체 "Powered by Netlify" 배지를 띄워서, bottom-4 로 두면
+        // 토스트 글자가 그 배지에 가려 안 보였다(실제 배포본에서 확인).
+        "fixed bottom-20 right-4 left-4 z-50 flex items-start gap-2 rounded-lg border p-3 text-sm shadow-lg sm:left-auto sm:w-auto sm:max-w-sm",
         toast.tone === "success" &&
           "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
         toast.tone === "error" && "border-destructive/40 bg-destructive/5 text-destructive",
