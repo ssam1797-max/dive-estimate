@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  CheckCircle2,
   Copy,
   Download,
   FileSpreadsheet,
@@ -23,6 +22,7 @@ import { BasisTierSelect } from "@/components/estimates/price-tier-controls";
 import { ExcelPreviewDialog } from "@/components/estimates/excel-preview-dialog";
 import { EstimatePasswordDialog } from "@/components/estimates/estimate-password-dialog";
 import { OrderCompleteDialog } from "@/components/estimates/order-complete-dialog";
+import { EstimateSaveCompleteDialog } from "@/components/estimates/estimate-save-complete-dialog";
 import { generateRandomEstimatePassword } from "@/lib/estimates/estimatePasswordRules";
 import { useEstimateBuilder, type EstimateBuilderInitialData } from "@/hooks/use-estimate-builder";
 import type {
@@ -214,9 +214,11 @@ export function EstimateBuilder({
 
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
-  const [savedEstimateNumber, setSavedEstimateNumber] = React.useState<
-    string | null
-  >(null);
+  /** [견적서 만들기](신규 저장) 완료 시 완료 모달에 보여줄 정보. */
+  const [saveCompleteInfo, setSaveCompleteInfo] = React.useState<{
+    estimateNumber: string;
+    estimateId: string;
+  } | null>(null);
 
   const [excelPreviewOpen, setExcelPreviewOpen] = React.useState(false);
   const [isExporting, setIsExporting] = React.useState(false);
@@ -286,18 +288,22 @@ export function EstimateBuilder({
         throw new Error(body?.error ?? "견적서 저장에 실패했습니다.");
       }
 
-      setSavedEstimateNumber(state.estimateNumber);
-      actions.resetAfterSave();
       setPendingPasswordAction(null);
-      setBottomFormMode("none");
+      setSaveCompleteInfo({ estimateNumber: state.estimateNumber, estimateId: body.id as string });
     } finally {
       setIsSaving(false);
     }
   };
 
+  /** 견적서 저장 완료 모달의 "확인" — 폼을 초기화하고 모달을 닫는다. */
+  const performSaveCompleteConfirm = () => {
+    actions.resetAfterSave();
+    setSaveCompleteInfo(null);
+    setBottomFormMode("none");
+  };
+
   const handleSaveEstimate = () => {
     setSaveError(null);
-    setSavedEstimateNumber(null);
 
     const validationError = validateBeforeSave();
     if (validationError) {
@@ -595,7 +601,6 @@ export function EstimateBuilder({
 
   /** 주문 완료 모달의 "확인" — 장바구니/폼을 초기화하고 모달을 닫는다. */
   const performPurchaseRequestConfirm = () => {
-    setSavedEstimateNumber(state.estimateNumber);
     actions.resetAfterSave();
     setOrderCompleteInfo(null);
     setBottomFormMode("none");
@@ -734,14 +739,6 @@ export function EstimateBuilder({
       )}
 
       {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-
-      {savedEstimateNumber && (
-        <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-          <CheckCircle2 className="size-4 shrink-0" />
-          견적서({savedEstimateNumber})가 저장되었습니다. 새 견적서를 계속
-          작성할 수 있습니다.
-        </div>
-      )}
 
       <div ref={cartSectionRef}>
         <EstimateItemsTable
@@ -896,6 +893,17 @@ export function EstimateBuilder({
         totalAmount={orderCompleteInfo?.totalAmount ?? 0}
         orderSummaryText={orderCompleteInfo?.summaryText ?? ""}
         onConfirm={performPurchaseRequestConfirm}
+      />
+
+      <EstimateSaveCompleteDialog
+        open={saveCompleteInfo !== null}
+        estimateNumber={saveCompleteInfo?.estimateNumber ?? ""}
+        printUrl={
+          saveCompleteInfo
+            ? `${typeof window !== "undefined" ? window.location.origin : ""}/estimates/${saveCompleteInfo.estimateId}/print`
+            : ""
+        }
+        onConfirm={performSaveCompleteConfirm}
       />
 
       {state.items.length > 0 && (

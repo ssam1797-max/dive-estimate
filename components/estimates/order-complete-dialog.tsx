@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Script from "next/script";
-import { CheckCircle2, Copy, Share2 } from "lucide-react";
+import { CheckCircle2, Copy, MessageCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 
 interface BankAccountSettings {
   bankName: string;
@@ -36,11 +37,20 @@ declare global {
 }
 
 const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
+/**
+ * 카카오톡 공유 기능 자체(SDK 연동 코드)는 이미 준비돼 있지만, 카카오
+ * 개발자센터 서비스 신청/도메인 등록 승인이 날 때까지는 꺼둔다. 승인
+ * 완료되면 이 값만 true 로 바꾸면 바로 실제 공유로 전환된다.
+ */
+const KAKAO_SHARE_ENABLED = false;
+
+const KAKAO_PENDING_MESSAGE =
+  "카카오톡 공유 기능은 카카오 승인 후 오픈 예정입니다. '내역 복사' 기능을 이용해주세요.";
 
 interface OrderCompleteDialogProps {
   open: boolean;
   totalAmount: number;
-  /** 카톡 공유/복사 버튼에 쓸, 미리 만들어둔 주문 내역 텍스트. */
+  /** 내역 복사 버튼에 쓸, 미리 만들어둔 주문 내역 텍스트. */
   orderSummaryText: string;
   /** 확인(닫기) 버튼을 누르면 호출 — 장바구니/폼 초기화는 호출하는 쪽이 책임진다. */
   onConfirm: () => void;
@@ -52,9 +62,12 @@ function formatCurrency(amount: number): string {
 
 /**
  * [장바구니에서 구매요청] 완료 후 뜨는 주문 완료 모달. 다른 페이지로 이동하지
- * 않고 그 자리에서 입금 계좌와 복사/공유 버튼만 보여준다. 계좌 정보는
- * 관리자가 [입금 계좌 설정] 화면에서 등록해둔 값을 열릴 때마다 새로 받아온다
- * (고객이 보는 값이 항상 최신이어야 해서 props 로 미리 내려받지 않는다).
+ * 않고 그 자리에서 입금 계좌와 복사 버튼만 보여준다. 계좌 정보는 관리자가
+ * [입금 계좌 설정] 화면에서 등록해둔 값을 열릴 때마다 새로 받아온다(고객이
+ * 보는 값이 항상 최신이어야 해서 props 로 미리 내려받지 않는다).
+ *
+ * 기본 액션은 "내역 복사"(클립보드) 다. 카카오톡 공유는 카카오 승인 전까지
+ * "서비스 예정" 안내만 띄운다 — KAKAO_SHARE_ENABLED 참고.
  */
 export function OrderCompleteDialog({
   open,
@@ -63,7 +76,7 @@ export function OrderCompleteDialog({
   onConfirm,
 }: OrderCompleteDialogProps) {
   const [bankAccount, setBankAccount] = React.useState<BankAccountSettings | null>(null);
-  const [copiedField, setCopiedField] = React.useState<"account" | "summary" | null>(null);
+  const [toast, setToast] = React.useState<ToastState | null>(null);
 
   const handleKakaoReady = () => {
     if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized()) {
@@ -93,25 +106,17 @@ export function OrderCompleteDialog({
     };
   }, [open]);
 
-  const copyText = async (text: string, field: "account" | "summary") => {
+  const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField((prev) => (prev === field ? null : prev)), 2000);
+      setToast({ tone: "success", message: "클립보드에 복사되었습니다." });
     } catch {
-      // 클립보드 접근이 막혀 있으면(권한 거부 등) 조용히 무시 — 버튼을 다시 누르면 된다.
+      setToast({ tone: "error", message: "클립보드 복사에 실패했습니다. 다시 시도해주세요." });
     }
   };
 
-  /**
-   * 카카오톡 공유. 카카오 개발자 키(NEXT_PUBLIC_KAKAO_JS_KEY)가 설정돼 있으면
-   * 카카오의 "카카오톡 공유하기" API로 보낸다 — 로그인 후 친구/채팅방을 골라
-   * 바로 전달되므로, PC에서도 실제 카카오톡으로 공유된다. 키가 없거나 SDK
-   * 로드에 실패하면(설정 전/네트워크 문제) OS 공유 시트(navigator.share, 모바일
-   * 한정)나 클립보드 복사로 대체한다 — Windows PC의 navigator.share는 카카오톡이
-   * 등록돼 있지 않은 OS 공유창만 떠서 실질적으로 쓸모가 없다.
-   */
-  const handleShare = async () => {
+  /** 카카오 승인이 끝나면 KAKAO_SHARE_ENABLED 를 true 로 바꿔 이 경로를 쓴다. */
+  const handleKakaoShare = () => {
     if (window.Kakao?.isInitialized()) {
       try {
         window.Kakao.Share.sendDefault({
@@ -121,25 +126,25 @@ export function OrderCompleteDialog({
         });
         return;
       } catch {
-        // 카카오 공유 호출이 실패하면(팝업 차단 등) 아래 대체 수단으로 넘어간다.
+        // 카카오 공유 호출이 실패하면(팝업 차단 등) 클립보드 복사로 대체한다.
       }
     }
-    if (navigator.share) {
-      try {
-        await navigator.share({ text: orderSummaryText });
-        return;
-      } catch {
-        // 공유 시트를 취소했거나 지원하지 않으면 클립보드 복사로 대체한다.
-      }
+    copyText(orderSummaryText);
+  };
+
+  const handleKakaoClick = () => {
+    if (KAKAO_SHARE_ENABLED) {
+      handleKakaoShare();
+      return;
     }
-    await copyText(orderSummaryText, "summary");
+    setToast({ tone: "info", message: KAKAO_PENDING_MESSAGE });
   };
 
   const hasBankAccount = Boolean(bankAccount?.accountNumber);
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onConfirm()} widthClassName="max-w-md">
-      {KAKAO_JS_KEY && (
+      {KAKAO_SHARE_ENABLED && KAKAO_JS_KEY && (
         <Script
           src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js"
           strategy="lazyOnload"
@@ -179,20 +184,34 @@ export function OrderCompleteDialog({
           )}
         </div>
 
+        {/* 기본 액션: 내역 복사(클립보드) */}
+        <Button type="button" className="w-full" onClick={() => copyText(orderSummaryText)}>
+          <Copy className="size-4" />
+          주문내역 복사
+        </Button>
+
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             type="button"
             variant="outline"
             className="flex-1"
             disabled={!hasBankAccount}
-            onClick={() => bankAccount && copyText(bankAccount.accountNumber, "account")}
+            onClick={() => bankAccount && copyText(bankAccount.accountNumber)}
           >
             <Copy className="size-4" />
-            {copiedField === "account" ? "복사됨" : "계좌번호 복사"}
+            계좌번호 복사
           </Button>
-          <Button type="button" variant="outline" className="flex-1" onClick={handleShare}>
-            <Share2 className="size-4" />
-            {copiedField === "summary" ? "복사됨" : "주문내역 카톡 공유 / 복사"}
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 text-muted-foreground"
+            onClick={handleKakaoClick}
+          >
+            <MessageCircle className="size-4" />
+            카카오톡 공유
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+              서비스 예정
+            </span>
           </Button>
         </div>
 
@@ -202,6 +221,8 @@ export function OrderCompleteDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <InlineToast toast={toast} onDismiss={() => setToast(null)} durationMs={2500} />
     </Dialog>
   );
 }

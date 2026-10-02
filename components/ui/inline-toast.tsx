@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Info, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 export interface ToastState {
-  tone: "success" | "error";
+  tone: "success" | "error" | "info";
   message: string;
 }
 
@@ -40,15 +40,19 @@ export function InlineToast({
       aria-live="polite"
       className={cn(
         "fixed bottom-4 right-4 left-4 z-50 flex items-start gap-2 rounded-lg border p-3 text-sm shadow-lg sm:left-auto sm:w-auto sm:max-w-sm",
-        toast.tone === "success"
-          ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-          : "border-destructive/40 bg-destructive/5 text-destructive"
+        toast.tone === "success" &&
+          "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+        toast.tone === "error" && "border-destructive/40 bg-destructive/5 text-destructive",
+        toast.tone === "info" &&
+          "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200"
       )}
     >
       {toast.tone === "success" ? (
         <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-      ) : (
+      ) : toast.tone === "error" ? (
         <XCircle className="mt-0.5 size-4 shrink-0" />
+      ) : (
+        <Info className="mt-0.5 size-4 shrink-0" />
       )}
       <span className="leading-snug">{toast.message}</span>
     </div>
