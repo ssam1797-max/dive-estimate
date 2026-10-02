@@ -747,7 +747,7 @@ export function EstimateBuilder({
             <Button
               type="button"
               variant="outline"
-              className="flex-1"
+              className="flex-1 border-yellow-500 hover:border-yellow-500"
               disabled={isSaving || state.items.length === 0}
               onClick={() =>
                 setBottomFormMode((prev) => (prev === "purchaseRequest" ? "none" : "purchaseRequest"))
@@ -758,7 +758,8 @@ export function EstimateBuilder({
             </Button>
             <Button
               type="button"
-              className="flex-1"
+              variant="outline"
+              className="flex-1 border-yellow-500 hover:border-yellow-500"
               disabled={isSaving || state.items.length === 0}
               onClick={() =>
                 setBottomFormMode((prev) => (prev === "basicInfo" ? "none" : "basicInfo"))
