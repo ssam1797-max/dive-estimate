@@ -450,6 +450,46 @@ export async function updateEquipment(
   if (error) throw error;
 }
 
+// ── 가격 변동 검토: 선택 품목만 가격 반영 ────────────────────────────────────────
+// 동기화 결과의 "가격 변동 확인 필요" 탭에서 관리자가 "퐁당가 반영"을 선택한
+// 품목만 price_retail 을 갱신한다. updateEquipment()와 달리 브랜드/카테고리/
+// 색상/사이즈 등 다른 필드는 건드리지 않고(모를 수도 있음), is_custom 플래그도
+// 그대로 유지한다 — 다음 동기화에서도 여전히 "보호 품목"으로 남아 자동 덮어쓰기
+// 대상이 되지 않는다(이번에 가격만 수동으로 최신화했을 뿐).
+
+/** @returns 실제로 가격이 갱신된 장비 id 목록 (존재하지 않는 id는 조용히 건너뛴다). */
+export async function updateEquipmentPriceBulk(
+  updates: { id: string; price: number }[]
+): Promise<string[]> {
+  if (updates.length === 0) return [];
+
+  if (isMockMode()) {
+    const now = new Date().toISOString();
+    const updatedIds: string[] = [];
+    for (const { id, price } of updates) {
+      const row = mockStore.equipment.find((e) => e.id === id);
+      if (!row) continue;
+      row.price_retail = sanitizePriceRetail(price);
+      row.updated_at = now;
+      updatedIds.push(id);
+    }
+    return updatedIds;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const updatedIds: string[] = [];
+  for (const { id, price } of updates) {
+    const { error, count } = await supabase
+      .from("equipment")
+      .update({ price_retail: sanitizePriceRetail(price) }, { count: "exact" })
+      .eq("id", id);
+    if (error) throw error;
+    if ((count ?? 0) > 0) updatedIds.push(id);
+  }
+  return updatedIds;
+}
+
 // ── 단건 삭제 ─────────────────────────────────────────────────────────────────
 // equipment_items.equipment_id 는 "on delete set null" 로 걸려 있어(초기
 // 마이그레이션 참고), 이미 저장된 견적서가 이 장비를 참조 중이어도 삭제가
@@ -505,7 +545,15 @@ export async function upsertEquipmentBulk(
         (e) => e.brand === brand && e.catalog_year === catalogYear && e.name === item.name
       );
       if (idx >= 0 && mockStore.equipment[idx].is_custom) {
-        results.push({ name: item.name, category: item.category, status: "protected" });
+        const existing = mockStore.equipment[idx];
+        results.push({
+          name: item.name,
+          category: item.category,
+          status: "protected",
+          id: existing.id,
+          oldPrice: existing.price_retail,
+          newPrice: item.price_retail,
+        });
       } else if (idx >= 0) {
         mockStore.equipment[idx] = {
           ...mockStore.equipment[idx],
@@ -543,25 +591,34 @@ export async function upsertEquipmentBulk(
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
 
-  // 이름 -> is_custom 맵. 이걸로 (a) upsert 대상에서 보호 품목을 걸러내고,
-  // (b) 처리 후 각 항목이 신규/갱신/보호 중 무엇이었는지 보고한다.
-  let existingByName: Map<string, boolean>;
+  // 이름 -> {id, is_custom, price_retail} 맵. 이걸로 (a) upsert 대상에서 보호
+  // 품목을 걸러내고, (b) 처리 후 각 항목이 신규/갱신/보호 중 무엇이었는지
+  // 보고하며, (c) 보호 품목은 현재가 대비 새로 수집된 가격을 비교해 가격
+  // 변동 검토 UI에 넘겨준다(가격 자체는 여기서 덮어쓰지 않는다).
+  let existingByName: Map<string, { id: string; is_custom: boolean; price_retail: number }>;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("name, is_custom")
+      .select("id, name, is_custom, price_retail")
       .eq("brand", brand)
       .eq("catalog_year", catalogYear);
     if (error) throw error;
     existingByName = new Map(
-      (data ?? []).map((r) => [r.name as string, Boolean(r.is_custom)])
+      (data ?? []).map((r) => [
+        r.name as string,
+        {
+          id: r.id as string,
+          is_custom: Boolean(r.is_custom),
+          price_retail: Number(r.price_retail),
+        },
+      ])
     );
   } catch {
     existingByName = new Map();
   }
 
-  const protectedItems = items.filter((item) => existingByName.get(item.name) === true);
-  const itemsToUpsert = items.filter((item) => existingByName.get(item.name) !== true);
+  const protectedItems = items.filter((item) => existingByName.get(item.name)?.is_custom === true);
+  const itemsToUpsert = items.filter((item) => existingByName.get(item.name)?.is_custom !== true);
 
   const rows = itemsToUpsert.map((item) => ({
     brand,
@@ -587,12 +644,18 @@ export async function upsertEquipmentBulk(
         category: item.category,
         status: (existingByName.has(item.name) ? "updated" : "inserted") as EquipmentImportItemStatus,
       })),
-      ...protectedItems.map((item) => ({
-        name: item.name,
-        category: item.category,
-        status: "protected" as EquipmentImportItemStatus,
-        message: "수동으로 등록/수정된 품목이라 자동 동기화에서 건너뛰었습니다.",
-      })),
+      ...protectedItems.map((item) => {
+        const existing = existingByName.get(item.name);
+        return {
+          name: item.name,
+          category: item.category,
+          status: "protected" as EquipmentImportItemStatus,
+          message: "수동으로 등록/수정된 품목이라 자동 동기화에서 건너뛰었습니다.",
+          id: existing?.id,
+          oldPrice: existing?.price_retail,
+          newPrice: item.price_retail,
+        };
+      }),
     ];
 
     return {

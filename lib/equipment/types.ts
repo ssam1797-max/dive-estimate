@@ -30,6 +30,13 @@ export interface EquipmentImportItemResult {
   category: string;
   status: EquipmentImportItemStatus;
   message?: string;
+  /** status가 "protected"일 때만 채워짐 — 가격 변동 검토 화면에서 "퐁당가 반영"을
+   *  누르면 이 id로 단건 가격 업데이트를 호출한다. */
+  id?: string;
+  /** status가 "protected"일 때만 채워짐: 현재 DB에 저장된 내 적용가. */
+  oldPrice?: number;
+  /** status가 "protected"일 때만 채워짐: 이번 동기화에서 새로 수집된 가격. */
+  newPrice?: number;
 }
 
 /** 업로드 API 전체 응답 요약 */

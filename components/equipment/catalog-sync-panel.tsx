@@ -13,12 +13,18 @@ import {
 } from "@/components/ui/card";
 import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 import { ImportResultSummary } from "@/components/equipment/import-result-summary";
+import { SyncResultDialog } from "@/components/equipment/sync-result-dialog";
 import { useCatalogSync } from "@/lib/hooks/useCatalogSync";
+import type { EquipmentImportSummary } from "@/lib/equipment/types";
 
 export function CatalogSyncPanel() {
   const scubapro = useCatalogSync("/api/equipment/sync");
   const pongdang = useCatalogSync("/api/equipment/import/pongdang");
   const [toast, setToast] = React.useState<ToastState | null>(null);
+  const [resultDialog, setResultDialog] = React.useState<{
+    key: string;
+    summary: EquipmentImportSummary;
+  } | null>(null);
 
   const isScubaproLoading = scubapro.status === "loading";
   const isPongdangLoading = pongdang.status === "loading";
@@ -30,14 +36,11 @@ export function CatalogSyncPanel() {
   ) => {
     setToast(null);
     const result = await sync.run();
-    setToast(
-      result.ok
-        ? {
-            tone: "success",
-            message: `${label} 동기화 완료: 신규 ${result.summary.insertedCount}건, 업데이트 ${result.summary.updatedCount}건.`,
-          }
-        : { tone: "error", message: `${label} 동기화 실패: ${result.message}` }
-    );
+    if (result.ok) {
+      setResultDialog({ key: crypto.randomUUID(), summary: result.summary });
+    } else {
+      setToast({ tone: "error", message: `${label} 동기화 실패: ${result.message}` });
+    }
   };
 
   return (
@@ -102,6 +105,23 @@ export function CatalogSyncPanel() {
       )}
 
       <InlineToast toast={toast} onDismiss={() => setToast(null)} />
+
+      {resultDialog && (
+        <SyncResultDialog
+          key={resultDialog.key}
+          open
+          onOpenChange={(open) => {
+            if (!open) setResultDialog(null);
+          }}
+          summary={resultDialog.summary}
+          onPriceApplied={(count) =>
+            setToast({ tone: "success", message: `${count}건의 가격이 퐁당닷컴 최신가로 반영되었습니다.` })
+          }
+          onPriceApplyError={(message) =>
+            setToast({ tone: "error", message: `가격 반영 실패: ${message}` })
+          }
+        />
+      )}
     </div>
   );
 }
