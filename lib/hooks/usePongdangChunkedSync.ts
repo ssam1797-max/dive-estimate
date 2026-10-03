@@ -6,7 +6,8 @@ import type {
   EquipmentImportChunkSummary,
   EquipmentImportSummary,
 } from "@/lib/equipment/types";
-import type { SyncStatus } from "@/lib/hooks/useCatalogSync";
+
+export type SyncStatus = "idle" | "loading" | "success" | "error";
 
 type SyncRunResult =
   | { ok: true; summary: EquipmentImportSummary }
@@ -17,10 +18,9 @@ type SyncRunResult =
  * 페이지 몇 장"만 처리하는 조각 단위 API로 바뀐 이유는 pongdangCrawler.ts의
  * crawlPongdangCategoryChunk 주석 참고(Netlify 서버 함수 실행 시간 제한으로
  * 504 Gateway Timeout 이 나던 문제) — 이 훅이 카테고리 × 페이지 범위를
- * nextPage 가 null이 될 때까지 순차 호출하며 그 결과를 직접 합산해, 기존
- * useCatalogSync(스쿠버프로 등 단일 호출용)와 동일한 모양의 최종
+ * nextPage 가 null이 될 때까지 순차 호출하며 그 결과를 직접 합산해 최종
  * EquipmentImportSummary 를 만들어준다 — 호출부(SyncResultDialog 등)는
- * 수정할 필요가 없다.
+ * 이 훅이 여러 번 나눠 호출한다는 사실을 몰라도 된다.
  */
 export function usePongdangChunkedSync() {
   const [status, setStatus] = React.useState<SyncStatus>("idle");

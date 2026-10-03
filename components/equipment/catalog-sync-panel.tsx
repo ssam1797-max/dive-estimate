@@ -14,12 +14,14 @@ import {
 import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 import { ImportResultSummary } from "@/components/equipment/import-result-summary";
 import { SyncResultDialog } from "@/components/equipment/sync-result-dialog";
-import { useCatalogSync } from "@/lib/hooks/useCatalogSync";
 import { usePongdangChunkedSync } from "@/lib/hooks/usePongdangChunkedSync";
 import type { EquipmentImportSummary } from "@/lib/equipment/types";
 
+/**
+ * "공식 홈페이지 데이터 동기화"(스쿠버프로 공식 홈페이지 크롤링)는 제거됐다
+ * — 이제 퐁당닷컴 동기화만 제공한다.
+ */
 export function CatalogSyncPanel() {
-  const scubapro = useCatalogSync("/api/equipment/sync");
   const pongdang = usePongdangChunkedSync();
   const [toast, setToast] = React.useState<ToastState | null>(null);
   const [resultDialog, setResultDialog] = React.useState<{
@@ -27,20 +29,15 @@ export function CatalogSyncPanel() {
     summary: EquipmentImportSummary;
   } | null>(null);
 
-  const isScubaproLoading = scubapro.status === "loading";
   const isPongdangLoading = pongdang.status === "loading";
-  const isAnyLoading = isScubaproLoading || isPongdangLoading;
 
-  const handleRun = async (
-    sync: typeof scubapro | typeof pongdang,
-    label: string
-  ) => {
+  const handleRun = async () => {
     setToast(null);
-    const result = await sync.run();
+    const result = await pongdang.run();
     if (result.ok) {
       setResultDialog({ key: crypto.randomUUID(), summary: result.summary });
     } else {
-      setToast({ tone: "error", message: `${label} 동기화 실패: ${result.message}` });
+      setToast({ tone: "error", message: `퐁당닷컴 동기화 실패: ${result.message}` });
     }
   };
 
@@ -50,32 +47,15 @@ export function CatalogSyncPanel() {
         <CardHeader>
           <CardTitle>실시간 카탈로그 동기화</CardTitle>
           <CardDescription>
-            공식 브랜드 홈페이지와 국내 다이빙 몰의 최신 상품·가격 데이터를 불러와
-            장비 마스터에 반영합니다.
+            국내 다이빙 몰의 최신 상품·가격 데이터를 불러와 장비 마스터에 반영합니다.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-3">
             <Button
               type="button"
-              onClick={() => handleRun(scubapro, "스쿠버프로")}
-              disabled={isAnyLoading}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-60"
-            >
-              {isScubaproLoading ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <RefreshCw className="size-4" />
-              )}
-              {isScubaproLoading
-                ? "스쿠버프로 최신 가격 데이터를 가져오는 중..."
-                : "공식 홈페이지 데이터 동기화"}
-            </Button>
-
-            <Button
-              type="button"
-              onClick={() => handleRun(pongdang, "퐁당닷컴")}
-              disabled={isAnyLoading}
+              onClick={handleRun}
+              disabled={isPongdangLoading}
               className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
               {isPongdangLoading ? (
@@ -92,7 +72,7 @@ export function CatalogSyncPanel() {
           {isPongdangLoading && pongdang.progress ? (
             <p className="text-xs text-muted-foreground">{pongdang.progress}</p>
           ) : (
-            isAnyLoading && (
+            isPongdangLoading && (
               <p className="text-xs text-muted-foreground">
                 카테고리·페이지별로 순차 요청 중입니다. 상품 수에 따라 최대 몇 분 정도
                 걸릴 수 있습니다.
@@ -102,9 +82,6 @@ export function CatalogSyncPanel() {
         </CardContent>
       </Card>
 
-      {scubapro.status === "success" && scubapro.summary && (
-        <ImportResultSummary summary={scubapro.summary} />
-      )}
       {pongdang.status === "success" && pongdang.summary && (
         <ImportResultSummary summary={pongdang.summary} />
       )}

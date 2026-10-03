@@ -29,14 +29,6 @@ export const CATALOG_EXTRACTION_MODEL = "gemini-3.6-flash";
 export const CATALOG_EXTRACTION_MAX_TOKENS = 32768;
 
 /**
- * 공식 홈페이지 동기화(크롤러) 대상 브랜드명. equipment 테이블의 brand 컬럼 값과
- * 동일해야 한다. 표준 표기(normalizeBrand.ts 기준)인 한글로 통일한다 — 예전에는
- * "SCUBAPRO"(영문 대문자)였는데, 퐁당닷컴 크롤러가 저장하는 "스쿠버프로"(한글)
- * 와 표기가 달라 같은 브랜드가 두 행으로 갈라지는 원인이었다.
- */
-export const SCUBAPRO_SYNC_BRAND = "스쿠버프로";
-
-/**
  * 다이빙 장비 표준 카테고리 목록 (Gemini 추출 프롬프트와 동일하게 유지).
  * 호스/부속품/소모품/악세서리 4개는 퐁당닷컴의 별도 최상위 카테고리(c0003,
  * "스쿠버 acc" 태그)를 크롤링 대상에 새로 포함시키면서 추가했다 — 그 전까지는
