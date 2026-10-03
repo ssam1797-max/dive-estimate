@@ -21,6 +21,13 @@ export interface PurchaseRequestContact {
 
 interface PurchaseRequestFormProps {
   disabled?: boolean;
+  /**
+   * 견적서 번호를 아직 발급받는 중이면 true — 이 번호가 있어야 접수가
+   * 가능한데, 모바일 등 느린 연결에서는 사용자가 폼을 다 채우는 동안에도
+   * 발급이 안 끝나 있을 수 있다. "확인"을 눌렀다가 빨간 에러를 보는 대신,
+   * 끝날 때까지 버튼을 비활성화하고 안내 문구를 보여준다.
+   */
+  isEstimateNumberLoading?: boolean;
   /** 확인을 누르면 호출된다. 실패하면 에러를 throw 하면 폼이 그 메시지를 보여준다. */
   onSubmit: (contact: PurchaseRequestContact) => Promise<void>;
 }
@@ -55,7 +62,11 @@ declare global {
  * 서비스 팝업에서 검색해 고른 도로명주소만 기본주소로 쓰고 상세주소(동/호수
  * 등)만 직접 입력하게 한다.
  */
-export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormProps) {
+export function PurchaseRequestForm({
+  disabled,
+  isEstimateNumberLoading,
+  onSubmit,
+}: PurchaseRequestFormProps) {
   const [name, setName] = React.useState("");
   const [phone, setPhone] = React.useState("");
   const [zonecode, setZonecode] = React.useState("");
@@ -226,13 +237,18 @@ export function PurchaseRequestForm({ disabled, onSubmit }: PurchaseRequestFormP
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {isEstimateNumberLoading && (
+          <p className="text-xs text-muted-foreground">
+            견적서 번호를 발급받는 중입니다. 잠시만 기다려주세요...
+          </p>
+        )}
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={disabled || isSubmitting}
+          disabled={disabled || isSubmitting || isEstimateNumberLoading}
           className="self-start"
         >
-          {isSubmitting && <Loader2 className="animate-spin" />}
+          {(isSubmitting || isEstimateNumberLoading) && <Loader2 className="animate-spin" />}
           확인
         </Button>
       </CardContent>

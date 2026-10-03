@@ -775,7 +775,11 @@ export function EstimateBuilder({
           </div>
 
           {bottomFormMode === "purchaseRequest" && (
-            <PurchaseRequestForm disabled={isSaving} onSubmit={handlePurchaseRequestSubmit} />
+            <PurchaseRequestForm
+              disabled={isSaving}
+              isEstimateNumberLoading={state.isEstimateNumberLoading}
+              onSubmit={handlePurchaseRequestSubmit}
+            />
           )}
 
           {bottomFormMode === "basicInfo" && (
@@ -799,8 +803,16 @@ export function EstimateBuilder({
                 disabled={isSaving}
               />
               <div className="flex justify-end">
-                <Button type="button" onClick={handleSaveEstimate} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="animate-spin" /> : <Save className="size-4" />}
+                <Button
+                  type="button"
+                  onClick={handleSaveEstimate}
+                  disabled={isSaving || state.isEstimateNumberLoading}
+                >
+                  {isSaving || state.isEstimateNumberLoading ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
                   확인 (견적서 저장)
                 </Button>
               </div>
