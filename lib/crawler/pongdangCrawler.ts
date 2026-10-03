@@ -347,6 +347,54 @@ interface DomPriceEntry {
  * 시맨틱 클래스명 `class="consumer_price"`/`class="sale_price"`로 정가·할인가를
  * 구분해서 렌더링한다 — 실측으로 확인한 실제 마크업.)
  */
+const PONGDANG_IMAGE_BASE = "https://www.pongdang.com";
+
+/**
+ * 레이지 로딩 라이브러리가 흔히 넣어두는 "아직 실제 이미지가 아닌" src 값을
+ * 가려낸다(1x1 투명 gif, 로딩 스피너, 사이트 자체 "이미지 없음" 플레이스홀더
+ * 등). 이런 src 가 걸리면 `data-src`/`data-original` 속성의 실제 URL을
+ * 대신 써야 한다 — axios 로 받은 정적 HTML은 레이지 로딩 JS가 실행되기 전
+ * 상태라, 진짜 주소가 src 가 아니라 이 data-* 속성에만 들어있는 경우가 있다.
+ */
+function isPlaceholderImageSrc(src: string): boolean {
+  const trimmed = src.trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  return (
+    lower.includes("noimage") ||
+    lower.includes("no_image") ||
+    lower.includes("blank.gif") ||
+    lower.includes("loading") ||
+    lower.includes("spacer.gif") ||
+    lower.includes("placeholder") ||
+    lower.includes("lazy")
+  );
+}
+
+/**
+ * 크롤링으로 수집한 이미지 주소를 항상 브라우저에서 바로 쓸 수 있는 완전한
+ * https 절대 URL로 정규화한다.
+ *  - "/"로 시작하는 사이트 루트 상대 경로 → PONGDANG_IMAGE_BASE 를 붙인다.
+ *  - "//"로 시작하는 프로토콜 상대 경로 → "https:"를 붙인다.
+ *  - "http://" 로 시작 → Mixed Content(안전하지 않은 콘텐츠) 경고/차단을
+ *    피하기 위해 "https://"로 치환한다.
+ *  - 이미 "https://" 면 그대로 쓴다.
+ */
+function normalizeImageUrl(rawUrl: string | undefined | null): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (trimmed.startsWith("/")) return `${PONGDANG_IMAGE_BASE}${trimmed}`;
+  if (trimmed.startsWith("http://")) return `https://${trimmed.slice("http://".length)}`;
+  if (trimmed.startsWith("https://")) return trimmed;
+
+  // 위 어느 형태도 아닌 드문 경우(프로토콜 없는 상대 경로 등) — 베이스에
+  // 안전하게 슬래시 하나만 끼워 붙인다.
+  return `${PONGDANG_IMAGE_BASE}/${trimmed.replace(/^\.?\/*/, "")}`;
+}
+
 function extractDomPrices(html: string): Map<string, DomPriceEntry> {
   const $ = cheerio.load(html);
   const priceByGoodsId = new Map<string, DomPriceEntry>();
@@ -369,17 +417,17 @@ function extractDomPrices(html: string): Map<string, DomPriceEntry> {
     const salePriceRaw = parsePriceNumber(saleText);
     const salePrice = Number.isFinite(salePriceRaw) ? salePriceRaw : null;
 
-    // 썸네일: `.item_img_area` 안 첫 <img src>. 사이트가 절대/상대 경로를
-    // 섞어 내려줄 수 있어 new URL(..., BASE_URL)로 항상 절대 URL로 정규화한다.
-    const imgSrc = $item.find(".item_img_area img").first().attr("src");
-    let imageUrl: string | null = null;
-    if (imgSrc) {
-      try {
-        imageUrl = new URL(imgSrc, BASE_URL).toString();
-      } catch {
-        imageUrl = null;
-      }
-    }
+    // 썸네일: `.item_img_area` 안 첫 <img>. src 가 비어있거나 레이지 로딩
+    // 플레이스홀더(사이트 자체 "이미지 없음" gif 등)면 data-src/data-original
+    // 에 들어있는 실제 주소를 대신 쓴다(레이지 로딩 라이브러리가 흔히 쓰는
+    // 패턴 — 정적 HTML만 받아오는 axios 크롤링이라 JS가 채워주는 src를
+    // 기다릴 수 없다). 그렇게 찾은 주소는 상대 경로/http:// 섞여 올 수
+    // 있어 normalizeImageUrl 로 항상 완전한 https 절대 URL로 정규화한다.
+    const $img = $item.find(".item_img_area img").first();
+    const rawSrc = $img.attr("src");
+    const fallbackSrc = $img.attr("data-src") || $img.attr("data-original");
+    const bestSrc = !rawSrc || isPlaceholderImageSrc(rawSrc) ? fallbackSrc || rawSrc : rawSrc;
+    const imageUrl = normalizeImageUrl(bestSrc);
 
     priceByGoodsId.set(goodsId, { consumerPrice, salePrice, imageUrl });
   });

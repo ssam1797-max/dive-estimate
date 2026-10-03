@@ -47,6 +47,11 @@ export function EquipmentThumbnail({
           alt={alt}
           className="size-full object-cover"
           loading="lazy"
+          // 퐁당닷컴이 Referer 헤더를 보고 외부 핫링크를 막는 경우를 대비해
+          // Referer 자체를 아예 보내지 않는다(이미지 요청에 한정 — 사이트
+          // 식별 정보 유출과는 무관). 그래도 막혀서 로드가 실패하면 onError
+          // 로 기본 아이콘으로 대체한다.
+          referrerPolicy="no-referrer"
           onError={() => setFailed(true)}
         />
       )}
