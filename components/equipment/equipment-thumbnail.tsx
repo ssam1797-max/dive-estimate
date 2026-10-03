@@ -46,7 +46,11 @@ export function EquipmentThumbnail({
           src={src}
           alt={alt}
           className="size-full object-cover"
-          loading="lazy"
+          // loading="lazy" 였을 때 썸네일이 화면에 분명히 보이는 상태에서도
+          // naturalWidth=0/complete=false 로 영영 멈춰(요청 자체가 발생하지
+          // 않음) 실제로 로드되지 않는 현상이 실측으로 확인됐다 — 45x45의
+          // 아주 작은 이미지라 지연 로딩으로 아낄 성능 이득도 크지 않아,
+          // 신뢰성을 위해 즉시(eager) 로드한다.
           // 퐁당닷컴이 Referer 헤더를 보고 외부 핫링크를 막는 경우를 대비해
           // Referer 자체를 아예 보내지 않는다(이미지 요청에 한정 — 사이트
           // 식별 정보 유출과는 무관). 그래도 막혀서 로드가 실패하면 onError
