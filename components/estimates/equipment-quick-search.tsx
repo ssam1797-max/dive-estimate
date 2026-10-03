@@ -33,6 +33,7 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
   const [error, setError] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   // 180ms 디바운스 — 입력마다 바로 DB 를 치지 않는다.
   // 한글 IME 조합 중(compositionstart~compositionend 사이)에도 브라우저는
@@ -92,16 +93,25 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
 
   React.useEffect(() => {
     if (!open) return;
-    const handleClickOutside = (event: MouseEvent) => {
+    // mousedown 대신 pointerdown을 쓴다 — 마우스/터치/펜을 하나의 이벤트로
+    // 통일해서 다루는 표준 이벤트라, 터치 기기에서 mousedown 합성 이벤트의
+    // 타이밍에 기대지 않고 더 일관되게 "바깥을 눌렀는지"를 판단할 수 있다.
+    const handlePointerDownOutside = (event: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
   }, [open]);
 
   const handleSelect = (item: EquipmentCatalogItem) => {
+    // 모바일 가상 키보드를 먼저 닫는다 — 키보드가 떠 있는 채로 담기 확인
+    // 모달을 열면, 일부 모바일 브라우저에서 키보드가 차지한 만큼 보이는
+    // 뷰포트(visual viewport)가 줄어들어 있어 모달 아래쪽이 키보드에
+    // 가려지거나 레이아웃이 어긋나 보일 수 있다. 검색 입력에서 포커스를
+    // 빼 키보드부터 내린 뒤 모달을 띄우면 이 문제가 생기지 않는다.
+    inputRef.current?.blur();
     onSelect(item);
     setQuery("");
     setDebouncedQuery("");
@@ -116,6 +126,7 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
+          ref={inputRef}
           value={query}
           disabled={disabled}
           onChange={(e) => {

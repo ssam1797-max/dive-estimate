@@ -57,7 +57,10 @@ function Dialog({
   if (!mounted || !open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // z-[9999]: 모바일 가상 키보드가 떠 있는 상태에서 모달을 열어도(키보드
+    // 애니메이션 중 다른 fixed 요소와 겹치는 경우가 있다) 항상 맨 위에
+    // 보이도록 이 앱에서 쓰이는 다른 어떤 z-index보다도 높게 둔다.
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-black/50"
         aria-hidden="true"

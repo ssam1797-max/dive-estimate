@@ -77,7 +77,13 @@ export function EquipmentAddConfirmDialog({
     quantity > 0;
 
   return (
-    <Dialog open onOpenChange={onOpenChange} widthClassName="max-w-lg">
+    <Dialog
+      open
+      onOpenChange={onOpenChange}
+      // 모바일에서 화면 폭의 90%를 쓰되 480px을 넘지 않게(한 손 조작 폭 안에
+      // 들어오도록) — 데스크톱에서도 같은 상한을 그대로 적용한다.
+      widthClassName="w-[90vw] max-w-[480px]"
+    >
       <DialogContent onClose={() => onOpenChange(false)}>
         <DialogHeader>
           <DialogTitle>장바구니에 담기</DialogTitle>
