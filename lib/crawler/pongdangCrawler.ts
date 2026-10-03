@@ -110,6 +110,26 @@ function isExcludedItem(item: RawPongdangItem): boolean {
   return EXCLUDED_KEYWORDS.some((keyword) => haystack.includes(keyword));
 }
 
+/**
+ * "[재입고 미정]"은 사이즈/컬러별 재입고 시점조차 안내되지 않는 품절 표시다.
+ * 단일 옵션 상품은 item_name 에("[재입고 미정] 크레씨 호흡기 가방"), 다중
+ * 옵션 상품은 품절된 옵션 행의 item_variant 에만 붙는다("노랑/[재입고
+ * 미정] XS" — 같은 상품의 다른 사이즈 행은 멀쩡히 구매 가능할 수 있다).
+ * 그래서 상품 전체가 아니라 이 행 하나만 걸러낸다 — 다중 옵션 상품이면
+ * 나머지 구매 가능한 옵션은 그대로 남고, 모든 옵션이 품절이면 결과적으로
+ * 상품 전체가 빠진다. "[9월 중순 재입고 예정]"처럼 재입고 시점이 예고된
+ * 경우는 곧 다시 살 수 있으니 제외 대상이 아니다 — 정확히 "재입고 미정"
+ * 문자열만 매칭한다.
+ */
+const OUT_OF_STOCK_INDEFINITELY_MARK = "재입고 미정";
+
+function isOutOfStockIndefinitely(item: RawPongdangItem): boolean {
+  return (
+    (item.item_name ?? "").includes(OUT_OF_STOCK_INDEFINITELY_MARK) ||
+    (item.item_variant ?? "").includes(OUT_OF_STOCK_INDEFINITELY_MARK)
+  );
+}
+
 interface RawPongdangItem {
   item_id: string;
   item_name: string;
@@ -509,9 +529,13 @@ function mergeRawItemsIntoEquipment(
 
   // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남기고(수영/물놀이, 캠핑,
   // 프리다이빙 등으로 교차 태그된 상품은 제외), 이벤트/초특가 등 프로모션
-  // 상품도 추가로 제외한다(EXCLUDED_KEYWORDS 주석 참고).
+  // 상품(EXCLUDED_KEYWORDS 주석 참고)과 재입고 미정 품절 옵션(위 주석 참고)도
+  // 추가로 제외한다.
   const scubaOnly = rawItems.filter(
-    (item) => INCLUDED_TOP_CATEGORIES.has(item.item_category) && !isExcludedItem(item)
+    (item) =>
+      INCLUDED_TOP_CATEGORIES.has(item.item_category) &&
+      !isExcludedItem(item) &&
+      !isOutOfStockIndefinitely(item)
   );
 
   // 같은 상품이 색상/사이즈 등 옵션(item_variant)별로 여러 행으로 내려오므로
