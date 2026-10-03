@@ -186,12 +186,25 @@ function parseListPage(html: string, target: CrawlTarget): ParsedListPage {
     const price = Number(priceDigits);
     if (!Number.isFinite(price) || price <= 0) return;
 
+    // 썸네일: `.img_part img[src]`. 사이트가 "/upload/gallery/..." 같은
+    // 사이트 루트 상대 경로를 내려주므로 항상 완전한 절대 URL로 정규화한다.
+    const imgSrc = $(el).find(".img_part img").first().attr("src");
+    let imageUrl: string | null = null;
+    if (imgSrc) {
+      try {
+        imageUrl = new URL(imgSrc, BASE_URL).toString();
+      } catch {
+        imageUrl = null;
+      }
+    }
+
     items.push({
       category: refineCategory(target, nameRaw),
       name: nameRaw,
       price_retail: price,
       colors: [],
       sizes: [],
+      image_url: imageUrl,
     });
   });
 
