@@ -2,20 +2,10 @@ import "server-only";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import type { ParsedEquipmentItem } from "@/lib/equipment/types";
+import type { PongdangCategoryCode } from "@/lib/equipment/pongdangCategories";
 
 const BASE_URL = "https://pongdang.com";
 const LIST_PATH = "/goods/search_list";
-/**
- * 크롤링 대상 최상위 카테고리 코드 목록.
- *  - c0002 ("스쿠버"): 마스크/핀/슈트/호흡기/컴퓨터 등 핵심 장비 전체.
- *  - c0003 ("스쿠버 acc"): 스냅링/오링/아답터/호스/장비걸이/세척제 등 부속품·
- *    소모품 계열. 예전에는 이 카테고리 자체를 요청하지 않아서 "호스",
- *    "부속품" 같은 카테고리 전체가 통째로 누락됐다(실측으로 확인: category=
- *    c0003 로 별도 요청해야만 응답에 잡히고, item_category 값도 "스쿠버"가
- *    아니라 "스쿠버 acc"로 따로 태그돼 있어 필터도 함께 넓혀야 했다 — 아래
- *    scubaOnly 필터 참고).
- */
-const CATEGORY_CODES = ["c0002", "c0003"] as const;
 const REFERER_BY_CATEGORY: Record<string, string> = {
   c0002: `${BASE_URL}/goods/catalog?code=0002`,
   c0003: `${BASE_URL}/goods/catalog?code=0003`,
@@ -426,8 +416,8 @@ function resolveRegularPrice(
 }
 
 /**
- * 퐁당닷컴(pongdang.com) "스쿠버" 카테고리 트리 전체를 순회하며
- * [브랜드, 카테고리, 모델명, 정상 소비자가격(할인 전)]을 수집한다.
+ * 수집한 원본 행들을 [브랜드, 카테고리, 모델명, 정상 소비자가격(할인 전)]
+ * 단위 장비 목록으로 합친다(크롤링한 페이지 범위와 무관한 순수 변환 로직).
  *
  * 가격 결정 알고리즘(절대 규칙, 예외 없음):
  *   1순위 — 목록 HTML에 취소선 정상가 태그(`.consumer_price`)가 있으면
@@ -446,46 +436,11 @@ function resolveRegularPrice(
  * 전체의 약 13%나 있었음 — 그래서 DOM의 `.consumer_price`/`.sale_price` 를
  * 최우선 소스로 바꿨다.)
  */
-export async function crawlPongdangCatalog(): Promise<PongdangCrawlResult> {
+function mergeRawItemsIntoEquipment(
+  rawItems: RawPongdangItem[],
+  domPriceByGoodsId: Map<string, DomPriceEntry>
+): { items: PongdangEquipmentItem[]; warnings: string[] } {
   const warnings: string[] = [];
-  const rawItems: RawPongdangItem[] = [];
-  const domPriceByGoodsId = new Map<string, DomPriceEntry>();
-  let pagesFetched = 0;
-
-  for (const categoryCode of CATEGORY_CODES) {
-    let categoryPagesFetched = 0;
-
-    for (let page = 1; page <= MAX_PAGES; page += 1) {
-      let html: string;
-      try {
-        html = await fetchSearchListPage(page, categoryCode);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "알 수 없는 오류";
-        warnings.push(`[${categoryCode}] ${page}페이지 요청 실패: ${message}`);
-        break;
-      }
-
-      pagesFetched += 1;
-      categoryPagesFetched += 1;
-      const pageItems = extractRawItems(html);
-
-      if (pageItems.length === 0) break;
-
-      rawItems.push(...pageItems);
-      // 같은 HTML 응답 안에서 가격은 DOM(.consumer_price/.sale_price)으로 별도 추출한다.
-      for (const [goodsId, entry] of extractDomPrices(html)) {
-        domPriceByGoodsId.set(goodsId, entry);
-      }
-
-      if (pageItems.length < PAGE_SIZE) break;
-
-      await sleep(REQUEST_DELAY_MS);
-    }
-
-    if (categoryPagesFetched === 0) {
-      warnings.push(`[${categoryCode}] 응답이 없어 이 카테고리는 건너뛰었습니다.`);
-    }
-  }
 
   // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남긴다.
   // (수영/물놀이, 캠핑, 프리다이빙 등으로 교차 태그된 상품은 제외)
@@ -580,7 +535,89 @@ export async function crawlPongdangCatalog(): Promise<PongdangCrawlResult> {
     sizes: Array.from(acc.sizeSet).sort((a, b) => a.localeCompare(b, "ko")),
     image_url: acc.image_url,
   }));
+
+  return { items, warnings };
+}
+
+export interface PongdangCrawlChunkResult extends PongdangCrawlResult {
+  /** 이 카테고리에서 다음에 이어 받아야 할 페이지 번호. 더 받을 페이지가 없으면 null. */
+  nextPage: number | null;
+}
+
+/**
+ * 카테고리 하나, 페이지 몇 장(pagesPerChunk)만 크롤링한다.
+ *
+ * 전체 카테고리(c0002+c0003, 합쳐서 수십 페이지)를 한 번의 서버 함수
+ * 호출 안에서 전부 처리하면(예전 crawlPongdangCatalog 방식) 수집 시간이
+ * 60초 안팎까지 늘어나, Netlify 서버 함수의 실행 시간 제한을 넘겨 504
+ * Gateway Timeout 으로 중간에 끊기는 문제가 실측으로 확인됐다(카탈로그가
+ * 커질수록 더 쉽게 넘김). 그래서 카테고리 × 페이지 범위 단위로 잘게
+ * 쪼개 호출하도록 바꾸고, 호출부(클라이언트)가 nextPage 를 받아 다음
+ * 조각을 이어서 요청하는 방식으로 전체를 완성한다 — 호출 1번의 실행
+ * 시간은 항상 pagesPerChunk 장 분량으로 짧게 유지된다.
+ */
+export async function crawlPongdangCategoryChunk(
+  categoryCode: PongdangCategoryCode,
+  startPage: number,
+  pagesPerChunk: number
+): Promise<PongdangCrawlChunkResult> {
+  const warnings: string[] = [];
+  const rawItems: RawPongdangItem[] = [];
+  const domPriceByGoodsId = new Map<string, DomPriceEntry>();
+  let pagesFetched = 0;
+  let nextPage: number | null = null;
+
+  const lastPageInChunk = Math.min(startPage + pagesPerChunk - 1, MAX_PAGES);
+
+  for (let page = startPage; page <= lastPageInChunk; page += 1) {
+    let html: string;
+    try {
+      html = await fetchSearchListPage(page, categoryCode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "알 수 없는 오류";
+      warnings.push(`[${categoryCode}] ${page}페이지 요청 실패: ${message}`);
+      break;
+    }
+
+    pagesFetched += 1;
+    const pageItems = extractRawItems(html);
+
+    if (pageItems.length === 0) break;
+
+    rawItems.push(...pageItems);
+    // 같은 HTML 응답 안에서 가격은 DOM(.consumer_price/.sale_price)으로 별도 추출한다.
+    for (const [goodsId, entry] of extractDomPrices(html)) {
+      domPriceByGoodsId.set(goodsId, entry);
+    }
+
+    if (pageItems.length < PAGE_SIZE) break;
+
+    // 이 페이지가 꽉 찼다(더 받을 페이지가 있을 수 있다) — 다음 조각이
+    // 이어 받을 페이지 번호를 기록한다. 청크 상한(lastPageInChunk)에
+    // 걸려서 루프가 끝난 경우에만 의미가 있고, 그 전에 break 로 빠져나간
+    // 경우(빈 응답/요청 실패)는 아래에서 null 로 남는다.
+    if (page === lastPageInChunk && page < MAX_PAGES) {
+      nextPage = page + 1;
+    }
+
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  if (startPage === 1 && pagesFetched === 0) {
+    warnings.push(`[${categoryCode}] 응답이 없어 이 카테고리는 건너뛰었습니다.`);
+  }
+
+  const { items, warnings: mergeWarnings } = mergeRawItemsIntoEquipment(
+    rawItems,
+    domPriceByGoodsId
+  );
   const distinctBrandCount = new Set(items.map((item) => item.brand)).size;
 
-  return { items, warnings, pagesFetched, distinctBrandCount };
+  return {
+    items,
+    warnings: [...warnings, ...mergeWarnings],
+    pagesFetched,
+    distinctBrandCount,
+    nextPage,
+  };
 }

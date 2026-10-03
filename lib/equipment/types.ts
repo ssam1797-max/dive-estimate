@@ -59,3 +59,28 @@ export interface EquipmentImportSummary {
   /** 추출 단계에서 발생한 경고 (일부 페이지 청크 처리 실패 등) */
   warnings: string[];
 }
+
+/**
+ * 퐁당닷컴 동기화 1개 조각(카테고리 하나, 페이지 몇 장)의 처리 결과.
+ * 전체 카테고리를 한 번에 크롤링하면 서버 함수 실행 시간 제한(Netlify 504)을
+ * 넘길 수 있어, 클라이언트가 카테고리 × 페이지 범위 단위로 나눠 순차
+ * 호출하고(nextPage 가 null이 될 때까지 반복) 이 조각들을 직접 합산해
+ * 최종 EquipmentImportSummary 를 만든다.
+ */
+export interface EquipmentImportChunkSummary {
+  category: string;
+  catalogYear: number;
+  /** 이 조각에서 실제로 가져온 페이지 수 */
+  pagesFetched: number;
+  totalParsed: number;
+  insertedCount: number;
+  updatedCount: number;
+  protectedCount: number;
+  failedCount: number;
+  items: EquipmentImportItemResult[];
+  warnings: string[];
+  /** 이 조각에서 발견된 브랜드 목록(중복 없음) — 여러 조각에 걸친 전체 distinct 브랜드 수 집계용. */
+  brands: string[];
+  /** 이 카테고리에서 다음에 이어 받아야 할 페이지 번호. 더 받을 페이지가 없으면 null. */
+  nextPage: number | null;
+}

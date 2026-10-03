@@ -15,11 +15,12 @@ import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 import { ImportResultSummary } from "@/components/equipment/import-result-summary";
 import { SyncResultDialog } from "@/components/equipment/sync-result-dialog";
 import { useCatalogSync } from "@/lib/hooks/useCatalogSync";
+import { usePongdangChunkedSync } from "@/lib/hooks/usePongdangChunkedSync";
 import type { EquipmentImportSummary } from "@/lib/equipment/types";
 
 export function CatalogSyncPanel() {
   const scubapro = useCatalogSync("/api/equipment/sync");
-  const pongdang = useCatalogSync("/api/equipment/import/pongdang");
+  const pongdang = usePongdangChunkedSync();
   const [toast, setToast] = React.useState<ToastState | null>(null);
   const [resultDialog, setResultDialog] = React.useState<{
     key: string;
@@ -88,11 +89,15 @@ export function CatalogSyncPanel() {
             </Button>
           </div>
 
-          {isAnyLoading && (
-            <p className="text-xs text-muted-foreground">
-              카테고리·페이지별로 순차 요청 중입니다. 상품 수에 따라 최대 몇 분 정도
-              걸릴 수 있습니다.
-            </p>
+          {isPongdangLoading && pongdang.progress ? (
+            <p className="text-xs text-muted-foreground">{pongdang.progress}</p>
+          ) : (
+            isAnyLoading && (
+              <p className="text-xs text-muted-foreground">
+                카테고리·페이지별로 순차 요청 중입니다. 상품 수에 따라 최대 몇 분 정도
+                걸릴 수 있습니다.
+              </p>
+            )
           )}
         </CardContent>
       </Card>

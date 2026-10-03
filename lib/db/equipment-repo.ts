@@ -700,3 +700,187 @@ export async function upsertEquipmentBulk(
     };
   }
 }
+
+// ── 벌크 UPSERT(여러 브랜드 한 번에) ──────────────────────────────────────────
+// 퐁당닷컴처럼 한 번의 크롤링 결과에 수십~수백 개 브랜드가 섞여 있는 경우,
+// upsertEquipmentBulk(브랜드 1개 전제)를 브랜드별로 루프 돌리면 브랜드 수만큼
+// Supabase 왕복(보호 품목 조회 1번 + upsert 1번)이 생긴다 — 실측 결과 200개
+// 안팎의 브랜드가 섞인 크롤링 조각 하나에서만 이 왕복이 수십~백여 번
+// 발생해 Netlify 서버 함수 실행 시간 제한을 넘기는 주된 원인이었다(페이지
+// 크롤링 자체보다 이 부분이 더 오래 걸렸다). 이 함수는 브랜드가 몇 개
+// 섞여 있든 조회 1번 + upsert 1번, 총 2번의 왕복으로 끝낸다.
+export async function upsertEquipmentMultiBrand(
+  catalogYear: number,
+  rawItems: (ParsedEquipmentItem & { brand: string })[]
+): Promise<UpsertBulkResult> {
+  if (rawItems.length === 0) {
+    return { insertedCount: 0, updatedCount: 0, protectedCount: 0, failedCount: 0, items: [] };
+  }
+
+  const items = rawItems.map((item) => ({
+    ...item,
+    brand: normalizeBrand(item.brand),
+    price_retail: sanitizePriceRetail(item.price_retail),
+  }));
+
+  const keyOf = (brand: string, name: string) => `${brand}\u0000${name}`;
+
+  if (isMockMode()) {
+    const now = new Date().toISOString();
+    const results: EquipmentImportItemResult[] = [];
+
+    for (const item of items) {
+      const idx = mockStore.equipment.findIndex(
+        (e) => e.brand === item.brand && e.catalog_year === catalogYear && e.name === item.name
+      );
+      if (idx >= 0 && mockStore.equipment[idx].is_custom) {
+        const existing = mockStore.equipment[idx];
+        results.push({
+          name: item.name,
+          category: item.category,
+          status: "protected",
+          id: existing.id,
+          oldPrice: existing.price_retail,
+          newPrice: item.price_retail,
+        });
+      } else if (idx >= 0) {
+        mockStore.equipment[idx] = {
+          ...mockStore.equipment[idx],
+          category: item.category,
+          price_retail: item.price_retail,
+          colors: item.colors,
+          sizes: item.sizes,
+          image_url: item.image_url ?? mockStore.equipment[idx].image_url ?? null,
+          updated_at: now,
+        };
+        results.push({ name: item.name, category: item.category, status: "updated" });
+      } else {
+        mockStore.equipment.push({
+          id: crypto.randomUUID(),
+          brand: item.brand,
+          catalog_year: catalogYear,
+          category: item.category,
+          name: item.name,
+          price_retail: item.price_retail,
+          colors: item.colors,
+          sizes: item.sizes,
+          image_url: item.image_url ?? null,
+          created_at: now,
+          updated_at: now,
+        });
+        results.push({ name: item.name, category: item.category, status: "inserted" });
+      }
+    }
+
+    const insertedCount = results.filter((r) => r.status === "inserted").length;
+    const updatedCount = results.filter((r) => r.status === "updated").length;
+    const protectedCount = results.filter((r) => r.status === "protected").length;
+    return { insertedCount, updatedCount, protectedCount, failedCount: 0, items: results };
+  }
+
+  // ── 실제 Supabase ──
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const distinctBrands = Array.from(new Set(items.map((item) => item.brand)));
+
+  let existingByKey: Map<string, { id: string; is_custom: boolean; price_retail: number }>;
+  try {
+    const { data, error } = await supabase
+      .from("equipment")
+      .select("id, brand, name, is_custom, price_retail")
+      .eq("catalog_year", catalogYear)
+      .in("brand", distinctBrands);
+    if (error) throw error;
+    existingByKey = new Map(
+      (data ?? []).map((r) => [
+        keyOf(r.brand as string, r.name as string),
+        {
+          id: r.id as string,
+          is_custom: Boolean(r.is_custom),
+          price_retail: Number(r.price_retail),
+        },
+      ])
+    );
+  } catch {
+    existingByKey = new Map();
+  }
+
+  const protectedItems = items.filter(
+    (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom === true
+  );
+  const itemsToUpsert = items.filter(
+    (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom !== true
+  );
+
+  const rows = itemsToUpsert.map((item) => ({
+    brand: item.brand,
+    catalog_year: catalogYear,
+    category: item.category,
+    name: item.name,
+    price_retail: item.price_retail,
+    colors: item.colors,
+    sizes: item.sizes,
+    image_url: item.image_url ?? null,
+  }));
+
+  try {
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from("equipment")
+        .upsert(rows, { onConflict: "brand,catalog_year,name" });
+      if (error) throw error;
+    }
+
+    const results: EquipmentImportItemResult[] = [
+      ...itemsToUpsert.map((item) => ({
+        name: item.name,
+        category: item.category,
+        status: (existingByKey.has(keyOf(item.brand, item.name))
+          ? "updated"
+          : "inserted") as EquipmentImportItemStatus,
+      })),
+      ...protectedItems.map((item) => {
+        const existing = existingByKey.get(keyOf(item.brand, item.name));
+        return {
+          name: item.name,
+          category: item.category,
+          status: "protected" as EquipmentImportItemStatus,
+          message: "수동으로 등록/수정된 품목이라 자동 동기화에서 건너뛰었습니다.",
+          id: existing?.id,
+          oldPrice: existing?.price_retail,
+          newPrice: item.price_retail,
+        };
+      }),
+    ];
+
+    return {
+      insertedCount: results.filter((r) => r.status === "inserted").length,
+      updatedCount: results.filter((r) => r.status === "updated").length,
+      protectedCount: results.filter((r) => r.status === "protected").length,
+      failedCount: 0,
+      items: results,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null && "message" in error
+          ? String((error as { message: unknown }).message)
+          : "알 수 없는 오류";
+    console.error("장비 벌크 upsert(다중 브랜드) 실패:", error);
+    const results: EquipmentImportItemResult[] = itemsToUpsert.map((item) => ({
+      name: item.name,
+      category: item.category,
+      status: "failed",
+      message: `저장 실패: ${message}`,
+    }));
+    return {
+      insertedCount: 0,
+      updatedCount: 0,
+      protectedCount: 0,
+      failedCount: results.length,
+      items: results,
+    };
+  }
+}
