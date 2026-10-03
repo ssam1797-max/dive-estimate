@@ -552,6 +552,12 @@ export async function upsertEquipmentBulk(
       );
       if (idx >= 0 && mockStore.equipment[idx].is_custom) {
         const existing = mockStore.equipment[idx];
+        // 보호 품목도 이미지가 아예 없었다면만 새로 찾은 썸네일을 채운다
+        // (가격 등 다른 필드는 그대로 유지).
+        if (!existing.image_url && item.image_url) {
+          existing.image_url = item.image_url;
+          existing.updated_at = now;
+        }
         results.push({
           name: item.name,
           category: item.category,
@@ -603,11 +609,14 @@ export async function upsertEquipmentBulk(
   // 품목을 걸러내고, (b) 처리 후 각 항목이 신규/갱신/보호 중 무엇이었는지
   // 보고하며, (c) 보호 품목은 현재가 대비 새로 수집된 가격을 비교해 가격
   // 변동 검토 UI에 넘겨준다(가격 자체는 여기서 덮어쓰지 않는다).
-  let existingByName: Map<string, { id: string; is_custom: boolean; price_retail: number }>;
+  let existingByName: Map<
+    string,
+    { id: string; is_custom: boolean; price_retail: number; image_url: string | null }
+  >;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("id, name, is_custom, price_retail")
+      .select("id, name, is_custom, price_retail, image_url")
       .eq("brand", brand)
       .eq("catalog_year", catalogYear);
     if (error) throw error;
@@ -618,6 +627,7 @@ export async function upsertEquipmentBulk(
           id: r.id as string,
           is_custom: Boolean(r.is_custom),
           price_retail: Number(r.price_retail),
+          image_url: (r.image_url as string | null) ?? null,
         },
       ])
     );
@@ -627,6 +637,13 @@ export async function upsertEquipmentBulk(
 
   const protectedItems = items.filter((item) => existingByName.get(item.name)?.is_custom === true);
   const itemsToUpsert = items.filter((item) => existingByName.get(item.name)?.is_custom !== true);
+
+  // 보호 품목(is_custom)은 가격/카테고리/색상·사이즈는 덮어쓰지 않지만,
+  // 이미지가 아예 없던 품목이면 새로 찾은 썸네일만 채워 넣는다.
+  const imageBackfillTargets = protectedItems.filter((item) => {
+    const existing = existingByName.get(item.name);
+    return !existing?.image_url && item.image_url;
+  });
 
   const rows = itemsToUpsert.map((item) => ({
     brand,
@@ -644,6 +661,16 @@ export async function upsertEquipmentBulk(
       const { error } = await supabase
         .from("equipment")
         .upsert(rows, { onConflict: "brand,catalog_year,name" });
+      if (error) throw error;
+    }
+
+    for (const item of imageBackfillTargets) {
+      const existing = existingByName.get(item.name);
+      if (!existing) continue;
+      const { error } = await supabase
+        .from("equipment")
+        .update({ image_url: item.image_url })
+        .eq("id", existing.id);
       if (error) throw error;
     }
 
@@ -735,6 +762,12 @@ export async function upsertEquipmentMultiBrand(
       );
       if (idx >= 0 && mockStore.equipment[idx].is_custom) {
         const existing = mockStore.equipment[idx];
+        // 보호 품목도 이미지가 아예 없었다면만 새로 찾은 썸네일을 채운다
+        // (가격 등 다른 필드는 그대로 유지).
+        if (!existing.image_url && item.image_url) {
+          existing.image_url = item.image_url;
+          existing.updated_at = now;
+        }
         results.push({
           name: item.name,
           category: item.category,
@@ -784,11 +817,14 @@ export async function upsertEquipmentMultiBrand(
 
   const distinctBrands = Array.from(new Set(items.map((item) => item.brand)));
 
-  let existingByKey: Map<string, { id: string; is_custom: boolean; price_retail: number }>;
+  let existingByKey: Map<
+    string,
+    { id: string; is_custom: boolean; price_retail: number; image_url: string | null }
+  >;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("id, brand, name, is_custom, price_retail")
+      .select("id, brand, name, is_custom, price_retail, image_url")
       .eq("catalog_year", catalogYear)
       .in("brand", distinctBrands);
     if (error) throw error;
@@ -799,6 +835,7 @@ export async function upsertEquipmentMultiBrand(
           id: r.id as string,
           is_custom: Boolean(r.is_custom),
           price_retail: Number(r.price_retail),
+          image_url: (r.image_url as string | null) ?? null,
         },
       ])
     );
@@ -812,6 +849,14 @@ export async function upsertEquipmentMultiBrand(
   const itemsToUpsert = items.filter(
     (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom !== true
   );
+
+  // 보호 품목(is_custom)은 가격/카테고리/색상·사이즈는 절대 덮어쓰지 않지만,
+  // 이미지가 아예 없던 품목이라면(예: 이 기능 이전에 등록됨) 새로 찾은
+  // 썸네일만 채워 넣는다 — "가격 유지"와는 무관한 보강이라 안전하다.
+  const imageBackfillTargets = protectedItems.filter((item) => {
+    const existing = existingByKey.get(keyOf(item.brand, item.name));
+    return !existing?.image_url && item.image_url;
+  });
 
   const rows = itemsToUpsert.map((item) => ({
     brand: item.brand,
@@ -829,6 +874,18 @@ export async function upsertEquipmentMultiBrand(
       const { error } = await supabase
         .from("equipment")
         .upsert(rows, { onConflict: "brand,catalog_year,name" });
+      if (error) throw error;
+    }
+
+    // 이미지만 보강(가격 등 다른 필드는 손대지 않음) — 건수가 보통 적어
+    // id 단위로 개별 update 해도 충분하다.
+    for (const item of imageBackfillTargets) {
+      const existing = existingByKey.get(keyOf(item.brand, item.name));
+      if (!existing) continue;
+      const { error } = await supabase
+        .from("equipment")
+        .update({ image_url: item.image_url })
+        .eq("id", existing.id);
       if (error) throw error;
     }
 
