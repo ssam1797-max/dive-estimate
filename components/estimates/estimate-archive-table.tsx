@@ -233,7 +233,9 @@ function EstimateDetailDialog({
                     const unitPrice = tierPriceOfSnapshot(item, tier);
                     return (
                       <tr key={index} className="border-b last:border-0">
-                        <td className="py-2 pr-2 align-top font-medium">{item.name}</td>
+                        <td className="py-2 pr-2 align-top font-medium" title={item.name}>
+                          {item.name}
+                        </td>
                         <td className="py-2 pr-2 align-top text-muted-foreground">
                           {item.color || "-"} / {item.size || "-"}
                         </td>

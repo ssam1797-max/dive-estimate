@@ -191,7 +191,9 @@ export function EquipmentListManager({
                       <td className="py-2 pr-2 align-top text-muted-foreground">
                         {item.category}
                       </td>
-                      <td className="py-2 pr-2 align-top font-medium">{item.name}</td>
+                      <td className="py-2 pr-2 align-top font-medium" title={item.name}>
+                        {item.name}
+                      </td>
                       <td className="py-2 pr-2 align-top">{formatCurrency(item.price_retail)}</td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">
                         {(item.colors.length > 0 ? item.colors.join(", ") : "-") +

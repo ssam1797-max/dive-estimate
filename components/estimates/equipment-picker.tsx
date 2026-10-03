@@ -180,6 +180,12 @@ export function EquipmentPicker({
     setSize("");
     setQuantity(1);
     setItemRemarks("");
+
+    // "키워드 통합 검색" 결과를 클릭했을 때와 동일하게, 3단계 드롭다운에서
+    // 장비를 고른 즉시 이미지·가격·수량 확인 모달을 띄운다(아래 인라인
+    // 색상/사이즈/항목 비고 입력란은 모달을 닫고도 이어서 쓸 수 있도록 그대로 둔다).
+    const equipment = catalog.find((item) => item.id === nextEquipmentId) ?? null;
+    if (equipment) setConfirmItem(equipment);
   };
 
   /**

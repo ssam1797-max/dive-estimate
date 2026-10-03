@@ -124,7 +124,7 @@ export function Combobox({
           !displayLabel && "text-muted-foreground"
         )}
       >
-        <span className="truncate">
+        <span className="truncate" title={displayLabel}>
           {displayLabel ?? placeholder}
         </span>
         <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
@@ -185,9 +185,14 @@ export function Combobox({
                     )}
                   />
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{option.label}</span>
+                    <span className="truncate" title={option.label}>
+                      {option.label}
+                    </span>
                     {option.description && (
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span
+                        className="truncate text-xs text-muted-foreground"
+                        title={option.description}
+                      >
                         {option.description}
                       </span>
                     )}

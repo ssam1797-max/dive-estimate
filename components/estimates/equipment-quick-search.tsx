@@ -186,7 +186,10 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                         {item.brand}
                       </span>
                       {/* min-w-0 이 없으면 grid 아이템이 내용 너비만큼 늘어나 줄바꿈 대신 넘쳐버린다. */}
-                      <span className="min-w-0 break-words text-sm font-medium leading-snug">
+                      <span
+                        className="min-w-0 break-words text-sm font-medium leading-snug"
+                        title={item.name}
+                      >
                         {item.name}
                       </span>
                       <span className="whitespace-nowrap pt-0.5 text-xs text-muted-foreground">

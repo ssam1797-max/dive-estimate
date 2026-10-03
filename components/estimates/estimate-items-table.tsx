@@ -163,6 +163,7 @@ export function EstimateItemsTable({
                           <Input
                             value={item.name}
                             disabled={disabled}
+                            title={item.name}
                             className="w-40 font-medium"
                             onChange={(event) => onNameChange(item.clientId, event.target.value)}
                           />
