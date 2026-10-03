@@ -752,8 +752,7 @@ export function EstimateBuilder({
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               type="button"
-              variant="outline"
-              className="flex-1 border-yellow-500 hover:border-yellow-500"
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={isSaving || state.items.length === 0}
               onClick={() =>
                 setBottomFormMode((prev) => (prev === "purchaseRequest" ? "none" : "purchaseRequest"))
@@ -765,7 +764,7 @@ export function EstimateBuilder({
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-yellow-500 hover:border-yellow-500"
+              className="flex-1 border-primary text-primary hover:bg-primary/10"
               disabled={isSaving || state.items.length === 0}
               onClick={() =>
                 setBottomFormMode((prev) => (prev === "basicInfo" ? "none" : "basicInfo"))

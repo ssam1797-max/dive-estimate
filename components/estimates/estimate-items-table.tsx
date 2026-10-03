@@ -237,7 +237,7 @@ export function EstimateItemsTable({
                     <td className="py-2 pr-2 align-top">
                       {formatCurrency(item.unitPrice)}
                       {discountRate > 0 && (
-                        <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        <p className="mt-1 text-xs font-medium text-teal-400">
                           {formatDiscountRate(discountRate)}%↓
                         </p>
                       )}
@@ -245,7 +245,7 @@ export function EstimateItemsTable({
                     <td className="py-2 pr-2 align-top font-medium">
                       {formatCurrency(item.unitPrice * item.quantity)}
                       {discountRate > 0 && (
-                        <p className="mt-1 text-xs font-normal text-emerald-600 dark:text-emerald-400">
+                        <p className="mt-1 text-xs font-normal text-teal-400">
                           -{formatDiscountRate(discountRate)}%
                         </p>
                       )}

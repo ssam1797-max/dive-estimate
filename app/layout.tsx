@@ -39,7 +39,7 @@ export const viewport: Viewport = {
   // 노치가 있는 기기에서 배경색이 화면 끝까지 이어지도록. 확대/축소는
   // 접근성 때문에 일부러 막지 않는다(maximumScale/userScalable 미지정).
   viewportFit: "cover",
-  themeColor: "#0C4A6E",
+  themeColor: "#0F172A",
 };
 
 /**
@@ -64,7 +64,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ko"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Suspense

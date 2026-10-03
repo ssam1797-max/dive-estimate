@@ -60,7 +60,7 @@ export function CatalogSyncPanel() {
               type="button"
               onClick={() => handleRun(scubapro, "스쿠버프로")}
               disabled={isAnyLoading}
-              className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-60"
             >
               {isScubaproLoading ? (
                 <Loader2 className="animate-spin" />
@@ -76,7 +76,7 @@ export function CatalogSyncPanel() {
               type="button"
               onClick={() => handleRun(pongdang, "퐁당닷컴")}
               disabled={isAnyLoading}
-              className="bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-60"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
               {isPongdangLoading ? (
                 <Loader2 className="animate-spin" />

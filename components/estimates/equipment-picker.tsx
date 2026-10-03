@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { EquipmentAddConfirmDialog } from "@/components/estimates/equipment-add-confirm-dialog";
 import { EquipmentQuickSearch } from "@/components/estimates/equipment-quick-search";
 import { ManualItemForm } from "@/components/estimates/manual-item-form";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,9 @@ export function EquipmentPicker({
   const [quantity, setQuantity] = React.useState(1);
   const [itemRemarks, setItemRemarks] = React.useState("");
   const [toast, setToast] = React.useState<ToastState | null>(null);
+  // "키워드 통합 검색" 결과를 클릭하면 3단계 폼 대신 이 품목의 담기 확인
+  // 모달을 띄운다(null이면 모달 닫힘).
+  const [confirmItem, setConfirmItem] = React.useState<EquipmentCatalogItem | null>(null);
 
   // 최근 사용한 브랜드/카테고리/장비(localStorage 기록)를 드롭다운 맨 위로
   // 올리기 위한 외부 스토어 구독. 서버 렌더링에서는 항상 빈 배열을 쓰고,
@@ -179,64 +183,68 @@ export function EquipmentPicker({
   };
 
   /**
-   * 상단 "키워드 통합 검색"에서 결과를 클릭했을 때 호출된다. 검색 자체는
-   * 별도 API(/api/equipment/search)를 쓰지만, 선택된 장비를 3단계
-   * 브랜드→카테고리→장비 폼의 기존 state(brand/category/equipmentId)에
-   * 그대로 채워 넣기만 한다 — 색상/사이즈/수량 선택과 "견적 목록에 추가"
-   * (handleAdd, 4개 등급 단가 계산 등)는 전부 기존 로직을 그대로 탄다.
+   * 실제로 장바구니(onAdd)에 담는 공통 로직 — 3단계 폼의 "장바구니에 담기"
+   * 버튼과, "키워드 통합 검색" 결과를 클릭했을 때 뜨는 담기 확인 모달
+   * (EquipmentAddConfirmDialog) 양쪽에서 공유한다.
    */
-  const applyQuickSearchResult = (item: EquipmentCatalogItem) => {
-    setBrand(item.brand);
-    setCategory(item.category);
-    setEquipmentId(item.id);
-    setColor("");
-    setSize("");
-    setQuantity(1);
-    setItemRemarks("");
-  };
-
-  const handleAdd = () => {
-    if (!selectedEquipment || !canAdd) return;
-
+  const addItemToCart = (
+    equipment: EquipmentCatalogItem,
+    opts: { quantity: number; color: string; size: string; itemRemarks: string }
+  ) => {
     const unitPrice = calculateEffectiveUnitPrice(
-      selectedEquipment.price_retail,
-      selectedEquipment.brand,
+      equipment.price_retail,
+      equipment.brand,
       priceTier,
       discountPolicies,
-      selectedEquipment.override_discount_rate
+      equipment.override_discount_rate
     );
 
     onAdd({
       clientId: crypto.randomUUID(),
-      equipmentId: selectedEquipment.id,
-      brand: selectedEquipment.brand,
-      category: selectedEquipment.category,
-      name: selectedEquipment.name,
-      color,
-      size,
-      quantity,
-      priceRetail: selectedEquipment.price_retail,
+      equipmentId: equipment.id,
+      brand: equipment.brand,
+      category: equipment.category,
+      name: equipment.name,
+      color: opts.color,
+      size: opts.size,
+      quantity: opts.quantity,
+      priceRetail: equipment.price_retail,
       unitPrice,
-      itemRemarks,
-      overrideDiscountRate: selectedEquipment.override_discount_rate,
+      itemRemarks: opts.itemRemarks,
+      overrideDiscountRate: equipment.override_discount_rate,
     });
 
     // 최근 사용 기록 갱신 — 구독 중인 useSyncExternalStore 가 자동으로
     // 재렌더링을 트리거해 다음에 이 브랜드/카테고리를 열었을 때 방금 담은
     // 항목이 맨 위로 온다.
     recordEquipmentUsage({
-      brand: selectedEquipment.brand,
-      category: selectedEquipment.category,
-      equipmentId: selectedEquipment.id,
+      brand: equipment.brand,
+      category: equipment.category,
+      equipmentId: equipment.id,
     });
+
+    setToast({ tone: "success", message: "장바구니에 담았습니다." });
+  };
+
+  /**
+   * 상단 "키워드 통합 검색"에서 결과를 클릭했을 때 호출된다. 3단계
+   * 브랜드→카테고리→장비 폼을 채우는 대신, 이미지를 큼직하게 보여주는 담기
+   * 확인 모달을 띄운다 — 사용자가 고른 품목이 맞는지 확인하고 담을 수 있게.
+   */
+  const applyQuickSearchResult = (item: EquipmentCatalogItem) => {
+    setConfirmItem(item);
+  };
+
+  const handleAdd = () => {
+    if (!selectedEquipment || !canAdd) return;
+
+    addItemToCart(selectedEquipment, { quantity, color, size, itemRemarks });
 
     // 같은 모델을 다른 색상/사이즈로 이어서 담기 좋도록 브랜드/카테고리/장비는 유지합니다.
     setColor("");
     setSize("");
     setQuantity(1);
     setItemRemarks("");
-
-    setToast({ tone: "success", message: "장바구니에 담았습니다." });
   };
 
   return (
@@ -398,6 +406,22 @@ export function EquipmentPicker({
       </CardContent>
 
       <InlineToast toast={toast} onDismiss={() => setToast(null)} durationMs={1800} />
+
+      {confirmItem && (
+        <EquipmentAddConfirmDialog
+          key={confirmItem.id}
+          item={confirmItem}
+          priceTier={priceTier}
+          discountPolicies={discountPolicies}
+          onOpenChange={(open) => {
+            if (!open) setConfirmItem(null);
+          }}
+          onConfirm={(details) => {
+            addItemToCart(confirmItem, { ...details, itemRemarks: "" });
+            setConfirmItem(null);
+          }}
+        />
+      )}
     </Card>
   );
 }

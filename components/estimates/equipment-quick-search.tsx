@@ -4,16 +4,13 @@ import * as React from "react";
 import { Loader2, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 
 interface EquipmentQuickSearchProps {
   /**
-   * 검색 결과를 클릭했을 때 호출된다. 이 컴포넌트는 견적 목록에 직접 담지
-   * 않고(색상/사이즈/수량 선택은 여전히 기존 폼이 담당), 선택된 장비를
-   * "브랜드→카테고리→장비" 3단계 폼에 그대로 채워 넣는 역할만 한다 — 그
-   * 아래 색상/사이즈/수량/단가 계산·"견적 목록에 추가" 로직은 전부 기존
-   * 코드를 그대로 탄다.
+   * 검색 결과를 클릭했을 때 호출된다. 이 컴포넌트는 색상/사이즈/수량 선택이나
+   * 장바구니 담기를 직접 하지 않고, 선택된 장비 하나를 그대로 넘겨주기만
+   * 한다 — 호출부(EquipmentPicker)가 이미지 큰 담기 확인 모달을 띄운다.
    */
   onSelect: (item: EquipmentCatalogItem) => void;
   disabled?: boolean;
@@ -155,15 +152,16 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
           {!error && results.length > 0 && (
             <>
               {/*
-                브랜드/제품명 2열만 남긴다 — 규격·단가는 완전히 제거해 제품명에
-                너비를 최대한 내준다. 브랜드 칸을 auto 가 아니라 고정폭(4.5rem)
-                으로 둬야, 행마다 따로인 grid 컨테이너들 사이에서도 제품명이
-                시작되는 위치가 전부 같아져 표처럼 줄이 맞는다.
+                브랜드/제품명/소비자가 3열 — 썸네일은 일부러 넣지 않는다(여기는
+                빠르게 훑어보는 목록용이고, 이미지로 크게 확인하는 건 클릭 후
+                뜨는 담기 확인 모달의 역할). 브랜드 칸을 auto 가 아니라
+                고정폭(4.5rem)으로 둬야, 행마다 따로인 grid 컨테이너들 사이에서도
+                제품명이 시작되는 위치가 전부 같아져 표처럼 줄이 맞는다.
               */}
-              <div className="grid grid-cols-[45px_4.5rem_1fr] gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
-                <span aria-hidden="true" />
+              <div className="grid grid-cols-[4.5rem_1fr_auto] gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
                 <span>브랜드</span>
                 <span>제품명</span>
+                <span>소비자가</span>
               </div>
               <ul className="max-h-72 overflow-y-auto p-1" role="listbox">
                 {results.map((item) => (
@@ -171,15 +169,17 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                     <button
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className="grid w-full grid-cols-[45px_4.5rem_1fr] items-start gap-3 rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground"
+                      className="grid w-full grid-cols-[4.5rem_1fr_auto] items-start gap-3 rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground"
                     >
-                      <EquipmentThumbnail src={item.image_url} alt={item.name} />
                       <span className="break-words pt-0.5 text-xs text-muted-foreground">
                         {item.brand}
                       </span>
                       {/* min-w-0 이 없으면 grid 아이템이 내용 너비만큼 늘어나 줄바꿈 대신 넘쳐버린다. */}
                       <span className="min-w-0 break-words text-sm font-medium leading-snug">
                         {item.name}
+                      </span>
+                      <span className="whitespace-nowrap pt-0.5 text-xs text-muted-foreground">
+                        ₩{item.price_retail.toLocaleString("ko-KR")}
                       </span>
                     </button>
                   </li>
