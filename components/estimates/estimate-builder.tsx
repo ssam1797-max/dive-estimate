@@ -763,8 +763,7 @@ export function EstimateBuilder({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className="flex-1 border-primary text-primary hover:bg-primary/10"
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={isSaving || state.items.length === 0}
               onClick={() =>
                 setBottomFormMode((prev) => (prev === "basicInfo" ? "none" : "basicInfo"))
@@ -821,7 +820,12 @@ export function EstimateBuilder({
             <FileSpreadsheet className="size-4" />
             엑셀 미리보기
           </Button>
-          <Button type="button" onClick={handleDownloadExcel} disabled={isExporting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleDownloadExcel}
+            disabled={isExporting}
+          >
             {isExporting ? (
               <Loader2 className="animate-spin" />
             ) : (
