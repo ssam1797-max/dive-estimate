@@ -733,6 +733,7 @@ export function EstimateBuilder({
           items={state.items}
           totalAmount={totalAmount}
           discountPolicies={discountPolicies}
+          catalog={catalog}
           onRemove={actions.removeItem}
           onQuantityChange={actions.updateItemQuantity}
           onNameChange={actions.updateItemName}

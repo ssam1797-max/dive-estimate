@@ -4,6 +4,7 @@ import * as React from "react";
 import { Loader2, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 
 interface EquipmentQuickSearchProps {
@@ -159,7 +160,8 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                 으로 둬야, 행마다 따로인 grid 컨테이너들 사이에서도 제품명이
                 시작되는 위치가 전부 같아져 표처럼 줄이 맞는다.
               */}
-              <div className="grid grid-cols-[4.5rem_1fr] gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+              <div className="grid grid-cols-[45px_4.5rem_1fr] gap-3 border-b px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                <span aria-hidden="true" />
                 <span>브랜드</span>
                 <span>제품명</span>
               </div>
@@ -169,8 +171,9 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                     <button
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className="grid w-full grid-cols-[4.5rem_1fr] items-start gap-3 rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground"
+                      className="grid w-full grid-cols-[45px_4.5rem_1fr] items-start gap-3 rounded-sm px-3 py-3 text-left hover:bg-accent hover:text-accent-foreground"
                     >
+                      <EquipmentThumbnail src={item.image_url} alt={item.name} />
                       <span className="break-words pt-0.5 text-xs text-muted-foreground">
                         {item.brand}
                       </span>

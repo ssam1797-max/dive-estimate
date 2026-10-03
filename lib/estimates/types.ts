@@ -26,6 +26,8 @@ export interface EquipmentCatalogItem {
   sizes: string[];
   /** 품목별 예외 할인율(%). 없으면(null) 브랜드 기본 할인율을 그대로 쓴다. */
   override_discount_rate: number | null;
+  /** 상품 썸네일 이미지 URL(외부 링크). 없으면 null — UI에서 기본 아이콘으로 대체한다. */
+  image_url: string | null;
 }
 
 /** 공급자/수신자 드롭다운에 쓰는 프로필 옵션 (엑셀 미리보기/다운로드에 필요한 주소·도장 이미지 포함) */

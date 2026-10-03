@@ -340,6 +340,8 @@ interface DomPriceEntry {
   consumerPrice: number | null;
   /** 현재 노출 중인(할인 여부 무관) 판매가(`class="sale_price"`). */
   salePrice: number | null;
+  /** 상품 썸네일 이미지의 절대 URL(`.item_img_area img[src]`). 못 찾으면 null. */
+  imageUrl: string | null;
 }
 
 /**
@@ -377,7 +379,19 @@ function extractDomPrices(html: string): Map<string, DomPriceEntry> {
     const salePriceRaw = parsePriceNumber(saleText);
     const salePrice = Number.isFinite(salePriceRaw) ? salePriceRaw : null;
 
-    priceByGoodsId.set(goodsId, { consumerPrice, salePrice });
+    // 썸네일: `.item_img_area` 안 첫 <img src>. 사이트가 절대/상대 경로를
+    // 섞어 내려줄 수 있어 new URL(..., BASE_URL)로 항상 절대 URL로 정규화한다.
+    const imgSrc = $item.find(".item_img_area img").first().attr("src");
+    let imageUrl: string | null = null;
+    if (imgSrc) {
+      try {
+        imageUrl = new URL(imgSrc, BASE_URL).toString();
+      } catch {
+        imageUrl = null;
+      }
+    }
+
+    priceByGoodsId.set(goodsId, { consumerPrice, salePrice, imageUrl });
   });
 
   return priceByGoodsId;
@@ -515,6 +529,11 @@ export async function crawlPongdangCatalog(): Promise<PongdangCrawlResult> {
       if (price < existing.price_retail) {
         existing.price_retail = price;
       }
+      // 썸네일은 옵션(색상/사이즈)별로 달라지지 않는 상품 대표 이미지라,
+      // 처음 찾은 값을 그대로 유지한다(없었다가 나중 행에서 발견되면 채움).
+      if (!existing.image_url && domPrice?.imageUrl) {
+        existing.image_url = domPrice.imageUrl;
+      }
       colors.forEach((c) => existing.colorSet.add(c));
       sizes.forEach((s) => existing.sizeSet.add(s));
       continue;
@@ -527,6 +546,7 @@ export async function crawlPongdangCatalog(): Promise<PongdangCrawlResult> {
       price_retail: price,
       colors: [],
       sizes: [],
+      image_url: domPrice?.imageUrl ?? null,
       colorSet: new Set(colors),
       sizeSet: new Set(sizes),
     });
@@ -558,6 +578,7 @@ export async function crawlPongdangCatalog(): Promise<PongdangCrawlResult> {
     price_retail: acc.price_retail,
     colors: Array.from(acc.colorSet).sort((a, b) => a.localeCompare(b, "ko")),
     sizes: Array.from(acc.sizeSet).sort((a, b) => a.localeCompare(b, "ko")),
+    image_url: acc.image_url,
   }));
   const distinctBrandCount = new Set(items.map((item) => item.brand)).size;
 

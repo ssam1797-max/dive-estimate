@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EquipmentEditDialog } from "@/components/equipment/equipment-edit-dialog";
+import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 
 interface EquipmentListManagerProps {
@@ -171,6 +172,7 @@ export function EquipmentListManager({
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-2 font-medium" aria-hidden="true" />
                     <th className="py-2 pr-2 font-medium">브랜드</th>
                     <th className="py-2 pr-2 font-medium">카테고리</th>
                     <th className="py-2 pr-2 font-medium">모델명</th>
@@ -182,6 +184,9 @@ export function EquipmentListManager({
                 <tbody>
                   {results.map((item) => (
                     <tr key={item.id} className="border-b last:border-0">
+                      <td className="py-2 pr-2 align-top">
+                        <EquipmentThumbnail src={item.image_url} alt={item.name} />
+                      </td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">{item.brand}</td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">
                         {item.category}

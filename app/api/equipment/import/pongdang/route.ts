@@ -51,12 +51,13 @@ export async function POST() {
       const result = await upsertEquipment(
         brand,
         catalogYear,
-        brandItems.map(({ category, name, price_retail, colors, sizes }) => ({
+        brandItems.map(({ category, name, price_retail, colors, sizes, image_url }) => ({
           category,
           name,
           price_retail,
           colors,
           sizes,
+          image_url,
         }))
       );
       insertedCount += result.insertedCount;

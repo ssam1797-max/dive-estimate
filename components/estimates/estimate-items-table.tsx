@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import type { EstimateItemDraft } from "@/lib/estimates/types";
+import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
+import type { EquipmentCatalogItem, EstimateItemDraft } from "@/lib/estimates/types";
 import {
   calculateDiscountRate,
   calculateEffectiveUnitPrice,
@@ -20,6 +21,9 @@ interface EstimateItemsTableProps {
   totalAmount: number;
   /** "퐁당샵가격" 참고 열을 계산하기 위한 브랜드별 할인율 정책. */
   discountPolicies: DiscountPolicyMap;
+  /** 품목별 썸네일(image_url) 조회용 — equipmentId 로 찾는다. 수동 등록 품목처럼
+   *  매칭되는 카탈로그 항목이 없으면 기본 아이콘으로 표시된다. */
+  catalog: EquipmentCatalogItem[];
   onRemove: (clientId: string) => void;
   onQuantityChange: (clientId: string, quantity: number) => void;
   onNameChange: (clientId: string, name: string) => void;
@@ -40,6 +44,7 @@ export function EstimateItemsTable({
   items,
   totalAmount,
   discountPolicies,
+  catalog,
   onRemove,
   onQuantityChange,
   onNameChange,
@@ -52,6 +57,12 @@ export function EstimateItemsTable({
   disabled,
 }: EstimateItemsTableProps) {
   const [confirmClearOpen, setConfirmClearOpen] = React.useState(false);
+
+  const imageByEquipmentId = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const eq of catalog) map.set(eq.id, eq.image_url);
+    return map;
+  }, [catalog]);
 
   return (
     <Card>
@@ -140,31 +151,37 @@ export function EstimateItemsTable({
                       </div>
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      <div className="flex flex-col gap-1.5">
-                        {item.brand && (
-                          <span className="text-xs text-muted-foreground">{item.brand}</span>
-                        )}
-                        <Input
-                          value={item.name}
-                          disabled={disabled}
-                          className="w-40 font-medium"
-                          onChange={(event) => onNameChange(item.clientId, event.target.value)}
+                      <div className="flex gap-2">
+                        <EquipmentThumbnail
+                          src={imageByEquipmentId.get(item.equipmentId) ?? null}
+                          alt={item.name}
                         />
-                        <div className="flex gap-1.5">
+                        <div className="flex min-w-0 flex-col gap-1.5">
+                          {item.brand && (
+                            <span className="text-xs text-muted-foreground">{item.brand}</span>
+                          )}
                           <Input
-                            value={item.color}
+                            value={item.name}
                             disabled={disabled}
-                            className="w-[4.75rem]"
-                            placeholder="색상"
-                            onChange={(event) => onColorChange(item.clientId, event.target.value)}
+                            className="w-40 font-medium"
+                            onChange={(event) => onNameChange(item.clientId, event.target.value)}
                           />
-                          <Input
-                            value={item.size}
-                            disabled={disabled}
-                            className="w-[4.75rem]"
-                            placeholder="사이즈"
-                            onChange={(event) => onSizeChange(item.clientId, event.target.value)}
-                          />
+                          <div className="flex gap-1.5">
+                            <Input
+                              value={item.color}
+                              disabled={disabled}
+                              className="w-[4.75rem]"
+                              placeholder="색상"
+                              onChange={(event) => onColorChange(item.clientId, event.target.value)}
+                            />
+                            <Input
+                              value={item.size}
+                              disabled={disabled}
+                              className="w-[4.75rem]"
+                              placeholder="사이즈"
+                              onChange={(event) => onSizeChange(item.clientId, event.target.value)}
+                            />
+                          </div>
                         </div>
                       </div>
                     </td>

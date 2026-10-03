@@ -9,6 +9,9 @@ export interface ParsedEquipmentItem {
   price_retail: number;
   colors: string[];
   sizes: string[];
+  /** 상품 썸네일 이미지 URL(외부 링크, 파일 자체는 저장하지 않음). 수집하지
+   *  못했으면(PDF 업로드 등) undefined. */
+  image_url?: string | null;
 }
 
 /** 카탈로그 추출 단계의 결과 (파싱된 항목 + 경고/오류 메시지) */

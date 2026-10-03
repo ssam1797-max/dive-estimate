@@ -66,6 +66,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       colors: e.colors,
       sizes: e.sizes,
       override_discount_rate: e.override_discount_rate ?? null,
+      image_url: e.image_url ?? null,
     }));
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
@@ -80,11 +81,12 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       colors: string[] | null;
       sizes: string[] | null;
       override_discount_rate: number | string | null;
+      image_url: string | null;
     }>((from, to) =>
       supabase
         .from("equipment")
         .select(
-          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate",
+          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url",
           { count: "exact" }
         )
         .order("brand")
@@ -102,6 +104,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       sizes: row.sizes ?? [],
       override_discount_rate:
         row.override_discount_rate == null ? null : Number(row.override_discount_rate),
+      image_url: row.image_url ?? null,
     }));
   } catch (error) {
     console.error(
@@ -227,6 +230,7 @@ export async function searchEquipment(
         colors: e.colors,
         sizes: e.sizes,
         override_discount_rate: e.override_discount_rate ?? null,
+        image_url: e.image_url ?? null,
       })),
       total: matched.length,
     };
@@ -244,6 +248,7 @@ export async function searchEquipment(
     colors: string[] | null;
     sizes: string[] | null;
     override_discount_rate: number | string | null;
+    image_url: string | null;
   }
 
   // ILIKE는 컬럼 값 자체의 공백을 제거하고 비교하지 못하므로, 글자 사이에
@@ -264,7 +269,7 @@ export async function searchEquipment(
     supabase
       .from("equipment")
       .select(
-        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate",
+        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url",
         { count: "exact" }
       )
       .or(orFilter)
@@ -291,6 +296,7 @@ export async function searchEquipment(
     sizes: row.sizes ?? [],
     override_discount_rate:
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
+    image_url: row.image_url ?? null,
   }));
 
   return { items, total };
@@ -561,6 +567,7 @@ export async function upsertEquipmentBulk(
           price_retail: item.price_retail,
           colors: item.colors,
           sizes: item.sizes,
+          image_url: item.image_url ?? mockStore.equipment[idx].image_url ?? null,
           updated_at: now,
         };
         results.push({ name: item.name, category: item.category, status: "updated" });
@@ -574,6 +581,7 @@ export async function upsertEquipmentBulk(
           price_retail: item.price_retail,
           colors: item.colors,
           sizes: item.sizes,
+          image_url: item.image_url ?? null,
           created_at: now,
           updated_at: now,
         });
@@ -628,6 +636,7 @@ export async function upsertEquipmentBulk(
     price_retail: item.price_retail,
     colors: item.colors,
     sizes: item.sizes,
+    image_url: item.image_url ?? null,
   }));
 
   try {
