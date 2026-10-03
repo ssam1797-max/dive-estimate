@@ -93,6 +93,23 @@ const DEFAULT_CATEGORY = "기타";
  */
 const INCLUDED_TOP_CATEGORIES = new Set(["스쿠버", "스쿠버 acc"]);
 
+/**
+ * 동기화 대상에서 제외할 키워드. 상품명/상위·세부 카테고리 중 하나라도
+ * 포함되면 제외한다.
+ *  - "이벤트"/"초특가": "★옥토 증정 이벤트★ MK25 EVO/S600", "★초특가★ 코팅납 1kg"
+ *    처럼 사은품 증정·땡처리 프로모션용으로 올라온 행이라, 같은 상품의
+ *    정상 행과 중복되거나 프로모션 한정 가격이 정상가로 잘못 반영된다.
+ *  - "아미노바이탈"/"캠핑": 각각 영양제(c0018), 캠핑용품(c0016) 전용
+ *    최상위 카테고리라 INCLUDED_TOP_CATEGORIES 필터에서 이미 걸러지지만,
+ *    혹시 모를 교차 태깅에 대비한 방어적 필터로 함께 등록한다.
+ */
+const EXCLUDED_KEYWORDS = ["이벤트", "초특가", "아미노바이탈", "캠핑"];
+
+function isExcludedItem(item: RawPongdangItem): boolean {
+  const haystack = [item.item_name, item.item_category, item.item_category2].join(" ");
+  return EXCLUDED_KEYWORDS.some((keyword) => haystack.includes(keyword));
+}
+
 interface RawPongdangItem {
   item_id: string;
   item_name: string;
@@ -490,9 +507,12 @@ function mergeRawItemsIntoEquipment(
 ): { items: PongdangEquipmentItem[]; warnings: string[] } {
   const warnings: string[] = [];
 
-  // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남긴다.
-  // (수영/물놀이, 캠핑, 프리다이빙 등으로 교차 태그된 상품은 제외)
-  const scubaOnly = rawItems.filter((item) => INCLUDED_TOP_CATEGORIES.has(item.item_category));
+  // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남기고(수영/물놀이, 캠핑,
+  // 프리다이빙 등으로 교차 태그된 상품은 제외), 이벤트/초특가 등 프로모션
+  // 상품도 추가로 제외한다(EXCLUDED_KEYWORDS 주석 참고).
+  const scubaOnly = rawItems.filter(
+    (item) => INCLUDED_TOP_CATEGORIES.has(item.item_category) && !isExcludedItem(item)
+  );
 
   // 같은 상품이 색상/사이즈 등 옵션(item_variant)별로 여러 행으로 내려오므로
   // (브랜드, 모델명) 기준으로 합치고, 대표 가격은 옵션 중 최저가로 둔다.
