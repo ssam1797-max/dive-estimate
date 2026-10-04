@@ -1,35 +1,7 @@
-/** 장비 카탈로그 업로드 기능 관련 상수 모음 */
-
-/** 업로드 가능한 최대 PDF 용량 (바이트). 100MB */
-export const MAX_PDF_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-
-/** 업로드 가능한 MIME 타입 */
-export const ALLOWED_PDF_MIME_TYPES = ["application/pdf"];
+/** 장비 카탈로그 관련 상수 모음 */
 
 /**
- * Gemini 호출 1회에 포함할 카탈로그 텍스트의 대략적인 최대 글자 수.
- * 페이지 단위로 묶되, 이 값을 넘기지 않는 선에서 여러 페이지를 하나의 청크로 합친다.
- * (모델의 안정적인 구조화 추출 품질과 비용/속도의 균형을 고려한 값)
- */
-export const MAX_CHUNK_CHARS = 12000;
-
-/**
- * 카탈로그 구조화 추출에 사용하는 Gemini 모델.
- * gemini-2.5-flash 는 신규 사용자에게 더 이상 제공되지 않아(404 NOT_FOUND),
- * Google 이 안내하는 후속 모델 gemini-3.6-flash 를 사용한다.
- */
-export const CATALOG_EXTRACTION_MODEL = "gemini-3.6-flash";
-
-/**
- * 청크 1건당 Gemini 응답에 허용할 최대 출력 토큰 수.
- * 최신 flash 모델은 기본적으로 "thinking" 토큰을 이 예산 안에서 함께 소비하므로,
- * 실제 카탈로그처럼 항목이 많은 페이지에서는 8192 로는 JSON 출력이 중간에 잘릴 수 있다.
- * (아래 thinkingConfig.thinkingBudget = 0 과 함께, 여유 있게 잡아둔다)
- */
-export const CATALOG_EXTRACTION_MAX_TOKENS = 32768;
-
-/**
- * 다이빙 장비 표준 카테고리 목록 (Gemini 추출 프롬프트와 동일하게 유지).
+ * 다이빙 장비 표준 카테고리 목록.
  * 호스/부속품/소모품/악세서리 4개는 퐁당닷컴의 별도 최상위 카테고리(c0003,
  * "스쿠버 acc" 태그)를 크롤링 대상에 새로 포함시키면서 추가했다 — 그 전까지는
  * 크롤러가 이 카테고리 자체를 요청하지 않아 스냅링·오링·아답터·호스 등이

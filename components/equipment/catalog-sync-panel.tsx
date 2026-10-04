@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import type { EquipmentImportSummary } from "@/lib/equipment/types";
  * — 이제 퐁당닷컴 동기화만 제공한다.
  */
 export function CatalogSyncPanel() {
+  const router = useRouter();
   const pongdang = usePongdangChunkedSync();
   const [toast, setToast] = React.useState<ToastState | null>(null);
   const [resultDialog, setResultDialog] = React.useState<{
@@ -34,10 +36,13 @@ export function CatalogSyncPanel() {
   const handleRun = async () => {
     setToast(null);
     const result = await pongdang.run();
+    // 성공/실패 모두 "데이터 동기화 현황" 카드(서버 컴포넌트)와 상단 탭의
+    // "확인 필요 품목" 뱃지가 최신 상태를 보여주도록 다시 불러온다.
+    router.refresh();
     if (result.ok) {
       setResultDialog({ key: crypto.randomUUID(), summary: result.summary });
     } else {
-      setToast({ tone: "error", message: `퐁당닷컴 동기화 실패: ${result.message}` });
+      setToast({ tone: "error", message: `동기화 실패: ${result.message}` });
     }
   };
 
@@ -64,8 +69,8 @@ export function CatalogSyncPanel() {
                 <RefreshCw className="size-4" />
               )}
               {isPongdangLoading
-                ? "퐁당닷컴 최신 장비 및 가격 데이터를 수집하는 중..."
-                : "퐁당닷컴 데이터 동기화"}
+                ? "최신 장비 및 가격 데이터를 수집하는 중..."
+                : "데이터 동기화"}
             </Button>
           </div>
 
@@ -101,6 +106,9 @@ export function CatalogSyncPanel() {
           }
           onPriceApplyError={(message) =>
             setToast({ tone: "error", message: `가격 반영 실패: ${message}` })
+          }
+          onDismissError={(message) =>
+            setToast({ tone: "error", message: `확인 완료 처리 실패: ${message}` })
           }
         />
       )}

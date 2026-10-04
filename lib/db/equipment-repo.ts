@@ -6,6 +6,8 @@ import type {
   ParsedEquipmentItem,
   EquipmentImportItemResult,
   EquipmentImportItemStatus,
+  PendingReviewEquipmentItem,
+  SyncRunRecord,
 } from "@/lib/equipment/types";
 import { normalizeBrand } from "@/lib/equipment/normalizeBrand";
 import { fetchAllPages } from "@/lib/db/paginate";
@@ -318,8 +320,8 @@ export interface InsertEquipmentData {
 
 /**
  * 이 함수는 "직접 등록" 화면(사람이 손으로 입력)에서만 호출된다 — 자동
- * 동기화(upsertEquipmentBulk)와 경로가 완전히 분리돼 있어, 여기로 들어오는
- * 품목은 항상 is_custom=true 로 저장한다. 클라이언트가 이 값을 직접 보내게
+ * 동기화(upsertEquipmentMultiBrand)와 경로가 완전히 분리돼 있어, 여기로
+ * 들어오는 품목은 항상 is_custom=true 로 저장한다. 클라이언트가 이 값을 직접 보내게
  * 하지 않고 서버에서 무조건 강제하는 이유는, 이 플래그가 사용자 편집 여부를
  * 나타내는 무결성 플래그이지 사용자가 켜고 끌 수 있는 옵션이 아니기 때문이다.
  */
@@ -443,7 +445,14 @@ export async function updateEquipment(
       err.code = "23505";
       throw err;
     }
-    Object.assign(row, normalized, { is_custom: true, updated_at: new Date().toISOString() });
+    // 수동 저장은 관리자가 이 품목을 직접 확인/반영한 것이므로, 대기 중이던
+    // "확인 필요" 상태도 함께 해제한다.
+    Object.assign(row, normalized, {
+      is_custom: true,
+      pending_review_price: null,
+      pending_review_detected_at: null,
+      updated_at: new Date().toISOString(),
+    });
     return;
   }
 
@@ -451,7 +460,12 @@ export async function updateEquipment(
   const supabase = await createAdminClient();
   const { error } = await supabase
     .from("equipment")
-    .update({ ...normalized, is_custom: true })
+    .update({
+      ...normalized,
+      is_custom: true,
+      pending_review_price: null,
+      pending_review_detected_at: null,
+    })
     .eq("id", id);
   if (error) throw error;
 }
@@ -476,6 +490,9 @@ export async function updateEquipmentPriceBulk(
       const row = mockStore.equipment.find((e) => e.id === id);
       if (!row) continue;
       row.price_retail = sanitizePriceRetail(price);
+      // 가격을 반영했으니 "확인 필요" 대기 상태도 함께 해제한다.
+      row.pending_review_price = null;
+      row.pending_review_detected_at = null;
       row.updated_at = now;
       updatedIds.push(id);
     }
@@ -488,12 +505,116 @@ export async function updateEquipmentPriceBulk(
   for (const { id, price } of updates) {
     const { error, count } = await supabase
       .from("equipment")
-      .update({ price_retail: sanitizePriceRetail(price) }, { count: "exact" })
+      .update(
+        {
+          price_retail: sanitizePriceRetail(price),
+          pending_review_price: null,
+          pending_review_detected_at: null,
+        },
+        { count: "exact" }
+      )
       .eq("id", id);
     if (error) throw error;
     if ((count ?? 0) > 0) updatedIds.push(id);
   }
   return updatedIds;
+}
+
+// ── 가격 변동 검토: "현재가 유지"(확인 완료, 가격은 그대로) ───────────────────────
+// "확인 필요 품목" 탭에서 "현재가 유지"를 누르면 price_retail 은 건드리지
+// 않고 pending_review_* 만 비워 대기 목록에서 빼준다.
+
+/** @returns 실제로 대기 상태가 해제된 장비 id 목록. */
+export async function dismissPendingReview(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  if (isMockMode()) {
+    const now = new Date().toISOString();
+    const dismissedIds: string[] = [];
+    for (const id of ids) {
+      const row = mockStore.equipment.find((e) => e.id === id);
+      if (!row) continue;
+      row.pending_review_price = null;
+      row.pending_review_detected_at = null;
+      row.updated_at = now;
+      dismissedIds.push(id);
+    }
+    return dismissedIds;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const dismissedIds: string[] = [];
+  for (const id of ids) {
+    const { error, count } = await supabase
+      .from("equipment")
+      .update(
+        { pending_review_price: null, pending_review_detected_at: null },
+        { count: "exact" }
+      )
+      .eq("id", id);
+    if (error) throw error;
+    if ((count ?? 0) > 0) dismissedIds.push(id);
+  }
+  return dismissedIds;
+}
+
+// ── "확인 필요 품목" 목록 조회 ────────────────────────────────────────────────
+// 동기화 세션이 끝나도 사라지지 않는, pending_review_price 가 채워진 모든
+// 보호 품목을 모아 보여준다("확인 필요 품목" 탭의 데이터 소스).
+
+export async function getPendingReviewEquipment(): Promise<PendingReviewEquipmentItem[]> {
+  if (isMockMode()) {
+    return mockStore.equipment
+      .filter((e) => e.pending_review_price != null)
+      .map((e) => ({
+        id: e.id,
+        brand: e.brand,
+        category: e.category,
+        name: e.name,
+        currentPrice: e.price_retail,
+        newPrice: e.pending_review_price as number,
+        detectedAt: e.pending_review_detected_at ?? e.updated_at,
+        image_url: e.image_url ?? null,
+      }))
+      .sort((a, b) => Date.parse(b.detectedAt) - Date.parse(a.detectedAt));
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { data, error } = await supabase
+    .from("equipment")
+    .select("id, brand, category, name, price_retail, pending_review_price, pending_review_detected_at, image_url")
+    .not("pending_review_price", "is", null)
+    .order("pending_review_detected_at", { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    brand: row.brand as string,
+    category: row.category as string,
+    name: row.name as string,
+    currentPrice: Number(row.price_retail),
+    newPrice: Number(row.pending_review_price),
+    detectedAt: (row.pending_review_detected_at as string | null) ?? new Date().toISOString(),
+    image_url: (row.image_url as string | null) ?? null,
+  }));
+}
+
+/** "확인 필요 품목" 건수만 가볍게 센다(상단 탭/현황 카드의 빨간 뱃지용). */
+export async function getPendingReviewCount(): Promise<number> {
+  if (isMockMode()) {
+    return mockStore.equipment.filter((e) => e.pending_review_price != null).length;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { count, error } = await supabase
+    .from("equipment")
+    .select("id", { count: "exact", head: true })
+    .not("pending_review_price", "is", null);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 // ── 단건 삭제 ─────────────────────────────────────────────────────────────────
@@ -521,216 +642,9 @@ export async function deleteEquipment(id: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
-// ── 벌크 UPSERT (퐁당닷컴/스쿠버프로 공홈 동기화, PDF 업로드용) ───────────────
-// 자동 동기화가 사용자가 수동으로 등록/수정한(is_custom=true) 품목까지
-// 최신 크롤링 값으로 덮어쓰지 않도록, 매칭되는 기존 품목의 is_custom 을
-// 먼저 확인해서 true인 항목은 upsert 대상에서 아예 제외한다(그 품목은
-// 그대로 유지되고 status="protected" 로 보고된다).
-
-export async function upsertEquipmentBulk(
-  rawBrand: string,
-  catalogYear: number,
-  rawItems: ParsedEquipmentItem[]
-): Promise<UpsertBulkResult> {
-  if (rawItems.length === 0) {
-    return { insertedCount: 0, updatedCount: 0, protectedCount: 0, failedCount: 0, items: [] };
-  }
-
-  const brand = normalizeBrand(rawBrand);
-  const items = rawItems.map((item) => ({
-    ...item,
-    price_retail: sanitizePriceRetail(item.price_retail),
-  }));
-
-  if (isMockMode()) {
-    const now = new Date().toISOString();
-    const results: EquipmentImportItemResult[] = [];
-
-    for (const item of items) {
-      const idx = mockStore.equipment.findIndex(
-        (e) => e.brand === brand && e.catalog_year === catalogYear && e.name === item.name
-      );
-      if (idx >= 0 && mockStore.equipment[idx].is_custom) {
-        const existing = mockStore.equipment[idx];
-        // 보호 품목도 이미지가 아예 없었다면만 새로 찾은 썸네일을 채운다
-        // (가격 등 다른 필드는 그대로 유지).
-        if (!existing.image_url && item.image_url) {
-          existing.image_url = item.image_url;
-          existing.updated_at = now;
-        }
-        results.push({
-          name: item.name,
-          category: item.category,
-          status: "protected",
-          id: existing.id,
-          oldPrice: existing.price_retail,
-          newPrice: item.price_retail,
-        });
-      } else if (idx >= 0) {
-        mockStore.equipment[idx] = {
-          ...mockStore.equipment[idx],
-          category: item.category,
-          price_retail: item.price_retail,
-          colors: item.colors,
-          sizes: item.sizes,
-          image_url: item.image_url ?? mockStore.equipment[idx].image_url ?? null,
-          updated_at: now,
-        };
-        results.push({ name: item.name, category: item.category, status: "updated" });
-      } else {
-        mockStore.equipment.push({
-          id: crypto.randomUUID(),
-          brand,
-          catalog_year: catalogYear,
-          category: item.category,
-          name: item.name,
-          price_retail: item.price_retail,
-          colors: item.colors,
-          sizes: item.sizes,
-          image_url: item.image_url ?? null,
-          created_at: now,
-          updated_at: now,
-        });
-        results.push({ name: item.name, category: item.category, status: "inserted" });
-      }
-    }
-
-    const insertedCount = results.filter((r) => r.status === "inserted").length;
-    const updatedCount = results.filter((r) => r.status === "updated").length;
-    const protectedCount = results.filter((r) => r.status === "protected").length;
-    return { insertedCount, updatedCount, protectedCount, failedCount: 0, items: results };
-  }
-
-  // ── 실제 Supabase ──
-  const { createAdminClient } = await import("@/lib/supabase/server");
-  const supabase = await createAdminClient();
-
-  // 이름 -> {id, is_custom, price_retail} 맵. 이걸로 (a) upsert 대상에서 보호
-  // 품목을 걸러내고, (b) 처리 후 각 항목이 신규/갱신/보호 중 무엇이었는지
-  // 보고하며, (c) 보호 품목은 현재가 대비 새로 수집된 가격을 비교해 가격
-  // 변동 검토 UI에 넘겨준다(가격 자체는 여기서 덮어쓰지 않는다).
-  let existingByName: Map<
-    string,
-    { id: string; is_custom: boolean; price_retail: number; image_url: string | null }
-  >;
-  try {
-    const { data, error } = await supabase
-      .from("equipment")
-      .select("id, name, is_custom, price_retail, image_url")
-      .eq("brand", brand)
-      .eq("catalog_year", catalogYear);
-    if (error) throw error;
-    existingByName = new Map(
-      (data ?? []).map((r) => [
-        r.name as string,
-        {
-          id: r.id as string,
-          is_custom: Boolean(r.is_custom),
-          price_retail: Number(r.price_retail),
-          image_url: (r.image_url as string | null) ?? null,
-        },
-      ])
-    );
-  } catch {
-    existingByName = new Map();
-  }
-
-  const protectedItems = items.filter((item) => existingByName.get(item.name)?.is_custom === true);
-  const itemsToUpsert = items.filter((item) => existingByName.get(item.name)?.is_custom !== true);
-
-  // 보호 품목(is_custom)은 가격/카테고리/색상·사이즈는 덮어쓰지 않지만,
-  // 이미지가 아예 없던 품목이면 새로 찾은 썸네일만 채워 넣는다.
-  const imageBackfillTargets = protectedItems.filter((item) => {
-    const existing = existingByName.get(item.name);
-    return !existing?.image_url && item.image_url;
-  });
-
-  const rows = itemsToUpsert.map((item) => ({
-    brand,
-    catalog_year: catalogYear,
-    category: item.category,
-    name: item.name,
-    price_retail: item.price_retail,
-    colors: item.colors,
-    sizes: item.sizes,
-    image_url: item.image_url ?? null,
-  }));
-
-  try {
-    if (rows.length > 0) {
-      const { error } = await supabase
-        .from("equipment")
-        .upsert(rows, { onConflict: "brand,catalog_year,name" });
-      if (error) throw error;
-    }
-
-    for (const item of imageBackfillTargets) {
-      const existing = existingByName.get(item.name);
-      if (!existing) continue;
-      const { error } = await supabase
-        .from("equipment")
-        .update({ image_url: item.image_url })
-        .eq("id", existing.id);
-      if (error) throw error;
-    }
-
-    const results: EquipmentImportItemResult[] = [
-      ...itemsToUpsert.map((item) => ({
-        name: item.name,
-        category: item.category,
-        status: (existingByName.has(item.name) ? "updated" : "inserted") as EquipmentImportItemStatus,
-      })),
-      ...protectedItems.map((item) => {
-        const existing = existingByName.get(item.name);
-        return {
-          name: item.name,
-          category: item.category,
-          status: "protected" as EquipmentImportItemStatus,
-          message: "수동으로 등록/수정된 품목이라 자동 동기화에서 건너뛰었습니다.",
-          id: existing?.id,
-          oldPrice: existing?.price_retail,
-          newPrice: item.price_retail,
-        };
-      }),
-    ];
-
-    return {
-      insertedCount: results.filter((r) => r.status === "inserted").length,
-      updatedCount: results.filter((r) => r.status === "updated").length,
-      protectedCount: results.filter((r) => r.status === "protected").length,
-      failedCount: 0,
-      items: results,
-    };
-  } catch (error) {
-    // Supabase 의 PostgrestError 는 Error 를 상속하지 않는 일반 객체라
-    // `error instanceof Error` 만으로는 메시지를 놓친다. `.message` 필드를 우선
-    // 확인해 실제 원인(DNS 실패, RLS 거부, 제약조건 위반 등)이 그대로 드러나게 한다.
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "object" && error !== null && "message" in error
-          ? String((error as { message: unknown }).message)
-          : "알 수 없는 오류";
-    console.error("장비 벌크 upsert 실패:", error);
-    const results: EquipmentImportItemResult[] = itemsToUpsert.map((item) => ({
-      name: item.name,
-      category: item.category,
-      status: "failed",
-      message: `저장 실패: ${message}`,
-    }));
-    return {
-      insertedCount: 0,
-      updatedCount: 0,
-      protectedCount: 0,
-      failedCount: results.length,
-      items: results,
-    };
-  }
-}
-
 // ── 벌크 UPSERT(여러 브랜드 한 번에) ──────────────────────────────────────────
 // 퐁당닷컴처럼 한 번의 크롤링 결과에 수십~수백 개 브랜드가 섞여 있는 경우,
-// upsertEquipmentBulk(브랜드 1개 전제)를 브랜드별로 루프 돌리면 브랜드 수만큼
+// 브랜드 1개를 전제로 한 upsert를 브랜드별로 루프 돌리면 브랜드 수만큼
 // Supabase 왕복(보호 품목 조회 1번 + upsert 1번)이 생긴다 — 실측 결과 200개
 // 안팎의 브랜드가 섞인 크롤링 조각 하나에서만 이 왕복이 수십~백여 번
 // 발생해 Netlify 서버 함수 실행 시간 제한을 넘기는 주된 원인이었다(페이지
@@ -767,6 +681,16 @@ export async function upsertEquipmentMultiBrand(
         if (!existing.image_url && item.image_url) {
           existing.image_url = item.image_url;
           existing.updated_at = now;
+        }
+        // 가격이 실제로 다르면 "확인 필요" 상태로 남겨둔다(즉시 반영하지
+        // 않음). 이전에 감지된 가격이 이번엔 현재가와 같아졌다면(예: 이미
+        // 수동으로 맞춰졌거나 퐁당가가 되돌아간 경우) 대기 상태를 해제한다.
+        if (item.price_retail !== existing.price_retail) {
+          existing.pending_review_price = item.price_retail;
+          existing.pending_review_detected_at = now;
+        } else if (existing.pending_review_price != null) {
+          existing.pending_review_price = null;
+          existing.pending_review_detected_at = null;
         }
         results.push({
           name: item.name,
@@ -819,12 +743,18 @@ export async function upsertEquipmentMultiBrand(
 
   let existingByKey: Map<
     string,
-    { id: string; is_custom: boolean; price_retail: number; image_url: string | null }
+    {
+      id: string;
+      is_custom: boolean;
+      price_retail: number;
+      image_url: string | null;
+      pending_review_price: number | null;
+    }
   >;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("id, brand, name, is_custom, price_retail, image_url")
+      .select("id, brand, name, is_custom, price_retail, image_url, pending_review_price")
       .eq("catalog_year", catalogYear)
       .in("brand", distinctBrands);
     if (error) throw error;
@@ -836,6 +766,8 @@ export async function upsertEquipmentMultiBrand(
           is_custom: Boolean(r.is_custom),
           price_retail: Number(r.price_retail),
           image_url: (r.image_url as string | null) ?? null,
+          pending_review_price:
+            r.pending_review_price == null ? null : Number(r.pending_review_price),
         },
       ])
     );
@@ -849,14 +781,6 @@ export async function upsertEquipmentMultiBrand(
   const itemsToUpsert = items.filter(
     (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom !== true
   );
-
-  // 보호 품목(is_custom)은 가격/카테고리/색상·사이즈는 절대 덮어쓰지 않지만,
-  // 이미지가 아예 없던 품목이라면(예: 이 기능 이전에 등록됨) 새로 찾은
-  // 썸네일만 채워 넣는다 — "가격 유지"와는 무관한 보강이라 안전하다.
-  const imageBackfillTargets = protectedItems.filter((item) => {
-    const existing = existingByKey.get(keyOf(item.brand, item.name));
-    return !existing?.image_url && item.image_url;
-  });
 
   const rows = itemsToUpsert.map((item) => ({
     brand: item.brand,
@@ -877,14 +801,36 @@ export async function upsertEquipmentMultiBrand(
       if (error) throw error;
     }
 
-    // 이미지만 보강(가격 등 다른 필드는 손대지 않음) — 건수가 보통 적어
-    // id 단위로 개별 update 해도 충분하다.
-    for (const item of imageBackfillTargets) {
+    // 보호 품목(is_custom)은 가격/카테고리/색상·사이즈 본문은 절대 덮어쓰지
+    // 않지만, (a) 이미지가 아예 없던 품목이면 새로 찾은 썸네일만 채워 넣고,
+    // (b) 가격이 실제로 다르면 즉시 반영하는 대신 pending_review_* 에
+    // "확인 필요" 상태로 남겨 "확인 필요 품목" 탭에서 다룰 수 있게 한다
+    // (이전에 감지된 대기 상태가 이번엔 현재가와 같아졌다면 해제한다).
+    // 건수가 보통 적어 id 단위로 개별 update 해도 충분하다.
+    const now = new Date().toISOString();
+    for (const item of protectedItems) {
       const existing = existingByKey.get(keyOf(item.brand, item.name));
       if (!existing) continue;
+
+      const updatePayload: Record<string, unknown> = {};
+
+      if (!existing.image_url && item.image_url) {
+        updatePayload.image_url = item.image_url;
+      }
+
+      if (item.price_retail !== existing.price_retail) {
+        updatePayload.pending_review_price = item.price_retail;
+        updatePayload.pending_review_detected_at = now;
+      } else if (existing.pending_review_price != null) {
+        updatePayload.pending_review_price = null;
+        updatePayload.pending_review_detected_at = null;
+      }
+
+      if (Object.keys(updatePayload).length === 0) continue;
+
       const { error } = await supabase
         .from("equipment")
-        .update({ image_url: item.image_url })
+        .update(updatePayload)
         .eq("id", existing.id);
       if (error) throw error;
     }
@@ -940,4 +886,155 @@ export async function upsertEquipmentMultiBrand(
       items: results,
     };
   }
+}
+
+// ── 동기화 실행 이력(sync_runs) ──────────────────────────────────────────────
+// "데이터 동기화 현황" 카드가 보여줄 최신 동기화 일시/건수/상태 메시지를
+// 남긴다. 퐁당닷컴 동기화는 카테고리×페이지 단위로 나뉘어 호출되므로(client
+// 쪽 usePongdangChunkedSync 참고), 조각마다가 아니라 전체가 끝난 시점(성공/
+// 실패 모두)에 이 함수가 1번만 호출된다.
+
+export interface CreateSyncRunInput {
+  source: string;
+  startedAt: string;
+  finishedAt: string;
+  status: "success" | "error";
+  totalParsed: number;
+  insertedCount: number;
+  updatedCount: number;
+  protectedCount: number;
+  failedCount: number;
+  distinctBrandCount: number;
+  distinctCategoryCount: number;
+  message: string | null;
+}
+
+function toSyncRunRecord(row: {
+  id: string;
+  source: string;
+  started_at: string;
+  finished_at: string;
+  status: string;
+  total_parsed: number;
+  inserted_count: number;
+  updated_count: number;
+  protected_count: number;
+  failed_count: number;
+  distinct_brand_count: number;
+  distinct_category_count: number;
+  message: string | null;
+}): SyncRunRecord {
+  return {
+    id: row.id,
+    source: row.source,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    status: row.status === "error" ? "error" : "success",
+    totalParsed: row.total_parsed,
+    insertedCount: row.inserted_count,
+    updatedCount: row.updated_count,
+    protectedCount: row.protected_count,
+    failedCount: row.failed_count,
+    distinctBrandCount: row.distinct_brand_count,
+    distinctCategoryCount: row.distinct_category_count,
+    message: row.message,
+  };
+}
+
+export async function createSyncRun(input: CreateSyncRunInput): Promise<void> {
+  if (isMockMode()) {
+    const now = new Date().toISOString();
+    mockStore.syncRuns.unshift({
+      id: crypto.randomUUID(),
+      source: input.source,
+      started_at: input.startedAt,
+      finished_at: input.finishedAt,
+      status: input.status,
+      total_parsed: input.totalParsed,
+      inserted_count: input.insertedCount,
+      updated_count: input.updatedCount,
+      protected_count: input.protectedCount,
+      failed_count: input.failedCount,
+      distinct_brand_count: input.distinctBrandCount,
+      distinct_category_count: input.distinctCategoryCount,
+      message: input.message,
+      created_at: now,
+    });
+    return;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { error } = await supabase.from("sync_runs").insert({
+    source: input.source,
+    started_at: input.startedAt,
+    finished_at: input.finishedAt,
+    status: input.status,
+    total_parsed: input.totalParsed,
+    inserted_count: input.insertedCount,
+    updated_count: input.updatedCount,
+    protected_count: input.protectedCount,
+    failed_count: input.failedCount,
+    distinct_brand_count: input.distinctBrandCount,
+    distinct_category_count: input.distinctCategoryCount,
+    message: input.message,
+  });
+  if (error) throw error;
+}
+
+export async function getLatestSyncRun(): Promise<SyncRunRecord | null> {
+  const runs = await getRecentSyncRuns(1);
+  return runs[0] ?? null;
+}
+
+export async function getRecentSyncRuns(limit: number): Promise<SyncRunRecord[]> {
+  if (isMockMode()) {
+    return mockStore.syncRuns.slice(0, limit).map((r) =>
+      toSyncRunRecord({
+        id: r.id,
+        source: r.source,
+        started_at: r.started_at,
+        finished_at: r.finished_at,
+        status: r.status,
+        total_parsed: r.total_parsed,
+        inserted_count: r.inserted_count,
+        updated_count: r.updated_count,
+        protected_count: r.protected_count,
+        failed_count: r.failed_count,
+        distinct_brand_count: r.distinct_brand_count,
+        distinct_category_count: r.distinct_category_count,
+        message: r.message,
+      })
+    );
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { data, error } = await supabase
+    .from("sync_runs")
+    .select(
+      "id, source, started_at, finished_at, status, total_parsed, inserted_count, updated_count, protected_count, failed_count, distinct_brand_count, distinct_category_count, message"
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) =>
+    toSyncRunRecord(
+      row as {
+        id: string;
+        source: string;
+        started_at: string;
+        finished_at: string;
+        status: string;
+        total_parsed: number;
+        inserted_count: number;
+        updated_count: number;
+        protected_count: number;
+        failed_count: number;
+        distinct_brand_count: number;
+        distinct_category_count: number;
+        message: string | null;
+      }
+    )
+  );
 }

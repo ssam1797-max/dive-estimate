@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, CheckCircle2, TrendingDown, TrendingUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ interface SyncResultDialogProps {
   /** 가격 변동 검토 결과(퐁당가 반영/내 가격 유지)를 상위에 알려 토스트 등을 띄울 수 있게 한다. */
   onPriceApplied?: (updatedCount: number) => void;
   onPriceApplyError?: (message: string) => void;
+  onDismissError?: (message: string) => void;
 }
 
 type Tab = "auto" | "review";
@@ -44,7 +46,9 @@ export function SyncResultDialog({
   summary,
   onPriceApplied,
   onPriceApplyError,
+  onDismissError,
 }: SyncResultDialogProps) {
+  const router = useRouter();
   const priceChangedItems = React.useMemo<PriceChangedItem[]>(
     () =>
       summary.items
@@ -103,6 +107,8 @@ export function SyncResultDialog({
         return next;
       });
       onPriceApplied?.(body.updatedIds.length);
+      // "확인 필요 품목" 뱃지(상단 탭/현황 카드)가 즉시 줄어들도록 새로고침.
+      router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "가격 반영 중 알 수 없는 오류가 발생했습니다.";
       onPriceApplyError?.(message);
@@ -115,13 +121,45 @@ export function SyncResultDialog({
     }
   };
 
-  const keepItems = (items: PriceChangedItem[]) => {
-    setResolvedIds((prev) => new Set([...prev, ...items.map((i) => i.id)]));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      items.forEach((i) => next.delete(i.id));
-      return next;
-    });
+  /**
+   * "내 가격 유지"는 price_retail 을 바꾸지 않지만, "확인 필요" 대기 상태는
+   * 서버에도 남아있으므로(pending_review_price) 반드시 dismiss API를 호출해
+   * 비워야 한다 — 그렇지 않으면 이 다이얼로그를 닫은 뒤에도 "확인 필요
+   * 품목" 탭에 계속 남아있게 된다.
+   */
+  const keepItems = async (items: PriceChangedItem[]) => {
+    if (items.length === 0) return;
+    setApplyingIds((prev) => new Set([...prev, ...items.map((i) => i.id)]));
+    try {
+      const response = await fetch("/api/equipment/price-review/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: items.map((item) => item.id) }),
+      });
+      const body = (await response.json()) as
+        | { ok: true; dismissedIds: string[] }
+        | { error: string };
+      if (!response.ok || "error" in body) {
+        throw new Error("error" in body ? body.error : "확인 완료 처리에 실패했습니다.");
+      }
+      setResolvedIds((prev) => new Set([...prev, ...body.dismissedIds]));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        body.dismissedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "확인 완료 처리 중 알 수 없는 오류가 발생했습니다.";
+      onDismissError?.(message);
+    } finally {
+      setApplyingIds((prev) => {
+        const next = new Set(prev);
+        items.forEach((i) => next.delete(i.id));
+        return next;
+      });
+    }
   };
 
   const toggleSelected = (id: string) => {

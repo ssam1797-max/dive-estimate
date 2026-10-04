@@ -1,5 +1,6 @@
 import { EquipmentNav } from "@/components/equipment/equipment-nav";
 import { getIsAdmin } from "@/lib/auth/admin-session";
+import { getPendingReviewCount } from "@/lib/db/equipment-repo";
 
 export default async function EquipmentLayout({
   children,
@@ -7,19 +8,20 @@ export default async function EquipmentLayout({
   children: React.ReactNode;
 }) {
   const isAdmin = await getIsAdmin();
+  const pendingReviewCount = isAdmin ? await getPendingReviewCount().catch(() => 0) : 0;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col">
       <div className="px-6 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-2xl font-semibold">장비 관리</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          PDF 카탈로그를 업로드하거나, 장비를 직접 입력해서 마스터에 등록하세요.
+          퐁당닷컴 데이터를 동기화하거나, 장비를 직접 입력해서 마스터에 등록하세요.
         </p>
       </div>
       {isAdmin ? (
         <>
           <div className="mt-4 px-6 sm:px-8">
-            <EquipmentNav />
+            <EquipmentNav pendingReviewCount={pendingReviewCount} />
           </div>
           <div className="p-6 sm:p-8">{children}</div>
         </>

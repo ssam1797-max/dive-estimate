@@ -24,8 +24,31 @@ export interface MockEquipment {
   /** 상품 썸네일 이미지 URL(외부 링크, 파일 자체는 저장하지 않음). 퐁당닷컴
    *  동기화 시 수집되며, 수동 등록 품목은 없을 수 있다. */
   image_url?: string | null;
+  /** 보호(is_custom) 품목의 동기화 중 감지된 새 퐁당닷컴 가격. price_retail과
+   *  다를 때만 채워지며, 확인 완료 처리(반영/유지)하면 다시 null로 돌아간다. */
+  pending_review_price?: number | null;
+  /** pending_review_price가 감지된 시각. */
+  pending_review_detected_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** "데이터 동기화 현황" 카드 / 실행 로그에 쓰이는 동기화 1회 실행 기록. */
+export interface MockSyncRun {
+  id: string;
+  source: string;
+  started_at: string;
+  finished_at: string;
+  status: "success" | "error";
+  total_parsed: number;
+  inserted_count: number;
+  updated_count: number;
+  protected_count: number;
+  failed_count: number;
+  distinct_brand_count: number;
+  distinct_category_count: number;
+  message: string | null;
+  created_at: string;
 }
 
 export interface MockDiscountPolicy {
@@ -115,6 +138,7 @@ export interface MockStore {
   estimates: MockEstimate[];
   estimateItems: MockEstimateItem[];
   bankAccount: MockBankAccountSettings;
+  syncRuns: MockSyncRun[];
 }
 
 // ── 시드 데이터 ───────────────────────────────────────────────────────────────
@@ -285,6 +309,7 @@ function createStore(): MockStore {
     estimates: [],
     estimateItems: [],
     bankAccount: { bankName: "", accountNumber: "", accountHolder: "" },
+    syncRuns: [],
   };
 }
 

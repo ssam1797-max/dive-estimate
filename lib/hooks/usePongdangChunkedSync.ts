@@ -13,6 +13,38 @@ type SyncRunResult =
   | { ok: true; summary: EquipmentImportSummary }
   | { ok: false; message: string };
 
+interface PersistSyncRunInput {
+  startedAt: string;
+  finishedAt: string;
+  status: "success" | "error";
+  totalParsed: number;
+  insertedCount: number;
+  updatedCount: number;
+  protectedCount: number;
+  failedCount: number;
+  distinctBrandCount: number;
+  distinctCategoryCount: number;
+  message: string | null;
+}
+
+/**
+ * "데이터 동기화 현황" 카드가 읽을 실행 기록 1건을 남긴다. 이 호출이
+ * 실패해도(네트워크 오류 등) 방금 끝난 동기화 자체의 결과는 이미 확정된
+ * 뒤이므로, 로그 저장 실패가 사용자에게 "동기화 실패"로 잘못 보이지
+ * 않도록 조용히 콘솔에만 남기고 삼킨다.
+ */
+async function persistSyncRun(input: PersistSyncRunInput): Promise<void> {
+  try {
+    await fetch("/api/equipment/sync-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "pongdang", ...input }),
+    });
+  } catch (error) {
+    console.error("동기화 실행 기록 저장 실패:", error);
+  }
+}
+
 /**
  * 퐁당닷컴 동기화 전용 훅. /api/equipment/import/pongdang 가 "카테고리 하나,
  * 페이지 몇 장"만 처리하는 조각 단위 API로 바뀐 이유는 pongdangCrawler.ts의
@@ -31,7 +63,9 @@ export function usePongdangChunkedSync() {
     setStatus("loading");
     setProgress(null);
 
+    const startedAt = new Date().toISOString();
     const catalogYear = new Date().getFullYear();
+    const categories = new Set<string>();
     let totalPages = 0;
     let totalParsed = 0;
     let insertedCount = 0;
@@ -69,6 +103,7 @@ export function usePongdangChunkedSync() {
           items.push(...body.items);
           warnings.push(...body.warnings);
           body.brands.forEach((b) => brands.add(b));
+          body.items.forEach((i) => categories.add(i.category));
 
           page = body.nextPage;
         }
@@ -95,11 +130,37 @@ export function usePongdangChunkedSync() {
 
       setSummary(finalSummary);
       setStatus("success");
+      await persistSyncRun({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "success",
+        totalParsed,
+        insertedCount,
+        updatedCount,
+        protectedCount,
+        failedCount,
+        distinctBrandCount: brands.size,
+        distinctCategoryCount: categories.size,
+        message: null,
+      });
       return { ok: true, summary: finalSummary };
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "동기화 중 알 수 없는 오류가 발생했습니다.";
       setStatus("error");
+      await persistSyncRun({
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status: "error",
+        totalParsed,
+        insertedCount,
+        updatedCount,
+        protectedCount,
+        failedCount,
+        distinctBrandCount: brands.size,
+        distinctCategoryCount: categories.size,
+        message,
+      });
       return { ok: false, message };
     } finally {
       setProgress(null);

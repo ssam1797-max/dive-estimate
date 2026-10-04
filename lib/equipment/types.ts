@@ -84,3 +84,38 @@ export interface EquipmentImportChunkSummary {
   /** 이 카테고리에서 다음에 이어 받아야 할 페이지 번호. 더 받을 페이지가 없으면 null. */
   nextPage: number | null;
 }
+
+/**
+ * "데이터 동기화 현황" 카드/실행 로그에 쓰이는 동기화 1회 실행 기록.
+ * 퐁당닷컴 동기화는 카테고리×페이지 단위로 나뉘어 호출되므로, 조각이 아니라
+ * 전체 동기화가 끝난 시점(성공/실패 모두)에 1건으로 기록한다.
+ */
+export interface SyncRunRecord {
+  id: string;
+  source: string;
+  startedAt: string;
+  finishedAt: string;
+  status: "success" | "error";
+  totalParsed: number;
+  insertedCount: number;
+  updatedCount: number;
+  protectedCount: number;
+  failedCount: number;
+  distinctBrandCount: number;
+  distinctCategoryCount: number;
+  message: string | null;
+}
+
+/** "확인 필요 품목" 탭 1행 — 보호(is_custom) 품목 중 가격 변동이 감지된 품목. */
+export interface PendingReviewEquipmentItem {
+  id: string;
+  brand: string;
+  category: string;
+  name: string;
+  /** 현재 적용 중인(보호된) 소비자가. */
+  currentPrice: number;
+  /** 이번 동기화에서 새로 감지된 퐁당닷컴 가격. */
+  newPrice: number;
+  detectedAt: string;
+  image_url: string | null;
+}
