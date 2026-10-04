@@ -120,14 +120,16 @@ function isExcludedItem(item: RawPongdangItem): boolean {
  * 상품 전체가 빠진다. "[9월 중순 재입고 예정]"처럼 재입고 시점이 예고된
  * 경우는 곧 다시 살 수 있으니 제외 대상이 아니다 — 정확히 "재입고 미정"
  * 문자열만 매칭한다.
+ *
+ * 실측 결과 "재입고 미정"(공백 있음)과 "재입고미정"(공백 없음) 표기가
+ * 섞여 있어(예: "[재입고미정] DNA (Divesoft Nitrox Analyzer)"), 공백을
+ * 제거한 문자열끼리 비교해 두 표기를 모두 잡아낸다.
  */
-const OUT_OF_STOCK_INDEFINITELY_MARK = "재입고 미정";
+const OUT_OF_STOCK_INDEFINITELY_MARK_NO_SPACE = "재입고미정";
 
 function isOutOfStockIndefinitely(item: RawPongdangItem): boolean {
-  return (
-    (item.item_name ?? "").includes(OUT_OF_STOCK_INDEFINITELY_MARK) ||
-    (item.item_variant ?? "").includes(OUT_OF_STOCK_INDEFINITELY_MARK)
-  );
+  const haystack = `${item.item_name ?? ""} ${item.item_variant ?? ""}`.replace(/\s+/g, "");
+  return haystack.includes(OUT_OF_STOCK_INDEFINITELY_MARK_NO_SPACE);
 }
 
 interface RawPongdangItem {
