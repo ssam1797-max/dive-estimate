@@ -45,6 +45,11 @@ interface EstimatePrintViewProps {
  * 등급의 문서만 그대로 인쇄된다(탭마다 별도로 렌더링해두는 게 아니라, 이미
  * 선택된 한 등급만 DOM에 그려져 있기 때문에 별도 print CSS 분기가 필요 없다).
  */
+interface PriceOverride {
+  unitPrice?: number;
+  amount?: number;
+}
+
 export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps) {
   const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
   const [tier, setTier] = React.useState<PriceTier>(
@@ -54,6 +59,24 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
   const [documentMode, setDocumentMode] = React.useState<"estimate" | "deliveryNote">(
     "estimate"
   );
+  // 관리자 전용 "일시적 단가/금액 수정" — 품목 index(=rows 의 key)별 덮어쓸
+  // 값만 들고 있는 순수 화면 state 다. 서버에 저장되지 않고(어떤 API 도
+  // 호출하지 않음), 새로고침/페이지 이탈 시 사라진다 — 저장된 견적서 원본
+  // (estimate.items)은 전혀 건드리지 않는다. 단가를 고치면 금액은 그
+  // 단가×수량으로 다시 계산하고(이전 금액 덮어쓰기는 버림), 금액만 고치면
+  // 단가는 그대로 두고 금액만 바뀐다(묶음 할인 등 수량 곱셈과 무관한 총액을
+  // 주고 싶을 때를 위함).
+  const [priceOverrides, setPriceOverrides] = React.useState<Record<number, PriceOverride>>({});
+
+  const handleUnitPriceChange = React.useCallback((rowKey: string | number, value: number) => {
+    const index = Number(rowKey);
+    setPriceOverrides((prev) => ({ ...prev, [index]: { unitPrice: value } }));
+  }, []);
+
+  const handleAmountChange = React.useCallback((rowKey: string | number, value: number) => {
+    const index = Number(rowKey);
+    setPriceOverrides((prev) => ({ ...prev, [index]: { ...prev[index], amount: value } }));
+  }, []);
 
   const hasTierSnapshot = estimate.items.some(
     (item) =>
@@ -64,8 +87,13 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
   );
 
   const rows: EstimateDocumentRow[] = estimate.items.map((item, index) => {
-    const unitPrice = tierPriceOfSnapshot(item, tier);
-    const amount = unitPrice * item.quantity;
+    const baseUnitPrice = tierPriceOfSnapshot(item, tier);
+    const baseAmount = baseUnitPrice * item.quantity;
+    const override = priceOverrides[index];
+    const unitPrice = override?.unitPrice ?? baseUnitPrice;
+    const amount =
+      override?.amount ??
+      (override?.unitPrice != null ? override.unitPrice * item.quantity : baseAmount);
     const retailReference = item.priceRetail ?? item.unitPrice;
     return {
       seq: index + 1,
@@ -94,8 +122,12 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
   // 새로 부가세를 얹는 게 아니라 이미 확정된 금액을 쪼개는 것이라, 거래명세서
   // 합계금액은 견적서 합계금액과 항상 정확히 같다.
   const deliveryNoteRows: DeliveryNoteRow[] = estimate.items.map((item, index) => {
-    const unitPrice = tierPriceOfSnapshot(item, tier);
-    const amount = unitPrice * item.quantity;
+    const baseUnitPrice = tierPriceOfSnapshot(item, tier);
+    const baseAmount = baseUnitPrice * item.quantity;
+    const override = priceOverrides[index];
+    const amount =
+      override?.amount ??
+      (override?.unitPrice != null ? override.unitPrice * item.quantity : baseAmount);
     const vat = calculateInclusiveVat(amount);
     const supplyAmount = amount - vat;
     return {
@@ -164,6 +196,11 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
               이전 버전에 저장된 견적서라 등급별 단가가 남아있지 않습니다 — 모든 등급에 저장 당시 단가가 동일하게 표시됩니다.
             </p>
           )}
+          {isAdmin && (
+            <p className="text-xs text-muted-foreground">
+              관리자 모드: 아래 표의 단가·금액 칸을 클릭하면 이 출력물에만 적용되는 임시 가격으로 고쳐 쓸 수 있습니다(저장된 견적서 원본은 바뀌지 않으며, 새로고침하면 원래 값으로 돌아갑니다).
+            </p>
+          )}
         </div>
       )}
 
@@ -178,6 +215,9 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
               remarks={estimate.remarks}
               rows={rows}
               referenceTierLabels={referenceTierLabels}
+              editable={isAdmin}
+              onUnitPriceChange={handleUnitPriceChange}
+              onAmountChange={handleAmountChange}
             />
           ) : (
             <div className="delivery-note-page">

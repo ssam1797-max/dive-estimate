@@ -132,6 +132,26 @@
        핀치 확대(접근성)는 이 속성과 무관하게 계속 동작한다. */
     touch-action: manipulation;
   }
+
+  /*
+   * 네이티브 <select> 드롭다운(장비 선택의 색상/사이즈, 카테고리, 직접 등록
+   * 폼 등 components/ui/select.tsx 를 쓰는 모든 곳) 팝업 보정.
+   *
+   * <select> 자체는 Tailwind 로 다크 테마에 맞춰 스타일했지만, 펼쳤을 때
+   * 뜨는 옵션 목록 팝업은 브라우저가 OS 네이티브로 그려서 대부분의 CSS가
+   * 먹지 않는다 — color-scheme 을 지정하지 않으면 이 팝업이 기본(밝은)
+   * 배경으로 뜨는데, <select>가 상속받는 글자색은 다크 테마의 밝은 글자색
+   * (--foreground, 거의 흰색)이라 밝은 배경 위에서 글자가 거의 안 보였다.
+   * color-scheme: light 로 이 팝업을 항상 밝은 배경으로 고정하고, option
+   * 글자색은 짙은 네이비로 명시해 배경과 항상 뚜렷하게 대비되게 한다.
+   */
+  select {
+    color-scheme: light;
+  }
+  select option {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
 }
 
 /*

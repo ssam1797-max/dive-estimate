@@ -1,14 +1,21 @@
+"use client";
+
 import type { ProfileOption } from "@/lib/estimates/types";
 import { formatDiscountRate } from "@/lib/estimates/pricing";
 
 /**
  * 실제 견적서 문서(미리보기 다이얼로그·인쇄 화면·다운로드되는 .xlsx)가 전부
- * 똑같은 모양을 그리도록 공통으로 쓰는 순수 표시용 컴포넌트. 훅/이벤트가 없어
- * 서버 컴포넌트에서도 그대로 쓸 수 있다("use client" 불필요).
+ * 똑같은 모양을 그리도록 공통으로 쓰는 표시용 컴포넌트.
  *
  * 가격(unitPrice/amount/vat)은 이미 계산이 끝난 값을 그대로 받는다 — 이 컴포넌트는
  * 재계산을 전혀 하지 않는다(호출부마다 계산 기준이 다르므로: 미리보기는 가격
  * 탭+브랜드 정책으로 즉시 계산, 보관함 인쇄는 저장 시점에 확정된 단가를 그대로 사용).
+ *
+ * editable(관리자 전용) 이 true면 단가/금액 셀이 인라인 입력창으로 바뀐다 —
+ * 편집 결과는 onUnitPriceChange/onAmountChange 를 통해 호출부(상위 컴포넌트의
+ * React state)로만 올라가고, 이 컴포넌트도 호출부도 서버에 저장하지 않는다
+ * (estimate-print-view.tsx 의 priceOverrides 참고) — 화면에 보이는 출력물
+ * 미리보기에만 일시적으로 반영되고 새로고침하면 원래 저장된 값으로 돌아간다.
  */
 export interface EstimateDocumentRow {
   seq: number;
@@ -43,6 +50,10 @@ interface EstimateDocumentTableProps {
   rows: EstimateDocumentRow[];
   /** 체크된 참고 가격 등급들의 표시 이름(선택된 순서 그대로). 없으면 원본 13열 그대로. */
   referenceTierLabels?: string[];
+  /** 관리자 전용 — true면 단가/금액 셀을 클릭해 일시적으로 고쳐 쓸 수 있다. */
+  editable?: boolean;
+  onUnitPriceChange?: (rowKey: string | number, value: number) => void;
+  onAmountChange?: (rowKey: string | number, value: number) => void;
 }
 
 // ₩ 기호 없이 콤마만 (원본 견적서에 통화 기호가 전혀 없다)
@@ -159,6 +170,15 @@ const cellPrice = `${cellBase} py-1 whitespace-nowrap text-right`;
 // + 위아래 여백 0. nowrap 은 "39%↓" 가 좁은 칸에서 두 줄로 꺾이는 것을 막는다.
 const discountBadge = "text-[8px] leading-none text-gray-500 whitespace-nowrap";
 
+// 관리자 전용 인라인 가격 수정 입력란 — 평소엔 일반 텍스트처럼 보이도록
+// 테두리/배경을 없애고 글꼴 크기·정렬을 cellPrice 와 맞춘다. 포커스가 와야만
+// 가는 테두리가 비쳐 "지금 수정 중"임을 알려준다. 브라우저 기본 숫자
+// 스피너 화살표는 좁은 칸에서 숫자와 겹쳐 보여 꺼둔다.
+const editableInput =
+  "w-full bg-transparent text-right text-[10px] leading-tight text-gray-900 outline-none " +
+  "focus:rounded-sm focus:ring-1 focus:ring-primary " +
+  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
 const MOCK_STAMP_SRC = "/mock-stamp.png";
 
@@ -170,6 +190,9 @@ export function EstimateDocumentTable({
   remarks,
   rows,
   referenceTierLabels = [],
+  editable = false,
+  onUnitPriceChange,
+  onAmountChange,
 }: EstimateDocumentTableProps) {
   const refCount = referenceTierLabels.length;
 
@@ -222,7 +245,15 @@ export function EstimateDocumentTable({
   );
 
   return (
-    <>
+    // 이 문서는 항상 흰 종이 위에 출력되는 영역이라, 사이트 전체의 다크
+    // 테마 글자색(text-foreground, 거의 흰색)을 상속받으면 안 된다 —
+    // 아래 개별 셀 상당수가 자체 text-* 클래스를 안 달고 있어서(테두리/
+    // 정렬만 지정) 그 셀들은 조상 색을 그대로 물려받는데, 다크 테마에서는
+    // 그 색이 흰 배경 위에서 거의 안 보이는 흰 글자였다. 여기서 한 번에
+    // 짙은 색으로 못박아 개별 셀이 깜빡 잊고 색을 안 지정해도 항상 읽히게
+    // 한다(명시적으로 text-blue-700/text-gray-500 등을 준 셀은 그대로
+    // 우선 적용된다 — CSS는 상속보다 직접 지정을 항상 우선한다).
+    <div className="text-gray-900">
       {/* 상단 정보 블록(제목/발행일/공급자·공급받는자) — 페이지가 넘어가도
           반복되지 않는 부분이라 별도 표로 분리한다. 아래 품목 표와 컬럼 폭이
           동일한 <colgroup> 을 쓰기 때문에 이어 붙여도 하나의 표처럼 보인다. */}
@@ -484,7 +515,18 @@ export function EstimateDocumentTable({
                 배지가 비어 있을 때도 숫자 칸 자체가 원래 폭의 절반으로
                 좁아져 큰 금액이 잘리거나 안 보이는 문제가 생긴다. */}
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
-              {fmtNum(row.unitPrice)}
+              {editable ? (
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  className={editableInput}
+                  value={row.unitPrice}
+                  onChange={(e) => onUnitPriceChange?.(row.key, Number(e.target.value) || 0)}
+                  aria-label={`${row.name} 단가 수정`}
+                />
+              ) : (
+                fmtNum(row.unitPrice)
+              )}
               {!!row.discountRate && row.discountRate > 0 && (
                 <div className={discountBadge}>
                   {formatDiscountRate(row.discountRate)}%↓
@@ -492,7 +534,18 @@ export function EstimateDocumentTable({
               )}
             </td>
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
-              {fmtNum(row.amount)}
+              {editable ? (
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  className={editableInput}
+                  value={row.amount}
+                  onChange={(e) => onAmountChange?.(row.key, Number(e.target.value) || 0)}
+                  aria-label={`${row.name} 금액 수정`}
+                />
+              ) : (
+                fmtNum(row.amount)
+              )}
               {!!row.discountRate && row.discountRate > 0 && (
                 <div className={discountBadge}>
                   -{formatDiscountRate(row.discountRate)}%
@@ -566,6 +619,6 @@ export function EstimateDocumentTable({
         <tr style={{ height: 20 }} />
         </tbody>
       </table>
-    </>
+    </div>
   );
 }
