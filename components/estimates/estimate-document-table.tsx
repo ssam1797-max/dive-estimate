@@ -172,12 +172,22 @@ const discountBadge = "text-[8px] leading-none text-gray-500 whitespace-nowrap";
 
 // 관리자 전용 인라인 가격 수정 입력란 — 평소엔 일반 텍스트처럼 보이도록
 // 테두리/배경을 없애고 글꼴 크기·정렬을 cellPrice 와 맞춘다. 포커스가 와야만
-// 가는 테두리가 비쳐 "지금 수정 중"임을 알려준다. 브라우저 기본 숫자
-// 스피너 화살표는 좁은 칸에서 숫자와 겹쳐 보여 꺼둔다.
+// 가는 테두리가 비쳐 "지금 수정 중"임을 알려준다.
+//
+// type="number" 대신 type="text" + inputMode="numeric" 을 쓴다 — Safari(맥OS/
+// iOS)의 number input은 입력 중간값(예: 자릿수를 지우는 도중)을 엄격하게
+// 검증하다가 포커스를 잃거나 값이 빈 문자열로 리셋되는 경우가 있어("맥북에서
+// 수정이 안 된다"는 증상의 실제 원인), 모바일 숫자 키패드는 그대로 띄우되
+// 검증은 onChange에서 직접 숫자만 걸러내는 방식이 크로스브라우저로 더 안전하다.
 const editableInput =
   "w-full bg-transparent text-right text-[10px] leading-tight text-gray-900 outline-none " +
-  "focus:rounded-sm focus:ring-1 focus:ring-primary " +
-  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "focus:rounded-sm focus:ring-1 focus:ring-primary";
+
+/** 숫자가 아닌 문자를 전부 제거하고 정수로 변환한다(빈 입력은 0). */
+function parseDigits(raw: string): number {
+  const digitsOnly = raw.replace(/[^0-9]/g, "");
+  return digitsOnly ? Number(digitsOnly) : 0;
+}
 
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
 const MOCK_STAMP_SRC = "/mock-stamp.png";
@@ -517,11 +527,11 @@ export function EstimateDocumentTable({
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
                 <input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
                   className={editableInput}
-                  value={row.unitPrice}
-                  onChange={(e) => onUnitPriceChange?.(row.key, Number(e.target.value) || 0)}
+                  value={fmtNum(row.unitPrice)}
+                  onChange={(e) => onUnitPriceChange?.(row.key, parseDigits(e.target.value))}
                   aria-label={`${row.name} 단가 수정`}
                 />
               ) : (
@@ -536,11 +546,11 @@ export function EstimateDocumentTable({
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
                 <input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
                   className={editableInput}
-                  value={row.amount}
-                  onChange={(e) => onAmountChange?.(row.key, Number(e.target.value) || 0)}
+                  value={fmtNum(row.amount)}
+                  onChange={(e) => onAmountChange?.(row.key, parseDigits(e.target.value))}
                   aria-label={`${row.name} 금액 수정`}
                 />
               ) : (

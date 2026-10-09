@@ -25,6 +25,23 @@ export async function exportElementToPdf(
   const previousMinHeight = element.style.minHeight;
   element.style.minHeight = "auto";
 
+  // 관리자 전용 단가/금액 인라인 입력란(<input>) 은 html2canvas 계열 라이브러리가
+  // 안정적으로 그려주지 못한다 — <input> 은 브라우저가 폼 컨트롤로 별도
+  // 렌더링하는 요소라, DOM을 그대로 읽어 캔버스에 그리는 html2canvas는 React가
+  // DOM 프로퍼티로만 반영한 현재 입력값을 못 읽고 빈 칸으로 캡처하는 경우가
+  // 있다("PDF 다운로드하면 단가/금액이 안 보인다"는 증상의 원인). 캡처 직전
+  // 에만 각 입력란을 같은 스타일의 일반 텍스트(span)로 바꿔치기해 일반
+  // 텍스트처럼 확실하게 캡처되게 하고, 끝나면 원래 입력란으로 되돌린다.
+  const inputs = Array.from(element.querySelectorAll("input"));
+  const restoreInputs = inputs.map((input) => {
+    const span = document.createElement("span");
+    span.textContent = input.value;
+    span.className = input.className;
+    span.setAttribute("style", input.getAttribute("style") ?? "");
+    input.replaceWith(span);
+    return () => span.replaceWith(input);
+  });
+
   let canvas: HTMLCanvasElement;
   try {
     canvas = await html2canvas(element, {
@@ -34,6 +51,7 @@ export async function exportElementToPdf(
     });
   } finally {
     element.style.minHeight = previousMinHeight;
+    restoreInputs.forEach((restore) => restore());
   }
 
   const A4_WIDTH_MM = 210;

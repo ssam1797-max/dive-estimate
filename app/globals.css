@@ -210,10 +210,21 @@
   flex-direction: column;
   box-sizing: border-box;
   min-height: 100vh;
+  /* 표가 "용지" 좌우 끝에 그대로 닿아 있으면 어색해 보여서, 화면/PDF
+   * 다운로드(html2canvas가 이 요소를 그대로 캡처함)에는 좌우 여백을 준다.
+   * 실제 브라우저 인쇄(Cmd+P/"인쇄하기")는 이미 @page margin(좌우 10mm)이
+   * 따로 적용되므로, 거기에 이 여백까지 겹쳐 이중으로 좁아지지 않도록
+   * 아래 @media print 에서 0으로 되돌린다. 화면 폭이 좁을 때 여백이
+   * 콘텐츠를 과도하게 잡아먹지 않도록 clamp로 완만하게 줄어든다.
+   */
+  padding-left: clamp(12px, 4vw, 40px);
+  padding-right: clamp(12px, 4vw, 40px);
 }
 
 @media print {
   .estimate-a4-page {
+    padding-left: 0;
+    padding-right: 0;
     min-height: 0;
     margin: 0;
     page-break-after: avoid;
