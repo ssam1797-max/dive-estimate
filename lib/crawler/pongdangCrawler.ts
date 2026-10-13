@@ -669,6 +669,23 @@ const DETAIL_PATH = "/goods/view";
  */
 export const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
 
+/**
+ * 상세페이지 요청을 한 번에 몇 건까지 동시에 보낼지. 순차 요청(건당
+ * ~1.8~2.4초)이 조각 1번의 30초 벽(위 MAX_DETAIL_FETCHES_PER_CHUNK 주석
+ * 참고)을 거의 다 써버려서, 같은 요청 수를 동시에 묶어 보내 조각 1번의
+ * 벽시계 시간을 줄인다 — 하루 총 요청 수 자체는 그대로이므로(더 많이
+ * 가져오는 게 아니라 같은 양을 더 짧은 시간에 가져옴) 퐁당닷컴 서버에
+ * 주는 부하가 실질적으로 늘지는 않는다. 그래도 보수적으로 3건으로
+ * 제한한다.
+ */
+const DETAIL_FETCH_CONCURRENCY = 3;
+
+/** fetchDetailPage 가 429(너무 많은 요청)/403(차단) 응답으로 실패했는지 확인한다.
+ *  이런 응답이 오면 더 보내지 않고 즉시 멈춘다(isBlockingError 사용부 참고). */
+function isBlockingError(reason: unknown): boolean {
+  return reason instanceof Error && /\bHTTP (429|403)\b/.test(reason.message);
+}
+
 async function fetchDetailPage(goodsId: string): Promise<string> {
   const response = await axios.get<string>(`${BASE_URL}${DETAIL_PATH}`, {
     params: { no: goodsId },
@@ -794,43 +811,62 @@ export async function enrichSelectedItems(
   items: PongdangEquipmentItem[],
   goodsIdByKey: Map<string, string>,
   selectedKeys: Set<string>
-): Promise<{ warnings: string[] }> {
+): Promise<{ warnings: string[]; checkedKeys: Set<string> }> {
   const warnings: string[] = [];
   const targets = items.filter((item) => selectedKeys.has(itemKey(item)));
 
   let enrichedCount = 0;
   let detailFetchFailures = 0;
+  let blockedEarly = false;
+  // 실제로 상세페이지 응답을 성공적으로 받아본 품목만 "확인됨"으로 친다
+  // — 실패(차단 포함)한 품목은 option_checked_at 을 갱신하지 않아, 다음
+  // 조각/날짜에 금방 다시 시도된다(몇 주씩 밀리지 않도록).
+  const checkedKeys = new Set<string>();
 
-  for (const item of targets) {
-    const goodsId = goodsIdByKey.get(itemKey(item));
-    if (!goodsId) continue;
+  // DETAIL_FETCH_CONCURRENCY 건씩 묶어서 동시에 요청한다 — 조각 1번의
+  // 벽시계 시간을 줄이기 위함이며, 묶음 수(targets.length)는 그대로라
+  // 하루 총 요청 수는 바뀌지 않는다. 429/403 같은 차단성 응답을 하나라도
+  // 받으면 그 즉시 더 보내지 않고 멈춘다.
+  for (let i = 0; i < targets.length && !blockedEarly; i += DETAIL_FETCH_CONCURRENCY) {
+    const batch = targets.slice(i, i + DETAIL_FETCH_CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map((item) => {
+        const goodsId = goodsIdByKey.get(itemKey(item));
+        return goodsId ? fetchDetailPage(goodsId) : Promise.reject(new Error("goodsId 없음"));
+      })
+    );
 
-    let html: string;
-    try {
-      html = await fetchDetailPage(goodsId);
-    } catch {
-      detailFetchFailures += 1;
-      continue;
+    settled.forEach((result, idx) => {
+      if (result.status === "rejected") {
+        detailFetchFailures += 1;
+        if (isBlockingError(result.reason)) blockedEarly = true;
+        return;
+      }
+
+      const item = batch[idx];
+      checkedKeys.add(itemKey(item));
+      const { axis, labels } = extractDetailPageOptions(result.value);
+      if (axis === null || labels.length === 0) return;
+
+      const colorSet = new Set(item.colors);
+      const sizeSet = new Set(item.sizes);
+      for (const label of labels) {
+        if (axis === "size") sizeSet.add(label);
+        else colorSet.add(label);
+      }
+
+      const nextColors = Array.from(colorSet).sort((a, b) => a.localeCompare(b, "ko"));
+      const nextSizes = Array.from(sizeSet).sort((a, b) => a.localeCompare(b, "ko"));
+      if (nextColors.length !== item.colors.length || nextSizes.length !== item.sizes.length) {
+        enrichedCount += 1;
+      }
+      item.colors = nextColors;
+      item.sizes = nextSizes;
+    });
+
+    if (!blockedEarly && i + DETAIL_FETCH_CONCURRENCY < targets.length) {
+      await sleep(REQUEST_DELAY_MS);
     }
-    await sleep(REQUEST_DELAY_MS);
-
-    const { axis, labels } = extractDetailPageOptions(html);
-    if (axis === null || labels.length === 0) continue;
-
-    const colorSet = new Set(item.colors);
-    const sizeSet = new Set(item.sizes);
-    for (const label of labels) {
-      if (axis === "size") sizeSet.add(label);
-      else colorSet.add(label);
-    }
-
-    const nextColors = Array.from(colorSet).sort((a, b) => a.localeCompare(b, "ko"));
-    const nextSizes = Array.from(sizeSet).sort((a, b) => a.localeCompare(b, "ko"));
-    if (nextColors.length !== item.colors.length || nextSizes.length !== item.sizes.length) {
-      enrichedCount += 1;
-    }
-    item.colors = nextColors;
-    item.sizes = nextSizes;
   }
 
   // 상세페이지를 열어봤든(위 targets) 상한 밖이라 열어보지 않았든, 최종
@@ -845,6 +881,11 @@ export async function enrichSelectedItems(
     }
   }
 
+  if (blockedEarly) {
+    warnings.push(
+      "퐁당닷컴이 요청을 일시적으로 거부(429/403)하는 것으로 보여 이번 조각의 상세페이지 보완을 중단했습니다."
+    );
+  }
   if (enrichedCount > 0) {
     warnings.push(`상세페이지 보완으로 ${enrichedCount}건의 옵션 목록을 더 채웠습니다.`);
   }
@@ -857,7 +898,7 @@ export async function enrichSelectedItems(
     warnings.push(`옵션이 전혀 없는 ${fallbackCount}건은 색상에 "기본" 값을 채웠습니다.`);
   }
 
-  return { warnings };
+  return { warnings, checkedKeys };
 }
 
 export interface PongdangCrawlChunkResult extends PongdangCrawlResult {

@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       candidateKeys,
       MAX_DETAIL_FETCHES_PER_CHUNK
     );
-    const { warnings: enrichWarnings } = await enrichSelectedItems(
+    const { warnings: enrichWarnings, checkedKeys } = await enrichSelectedItems(
       chunk.items,
       chunk.goodsIdByKey,
       selectedKeys
@@ -96,9 +96,11 @@ export async function POST(request: Request) {
         image_url,
       }))
     );
-    // 상세페이지를 실제로 열어본 품목은(결과적으로 옵션이 그대로였어도)
-    // option_checked_at 을 갱신해 다음 조각/날짜의 우선순위에서 뒤로 밀리게 한다.
-    await markOptionsChecked(catalogYear, selectedKeys);
+    // 상세페이지 응답을 실제로 받아본 품목만(결과적으로 옵션이 그대로였어도)
+    // option_checked_at 을 갱신해 다음 조각/날짜의 우선순위에서 뒤로 밀리게
+    // 한다 — 요청이 실패/차단된 품목은 selectedKeys 에는 있어도 checkedKeys
+    // 에서 빠지므로 갱신되지 않고, 금방 다시 후보로 잡힌다.
+    await markOptionsChecked(catalogYear, checkedKeys);
 
     const summary: EquipmentImportChunkSummary = {
       category: categoryParam,
