@@ -650,15 +650,24 @@ const DETAIL_PATH = "/goods/view";
  * 사례: "델타 롱 5mm 부츠"가 목록에서는 사이즈 1개만 보였지만 실제로는
  * 여러 사이즈가 있었음). 색상/사이즈 합계가 1개 이하로 보이는 상품만
  * 상세페이지(/goods/view?no=)를 열어 실제 전체 옵션을 보완하되, 상품당
- * 요청이 1번 더 늘어나므로 PAGES_PER_CHUNK/maxDuration(60초) 예산을 넘지
- * 않게 제한한다. 실측 기준 조각 1번(목록 3페이지 + 상세 10건)이 평균
- * 약 21초 걸려 여유가 있었고, 전체 동기화(약 13개 조각)도 4~5분대라
- * 백그라운드 함수 한도(15분)에 한참 못 미쳐, 20건으로 올려도 안전하다.
+ * 요청이 1번 더 늘어나므로 상한을 둔다.
+ *
+ * [중요] route.ts 에 `export const maxDuration = 60` 이 선언돼 있지만,
+ * Netlify 의 일반(백그라운드 아닌) 서버 함수는 이 값과 무관하게 응답
+ * 시작까지 무응답 상태가 약 30초를 넘으면 플랫폼이 자체적으로
+ * "Inactivity Timeout" 으로 끊어버린다 — Next.js 의 maxDuration 선언을
+ * 그냥 무시하는 하드 리밋이다. 한 번 20으로 올려 실측했다가 조각 1번이
+ * 30초를 넘겨 504로 끊기는 것을 직접 확인했다(멱등하지 않은 중간 상태로
+ * 끊기므로 섣불리 올리면 안 됨). 10건 기준으로는 평균 약 21초로 안전
+ * 마진이 있었으므로 10을 유지한다 — 처리량을 더 늘리려면 이 숫자를
+ * 올리는 대신 상세페이지 요청을 동시에 여러 건 보내 조각 1번의 벽시계
+ * 시간 자체를 줄이는 방향이 안전하다.
+ *
  * 카탈로그 전체를 하루 안에 다 보완하지 못해도, 매일 자동 동기화(Cron)가
  * 반복되며 option_checked_at 기준 라운드로빈으로 점진적으로 전수 보완된다
  * (selectEnrichmentCandidates 참고).
  */
-export const MAX_DETAIL_FETCHES_PER_CHUNK = 20;
+export const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
 
 async function fetchDetailPage(goodsId: string): Promise<string> {
   const response = await axios.get<string>(`${BASE_URL}${DETAIL_PATH}`, {
