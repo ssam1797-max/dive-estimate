@@ -28,6 +28,10 @@ export interface EquipmentCatalogItem {
   override_discount_rate: number | null;
   /** 상품 썸네일 이미지 URL(외부 링크). 없으면 null — UI에서 기본 아이콘으로 대체한다. */
   image_url: string | null;
+  /** 퐁당닷컴 동기화에서 품절로 간주된 품목이면 true. 일반 조회(getAllEquipment/
+   *  searchEquipment 기본 호출)는 이런 품목을 아예 제외하므로, 이 필드는
+   *  관리자 화면처럼 명시적으로 includeSoldOut 을 켠 조회에서만 실제로 채워진다. */
+  is_sold_out?: boolean;
 }
 
 /** 공급자/수신자 드롭다운에 쓰는 프로필 옵션 (엑셀 미리보기/다운로드에 필요한 주소·도장 이미지 포함) */

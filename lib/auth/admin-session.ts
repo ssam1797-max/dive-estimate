@@ -90,3 +90,34 @@ export async function requireAdmin(): Promise<NextResponse | null> {
     { status: 401 }
   );
 }
+
+/**
+ * CRON_SECRET 과 일치하는 `x-cron-secret` 헤더가 있으면 true — 매일 새벽
+ * Netlify 스케줄 함수(netlify/functions/pongdang-sync-background.mts)가
+ * 브라우저 세션 쿠키 없이 서버 대 서버로 동기화 API를 호출할 때 쓰는
+ * 경로다. 타이밍 공격 방지를 위해 timingSafeEqual 로 비교하고, 길이가
+ * 다르면(틀린 값이거나 CRON_SECRET 자체가 비어 있으면) 항상 false다.
+ */
+function hasValidCronSecret(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const provided = request.headers.get("x-cron-secret");
+  if (!provided) return false;
+  const secretBuf = Buffer.from(secret);
+  const providedBuf = Buffer.from(provided);
+  if (secretBuf.length !== providedBuf.length) return false;
+  return timingSafeEqual(secretBuf, providedBuf);
+}
+
+/**
+ * requireAdmin() 과 동일하게 쓰되, 관리자 쿠키 대신 `x-cron-secret` 헤더로도
+ * 통과할 수 있다 — 브라우저 세션이 없는 예약 동기화(Netlify 스케줄/백그라운드
+ * 함수)가 기존 관리자 전용 API(퐁당닷컴 동기화, 동기화 기록 저장, 품절
+ * 반영)를 그대로 재사용할 수 있게 해준다. 둘 중 하나만 맞아도 통과한다.
+ */
+export async function requireAdminOrCronSecret(
+  request: Request
+): Promise<NextResponse | null> {
+  if (hasValidCronSecret(request)) return null;
+  return requireAdmin();
+}

@@ -24,7 +24,46 @@ interface PersistSyncRunInput {
   failedCount: number;
   distinctBrandCount: number;
   distinctCategoryCount: number;
+  soldOutCount: number;
+  restoredCount: number;
   message: string | null;
+}
+
+interface ReconcileSoldOutResult {
+  soldOutCount: number;
+  restoredCount: number;
+}
+
+/**
+ * 전체 카테고리×페이지 동기화가 성공적으로 끝난 뒤 1번만 호출된다. 이번
+ * 동기화에서 한 번이라도 발견된 (브랜드,품명) 키 전체를 넘겨, DB에는
+ * 있지만 이번에 안 보인 자동 동기화 품목은 품절로, 품절이었다가 다시
+ * 보인 품목은 재입고로 되돌린다(app/api/equipment/reconcile-sold-out
+ * route.ts 참고). 중간에 실패한 동기화(일부 카테고리만 수집됨)에서는
+ * 호출하지 않는다 — 안 수집된 카테고리 품목까지 품절로 잘못 처리될 수
+ * 있기 때문이다.
+ */
+async function reconcileSoldOut(
+  catalogYear: number,
+  seenKeys: { brand: string; name: string }[]
+): Promise<ReconcileSoldOutResult> {
+  try {
+    const response = await fetch("/api/equipment/reconcile-sold-out", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ catalogYear, seenKeys }),
+    });
+    const body = (await response.json()) as
+      | (ReconcileSoldOutResult & { ok: true })
+      | { error: string };
+    if (!response.ok || "error" in body) {
+      throw new Error("error" in body ? body.error : "품절/재입고 반영에 실패했습니다.");
+    }
+    return { soldOutCount: body.soldOutCount, restoredCount: body.restoredCount };
+  } catch (error) {
+    console.error("품절/재입고 반영 실패:", error);
+    return { soldOutCount: 0, restoredCount: 0 };
+  }
 }
 
 /**
@@ -75,6 +114,7 @@ export function usePongdangChunkedSync() {
     const items: EquipmentImportSummary["items"] = [];
     const warnings: string[] = [];
     const brands = new Set<string>();
+    const seenKeys: { brand: string; name: string }[] = [];
 
     try {
       for (const category of PONGDANG_CATEGORY_CODES) {
@@ -103,7 +143,10 @@ export function usePongdangChunkedSync() {
           items.push(...body.items);
           warnings.push(...body.warnings);
           body.brands.forEach((b) => brands.add(b));
-          body.items.forEach((i) => categories.add(i.category));
+          body.items.forEach((i) => {
+            categories.add(i.category);
+            seenKeys.push({ brand: i.brand, name: i.name });
+          });
 
           page = body.nextPage;
         }
@@ -128,6 +171,9 @@ export function usePongdangChunkedSync() {
         );
       }
 
+      setProgress("품절/재입고 상태 반영 중...");
+      const { soldOutCount, restoredCount } = await reconcileSoldOut(catalogYear, seenKeys);
+
       setSummary(finalSummary);
       setStatus("success");
       await persistSyncRun({
@@ -141,6 +187,8 @@ export function usePongdangChunkedSync() {
         failedCount,
         distinctBrandCount: brands.size,
         distinctCategoryCount: categories.size,
+        soldOutCount,
+        restoredCount,
         message: null,
       });
       return { ok: true, summary: finalSummary };
@@ -159,6 +207,8 @@ export function usePongdangChunkedSync() {
         failedCount,
         distinctBrandCount: brands.size,
         distinctCategoryCount: categories.size,
+        soldOutCount: 0,
+        restoredCount: 0,
         message,
       });
       return { ok: false, message };

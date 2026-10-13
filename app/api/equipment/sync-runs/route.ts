@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSyncRun } from "@/lib/db/equipment-repo";
-import { requireAdmin } from "@/lib/auth/admin-session";
+import { requireAdminOrCronSecret } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
@@ -16,6 +16,8 @@ interface SyncRunInput {
   failedCount: number;
   distinctBrandCount: number;
   distinctCategoryCount: number;
+  soldOutCount: number;
+  restoredCount: number;
   message: string | null;
 }
 
@@ -34,6 +36,8 @@ function isValidInput(value: unknown): value is SyncRunInput {
     typeof v.failedCount === "number" &&
     typeof v.distinctBrandCount === "number" &&
     typeof v.distinctCategoryCount === "number" &&
+    typeof v.soldOutCount === "number" &&
+    typeof v.restoredCount === "number" &&
     (v.message === null || typeof v.message === "string")
   );
 }
@@ -45,7 +49,7 @@ function isValidInput(value: unknown): value is SyncRunInput {
  * 전체가 끝난 뒤에만 호출된다.
  */
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await requireAdminOrCronSecret(request);
   if (denied) return denied;
 
   try {

@@ -13,6 +13,10 @@ export const runtime = "nodejs";
  * 하나로만 검색해도 전체를 훑어봐야 하는 경우 더 큰 값을 넘긴다.
  * total 은 이 검색어에 실제로 매칭되는 전체 건수라, items.length 보다
  * 크면 화면에서 일부가 잘려 안 보인다는 뜻이다.
+ *
+ * includeSoldOut=1: "장비 목록(수정/삭제)" 관리자 화면처럼 품절 품목도
+ * 그대로 보여줘야 하는 경우에만 넘긴다(견적서 작성 화면 검색에서는 품절
+ * 품목을 고를 수 없어야 하므로 기본값은 false).
  */
 export async function GET(request: Request) {
   try {
@@ -20,8 +24,9 @@ export async function GET(request: Request) {
     const q = searchParams.get("q") ?? "";
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Number(limitParam) : undefined;
+    const includeSoldOut = searchParams.get("includeSoldOut") === "1";
 
-    const { items, total } = await searchEquipment(q, limit);
+    const { items, total } = await searchEquipment(q, limit, includeSoldOut);
     return NextResponse.json({ items, total });
   } catch (error) {
     console.error("장비 통합 검색 중 예외 발생:", error);

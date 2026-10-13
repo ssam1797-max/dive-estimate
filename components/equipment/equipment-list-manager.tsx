@@ -71,7 +71,7 @@ export function EquipmentListManager({
     startTransition(async () => {
       try {
         const res = await fetch(
-          `/api/equipment/search?q=${encodeURIComponent(trimmed)}&limit=${MANAGEMENT_SEARCH_LIMIT}`
+          `/api/equipment/search?q=${encodeURIComponent(trimmed)}&limit=${MANAGEMENT_SEARCH_LIMIT}&includeSoldOut=1`
         );
         const data: unknown = await res.json();
         if (!res.ok) {
@@ -192,7 +192,14 @@ export function EquipmentListManager({
                         {item.category}
                       </td>
                       <td className="py-2 pr-2 align-top font-medium" title={item.name}>
-                        {item.name}
+                        <span className="inline-flex items-center gap-1.5">
+                          {item.name}
+                          {item.is_sold_out && (
+                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                              품절
+                            </span>
+                          )}
+                        </span>
                       </td>
                       <td className="py-2 pr-2 align-top">{formatCurrency(item.price_retail)}</td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">

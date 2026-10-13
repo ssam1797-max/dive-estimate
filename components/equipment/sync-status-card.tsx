@@ -37,11 +37,15 @@ function formatDateTime(iso: string): string {
 
 function runSummaryMessage(run: SyncRunRecord): string {
   if (run.status === "error") return run.message ?? "동기화에 실패했습니다.";
+  const soldOutPart =
+    run.soldOutCount > 0 || run.restoredCount > 0
+      ? ` · 품절 ${run.soldOutCount.toLocaleString("ko-KR")} · 재입고 ${run.restoredCount.toLocaleString("ko-KR")}`
+      : "";
   return `${run.totalParsed.toLocaleString("ko-KR")}건 처리 완료 (신규 ${run.insertedCount.toLocaleString(
     "ko-KR"
   )} · 갱신 ${run.updatedCount.toLocaleString("ko-KR")} · 확인필요 ${run.protectedCount.toLocaleString(
     "ko-KR"
-  )} · 실패 ${run.failedCount.toLocaleString("ko-KR")})`;
+  )} · 실패 ${run.failedCount.toLocaleString("ko-KR")}${soldOutPart})`;
 }
 
 /**

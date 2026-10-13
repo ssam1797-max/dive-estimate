@@ -29,6 +29,9 @@ export interface MockEquipment {
   pending_review_price?: number | null;
   /** pending_review_price가 감지된 시각. */
   pending_review_detected_at?: string | null;
+  /** 퐁당닷컴 동기화에서 더 이상 발견되지 않아 품절로 간주된 품목이면 true.
+   *  삭제하지 않고 견적서 작성 화면의 선택 목록에서만 제외한다. */
+  is_sold_out?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +50,8 @@ export interface MockSyncRun {
   failed_count: number;
   distinct_brand_count: number;
   distinct_category_count: number;
+  sold_out_count: number;
+  restored_count: number;
   message: string | null;
   created_at: string;
 }

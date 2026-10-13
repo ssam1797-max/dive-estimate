@@ -30,6 +30,11 @@ export type EquipmentImportItemStatus = "inserted" | "updated" | "protected" | "
 
 export interface EquipmentImportItemResult {
   name: string;
+  /** 품절/재입고 반영(reconcileSoldOutStatus)이 (브랜드,품명) 키로 동작하므로
+   *  항상 채워둔다 — 단일 브랜드 upsert(upsertEquipmentBulk, 이제는 삭제됨)
+   *  시절에는 상위 호출부가 브랜드를 알고 있어 생략했었지만, 다중 브랜드
+   *  동기화에서는 결과 1건마다 브랜드가 다를 수 있어 꼭 필요하다. */
+  brand: string;
   category: string;
   status: EquipmentImportItemStatus;
   message?: string;
@@ -103,6 +108,10 @@ export interface SyncRunRecord {
   failedCount: number;
   distinctBrandCount: number;
   distinctCategoryCount: number;
+  /** 이번 실행에서 더 이상 발견되지 않아 새로 품절 처리된 품목 수. */
+  soldOutCount: number;
+  /** 이번 실행에서 품절 상태였다가 다시 발견되어 재입고로 복원된 품목 수. */
+  restoredCount: number;
   message: string | null;
 }
 

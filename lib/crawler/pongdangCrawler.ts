@@ -526,7 +526,7 @@ function resolveRegularPrice(
 function mergeRawItemsIntoEquipment(
   rawItems: RawPongdangItem[],
   domPriceByGoodsId: Map<string, DomPriceEntry>
-): { items: PongdangEquipmentItem[]; warnings: string[] } {
+): { items: PongdangEquipmentItem[]; warnings: string[]; goodsIdByKey: Map<string, string> } {
   const warnings: string[] = [];
 
   // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남기고(수영/물놀이, 캠핑,
@@ -547,6 +547,9 @@ function mergeRawItemsIntoEquipment(
   interface MergedAccumulator extends PongdangEquipmentItem {
     colorSet: Set<string>;
     sizeSet: Set<string>;
+    /** 이 (브랜드,품명) 묶음에서 처음 본 행의 item_id(퐁당 goods_id). 상세
+     *  페이지 옵션 보완(enrichLowVariantItems)이 /goods/view?no= 에 그대로 쓴다. */
+    goodsId: string;
   }
   const merged = new Map<string, MergedAccumulator>();
   const skippedNoPriceNames: string[] = [];
@@ -598,6 +601,7 @@ function mergeRawItemsIntoEquipment(
       image_url: domPrice?.imageUrl ?? null,
       colorSet: new Set(colors),
       sizeSet: new Set(sizes),
+      goodsId: raw.item_id,
     });
   }
 
@@ -630,7 +634,159 @@ function mergeRawItemsIntoEquipment(
     image_url: acc.image_url,
   }));
 
-  return { items, warnings };
+  const goodsIdByKey = new Map<string, string>(
+    Array.from(merged.entries()).map(([key, acc]) => [key, acc.goodsId])
+  );
+
+  return { items, warnings, goodsIdByKey };
+}
+
+const DETAIL_PATH = "/goods/view";
+/**
+ * 조각(chunk) 1번 호출에서 상세페이지를 추가로 열어볼 상품 수 상한.
+ *
+ * 목록 페이지 API는 "그 페이지에 실제로 걸린 옵션 행" 만큼만 item_variant를
+ * 내려주는데, 이게 그 상품의 전체 옵션과 항상 같지는 않다(실측으로 확인된
+ * 사례: "델타 롱 5mm 부츠"가 목록에서는 사이즈 1개만 보였지만 실제로는
+ * 여러 사이즈가 있었음). 색상/사이즈 합계가 1개 이하로 보이는 상품만
+ * 상세페이지(/goods/view?no=)를 열어 실제 전체 옵션을 보완하되, 상품당
+ * 요청이 1번 더 늘어나므로 PAGES_PER_CHUNK/maxDuration 예산을 넘지 않게
+ * 10건으로 제한한다. 카탈로그 전체를 하루 안에 다 보완하지 못해도, 매일
+ * 자동 동기화(Cron)가 반복되며 점진적으로 전수 보완된다.
+ */
+const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
+
+async function fetchDetailPage(goodsId: string): Promise<string> {
+  const response = await axios.get<string>(`${BASE_URL}${DETAIL_PATH}`, {
+    params: { no: goodsId },
+    headers: {
+      "User-Agent": USER_AGENT,
+      "Accept-Language": "ko-KR,ko;q=0.9",
+    },
+    timeout: REQUEST_TIMEOUT_MS,
+    responseType: "text",
+    validateStatus: () => true,
+  });
+
+  if (response.status !== 200) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.data;
+}
+
+/**
+ * 상세페이지의 첫 번째 옵션 select(`id="0"`)에서, 품절이 아닌 옵션들의
+ * 표시 텍스트를 뽑는다. 이 select 는 1차원(색상만 또는 사이즈만 있는)
+ * 상품이면 전체 옵션이 정적 HTML에 그대로 내려오지만, 2차원(색상+사이즈
+ * 두 단계) 상품의 두 번째 select(`id="1"`)는 1차원 값을 고른 뒤 AJAX로만
+ * 채워지는 빈 셀렉트라 정적 요청 1번으로는 가져올 수 없다(상품당 1+N번
+ * 요청이 필요해 조각 1번의 비용으로는 너무 큼) — 그런 상품은 이 보완
+ * 대상에서 자연히 제외되고(1차원 결과만으로도 합계가 1 초과가 되면 아래
+ * enrichLowVariantItems 가 애초에 후보로 고르지 않음) 목록 페이지에서
+ * 뽑힌 값만 그대로 쓴다.
+ */
+function extractDetailPageOptionLabels(html: string): string[] {
+  const $ = cheerio.load(html);
+  const select = $('select[name="viewOptions[]"][id="0"]').first();
+  if (select.length === 0) return [];
+
+  const labels: string[] = [];
+  select.find("option").each((_, el) => {
+    const $opt = $(el);
+    const value = $opt.attr("value") ?? "";
+    if (!value) return; // "- 색상 선택 -" 같은 안내용 첫 옵션
+    const classAttr = $opt.attr("class") ?? "";
+    if (classAttr.includes("soldout") || $opt.attr("disabled") !== undefined) return;
+    const text = $opt.text().trim();
+    if (text) labels.push(text);
+  });
+  return labels;
+}
+
+/**
+ * 목록 페이지 응답만으로는 색상/사이즈 옵션 합계가 1개 이하로 보이는
+ * 상품들을 대상으로, 상세페이지를 열어 실제 전체 옵션 목록을 보완한다.
+ * 보완(또는 애초에 상세페이지 확인 대상도 아니었던 경우) 후에도 옵션이
+ * 전혀 없으면(진짜 단일 SKU) 색상에 "기본"을 채워, 화면에 빈 칸으로
+ * 보이지 않게 한다.
+ *
+ * goodsIdByKey 는 (브랜드,품명) 키 → 목록에서 처음 본 item_id(퐁당
+ * goods_id) 매핑이며, 상세페이지 URL(/goods/view?no=)에 그대로 쓴다.
+ * items 는 제자리에서(in-place) colors/sizes 가 갱신된다.
+ */
+async function enrichLowVariantItems(
+  items: PongdangEquipmentItem[],
+  goodsIdByKey: Map<string, string>
+): Promise<{ warnings: string[] }> {
+  const warnings: string[] = [];
+  const candidates = items.filter((item) => item.colors.length + item.sizes.length <= 1);
+  const targets = candidates.slice(0, MAX_DETAIL_FETCHES_PER_CHUNK);
+
+  let enrichedCount = 0;
+  let detailFetchFailures = 0;
+
+  for (const item of targets) {
+    const goodsId = goodsIdByKey.get(`${item.brand}\u0000${item.name}`);
+    if (!goodsId) continue;
+
+    let html: string;
+    try {
+      html = await fetchDetailPage(goodsId);
+    } catch {
+      detailFetchFailures += 1;
+      continue;
+    }
+    await sleep(REQUEST_DELAY_MS);
+
+    const labels = extractDetailPageOptionLabels(html);
+    if (labels.length === 0) continue;
+
+    const colorSet = new Set(item.colors);
+    const sizeSet = new Set(item.sizes);
+    for (const label of labels) {
+      for (const segment of splitVariantSegments(label)) {
+        const cls = classifyVariantSegment(segment);
+        const cleaned = stripBracketNote(segment);
+        if (cls === "size") sizeSet.add(cleaned);
+        else if (cls === "color") colorSet.add(cleaned);
+      }
+    }
+
+    const nextColors = Array.from(colorSet).sort((a, b) => a.localeCompare(b, "ko"));
+    const nextSizes = Array.from(sizeSet).sort((a, b) => a.localeCompare(b, "ko"));
+    if (nextColors.length !== item.colors.length || nextSizes.length !== item.sizes.length) {
+      enrichedCount += 1;
+    }
+    item.colors = nextColors;
+    item.sizes = nextSizes;
+  }
+
+  // 상세페이지를 열어봤든(위 targets) 상한 밖이라 열어보지 않았든, 최종
+  // 색상/사이즈가 둘 다 비어 있으면 옵션이 전혀 없는 단일 SKU로 보고
+  // "기본"을 채운다 — 상한 밖 상품은 다음 번 동기화(매일 자동 Cron)에서
+  // 다시 후보로 잡혀 실제 옵션이 있다면 이 "기본" 값은 그때 덮어써진다.
+  let fallbackCount = 0;
+  for (const item of items) {
+    if (item.colors.length === 0 && item.sizes.length === 0) {
+      item.colors = ["기본"];
+      fallbackCount += 1;
+    }
+  }
+
+  if (enrichedCount > 0) {
+    warnings.push(`상세페이지 보완으로 ${enrichedCount}건의 옵션 목록을 더 채웠습니다.`);
+  }
+  if (detailFetchFailures > 0) {
+    warnings.push(
+      `상세페이지 옵션 보완 중 ${detailFetchFailures}건은 요청에 실패해 건너뛰었습니다.`
+    );
+  }
+  if (fallbackCount > 0) {
+    warnings.push(`옵션이 전혀 없는 ${fallbackCount}건은 색상에 "기본" 값을 채웠습니다.`);
+  }
+
+  return { warnings };
 }
 
 export interface PongdangCrawlChunkResult extends PongdangCrawlResult {
@@ -701,15 +857,16 @@ export async function crawlPongdangCategoryChunk(
     warnings.push(`[${categoryCode}] 응답이 없어 이 카테고리는 건너뛰었습니다.`);
   }
 
-  const { items, warnings: mergeWarnings } = mergeRawItemsIntoEquipment(
+  const { items, warnings: mergeWarnings, goodsIdByKey } = mergeRawItemsIntoEquipment(
     rawItems,
     domPriceByGoodsId
   );
+  const { warnings: enrichWarnings } = await enrichLowVariantItems(items, goodsIdByKey);
   const distinctBrandCount = new Set(items.map((item) => item.brand)).size;
 
   return {
     items,
-    warnings: [...warnings, ...mergeWarnings],
+    warnings: [...warnings, ...mergeWarnings, ...enrichWarnings],
     pagesFetched,
     distinctBrandCount,
     nextPage,

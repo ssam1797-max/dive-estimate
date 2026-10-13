@@ -6,7 +6,7 @@ import {
   type PongdangCategoryCode,
 } from "@/lib/equipment/pongdangCategories";
 import type { EquipmentImportChunkSummary } from "@/lib/equipment/types";
-import { requireAdmin } from "@/lib/auth/admin-session";
+import { requireAdminOrCronSecret } from "@/lib/auth/admin-session";
 
 // 카테고리 하나를 여러 페이지로 나눠 크롤링하고 한 번에 upsert 하므로 기본
 // 제한보다 넉넉한 처리 시간이 필요합니다. 다만 호출 1번은 PAGES_PER_CHUNK
@@ -34,7 +34,7 @@ function isPongdangCategoryCode(value: string): value is PongdangCategoryCode {
 }
 
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await requireAdminOrCronSecret(request);
   if (denied) return denied;
 
   try {

@@ -59,17 +59,19 @@ export async function getEquipmentBrands(): Promise<string[]> {
 
 export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
   if (isMockMode()) {
-    return mockStore.equipment.map((e) => ({
-      id: e.id,
-      brand: e.brand,
-      category: e.category,
-      name: e.name,
-      price_retail: e.price_retail,
-      colors: e.colors,
-      sizes: e.sizes,
-      override_discount_rate: e.override_discount_rate ?? null,
-      image_url: e.image_url ?? null,
-    }));
+    return mockStore.equipment
+      .filter((e) => !e.is_sold_out)
+      .map((e) => ({
+        id: e.id,
+        brand: e.brand,
+        category: e.category,
+        name: e.name,
+        price_retail: e.price_retail,
+        colors: e.colors,
+        sizes: e.sizes,
+        override_discount_rate: e.override_discount_rate ?? null,
+        image_url: e.image_url ?? null,
+      }));
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
@@ -91,6 +93,9 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
           "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url",
           { count: "exact" }
         )
+        // 품절(is_sold_out=true) 품목은 삭제하지 않고 DB에 남겨두되, 견적서
+        // 작성 화면의 장비 선택 목록에서는 제외한다(다시 발견되면 자동 복원).
+        .eq("is_sold_out", false)
         .order("brand")
         .order("category")
         .order("name")
@@ -205,7 +210,12 @@ function compareBySearchPriority(
 
 export async function searchEquipment(
   rawQuery: string,
-  limit: number = DEFAULT_SEARCH_RESULT_LIMIT
+  limit: number = DEFAULT_SEARCH_RESULT_LIMIT,
+  /** true면 품절(is_sold_out=true) 품목도 결과에 포함한다 — "장비 목록(수정/
+   *  삭제)" 관리자 화면처럼 품절 품목도 확인/관리할 수 있어야 하는 곳에서만
+   *  켠다. 견적서 작성 화면의 키워드 검색은 기본값(false)을 그대로 써서
+   *  품절 품목이 선택지로 나오지 않는다. */
+  includeSoldOut: boolean = false
 ): Promise<SearchEquipmentResult> {
   const query = sanitizeSearchQuery(rawQuery);
   if (!query) return { items: [], total: 0 };
@@ -220,7 +230,7 @@ export async function searchEquipment(
   if (isMockMode()) {
     const noSpaceQuery = stripWhitespace(query);
     const matched = mockStore.equipment
-      .filter((e) => matchesIgnoringWhitespace(e, noSpaceQuery))
+      .filter((e) => (includeSoldOut || !e.is_sold_out) && matchesIgnoringWhitespace(e, noSpaceQuery))
       .sort(compareBySearchPriority);
     return {
       items: (unlimited ? matched : matched.slice(0, cappedLimit)).map((e) => ({
@@ -233,6 +243,7 @@ export async function searchEquipment(
         sizes: e.sizes,
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
+        is_sold_out: e.is_sold_out ?? false,
       })),
       total: matched.length,
     };
@@ -251,6 +262,7 @@ export async function searchEquipment(
     sizes: string[] | null;
     override_discount_rate: number | string | null;
     image_url: string | null;
+    is_sold_out: boolean | null;
   }
 
   // ILIKE는 컬럼 값 자체의 공백을 제거하고 비교하지 못하므로, 글자 사이에
@@ -267,14 +279,16 @@ export async function searchEquipment(
     `name.ilike.${loosePattern}`,
   ].join(",");
 
-  const buildQuery = (from: number, to: number) =>
-    supabase
+  const buildQuery = (from: number, to: number) => {
+    let q = supabase
       .from("equipment")
       .select(
-        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url",
+        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out",
         { count: "exact" }
       )
-      .or(orFilter)
+      .or(orFilter);
+    if (!includeSoldOut) q = q.eq("is_sold_out", false);
+    return q
       // 최근 사용 우선 → 수동 등록/수정 우선 → 브랜드/품명 가나다순.
       // (nullsFirst: false 로, 한 번도 안 쓴 품목을 맨 뒤로 보낸다.)
       .order("last_used_at", { ascending: false, nullsFirst: false })
@@ -282,6 +296,7 @@ export async function searchEquipment(
       .order("brand", { ascending: true })
       .order("name", { ascending: true })
       .range(from, to);
+  };
 
   const candidates = await fetchAllPages<EquipmentSearchRow>(buildQuery);
   const filtered = candidates.filter((row) => matchesIgnoringWhitespace(row, noSpaceQuery));
@@ -299,6 +314,7 @@ export async function searchEquipment(
     override_discount_rate:
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
     image_url: row.image_url ?? null,
+    is_sold_out: row.is_sold_out ?? false,
   }));
 
   return { items, total };
@@ -345,6 +361,7 @@ export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: 
       ...normalized,
       id: crypto.randomUUID(),
       is_custom: true,
+      is_sold_out: false,
       created_at: now,
       updated_at: now,
     };
@@ -355,7 +372,7 @@ export async function insertEquipment(data: InsertEquipmentData): Promise<{ id: 
   const supabase = await createAdminClient();
   const { data: row, error } = await supabase
     .from("equipment")
-    .insert({ ...normalized, is_custom: true })
+    .insert({ ...normalized, is_custom: true, is_sold_out: false })
     .select("id")
     .single();
   if (error) throw error;
@@ -446,11 +463,15 @@ export async function updateEquipment(
       throw err;
     }
     // 수동 저장은 관리자가 이 품목을 직접 확인/반영한 것이므로, 대기 중이던
-    // "확인 필요" 상태도 함께 해제한다.
+    // "확인 필요" 상태와 품절 상태도 함께 해제한다 — is_custom=true가 되는
+    // 순간부터 reconcileSoldOutStatus(자동 동기화)는 보호 품목을 건드리지
+    // 않으므로, 여기서 풀어주지 않으면 품절 표시가 영영 안 풀리는 품목이
+    // 생긴다.
     Object.assign(row, normalized, {
       is_custom: true,
       pending_review_price: null,
       pending_review_detected_at: null,
+      is_sold_out: false,
       updated_at: new Date().toISOString(),
     });
     return;
@@ -465,6 +486,7 @@ export async function updateEquipment(
       is_custom: true,
       pending_review_price: null,
       pending_review_detected_at: null,
+      is_sold_out: false,
     })
     .eq("id", id);
   if (error) throw error;
@@ -693,6 +715,7 @@ export async function upsertEquipmentMultiBrand(
           existing.pending_review_detected_at = null;
         }
         results.push({
+          brand: item.brand,
           name: item.name,
           category: item.category,
           status: "protected",
@@ -708,9 +731,11 @@ export async function upsertEquipmentMultiBrand(
           colors: item.colors,
           sizes: item.sizes,
           image_url: item.image_url ?? mockStore.equipment[idx].image_url ?? null,
+          // 이번 동기화에서 다시 발견됐으니 품절 상태였다면 즉시 해제한다.
+          is_sold_out: false,
           updated_at: now,
         };
-        results.push({ name: item.name, category: item.category, status: "updated" });
+        results.push({ brand: item.brand, name: item.name, category: item.category, status: "updated" });
       } else {
         mockStore.equipment.push({
           id: crypto.randomUUID(),
@@ -722,10 +747,11 @@ export async function upsertEquipmentMultiBrand(
           colors: item.colors,
           sizes: item.sizes,
           image_url: item.image_url ?? null,
+          is_sold_out: false,
           created_at: now,
           updated_at: now,
         });
-        results.push({ name: item.name, category: item.category, status: "inserted" });
+        results.push({ brand: item.brand, name: item.name, category: item.category, status: "inserted" });
       }
     }
 
@@ -791,6 +817,10 @@ export async function upsertEquipmentMultiBrand(
     colors: item.colors,
     sizes: item.sizes,
     image_url: item.image_url ?? null,
+    // 이번 동기화에서 다시 발견된 품목이니 품절 상태였다면 즉시 해제한다
+    // (reconcileSoldOutStatus 는 "더 이상 안 보이는" 쪽만 처리하므로, 다시
+    // 보이는 쪽은 여기서 바로 풀어줘야 한다).
+    is_sold_out: false,
   }));
 
   try {
@@ -837,6 +867,7 @@ export async function upsertEquipmentMultiBrand(
 
     const results: EquipmentImportItemResult[] = [
       ...itemsToUpsert.map((item) => ({
+        brand: item.brand,
         name: item.name,
         category: item.category,
         status: (existingByKey.has(keyOf(item.brand, item.name))
@@ -846,6 +877,7 @@ export async function upsertEquipmentMultiBrand(
       ...protectedItems.map((item) => {
         const existing = existingByKey.get(keyOf(item.brand, item.name));
         return {
+          brand: item.brand,
           name: item.name,
           category: item.category,
           status: "protected" as EquipmentImportItemStatus,
@@ -873,6 +905,7 @@ export async function upsertEquipmentMultiBrand(
           : "알 수 없는 오류";
     console.error("장비 벌크 upsert(다중 브랜드) 실패:", error);
     const results: EquipmentImportItemResult[] = itemsToUpsert.map((item) => ({
+      brand: item.brand,
       name: item.name,
       category: item.category,
       status: "failed",
@@ -886,6 +919,93 @@ export async function upsertEquipmentMultiBrand(
       items: results,
     };
   }
+}
+
+// ── 품절/재입고 상태 반영 ──────────────────────────────────────────────────────
+// 전체 동기화(모든 카테고리 × 모든 페이지)가 끝난 뒤 한 번만 호출된다 —
+// upsertEquipmentMultiBrand() 는 조각(카테고리+페이지 범위) 하나만 보므로
+// "이번 조각에 없다"는 걸 "품절됐다"로 바로 단정할 수 없다(아직 안 가져온
+// 페이지에 있을 수도 있으니). 전체가 끝난 시점에 "이번 동기화에서 한 번이라도
+// 발견된 (브랜드,품명) 키 전체"와 "DB에 이미 있는 자동 동기화 품목(is_custom
+// =false) 전체"를 비교해서:
+//   - DB에는 있는데 이번에 하나도 안 보인 품목 → 품절(is_sold_out=true)
+//   - 품절(true) 이었는데 이번엔 다시 보인 품목 → 재입고(false)로 복원
+//     (이 경우는 보통 upsertEquipmentMultiBrand 에서 이미 false로 바뀌어
+//     있지만, seenKeys 기준으로 한 번 더 확인해 혹시 놓친 경우까지 보정한다)
+// 보호(is_custom=true) 품목은 사람이 직접 관리하는 행이라 대상에서 제외한다
+// (자동 동기화로 발견 못 해도 영원히 보호 상태를 유지한다).
+
+export interface ReconcileSoldOutResult {
+  soldOutCount: number;
+  restoredCount: number;
+}
+
+export async function reconcileSoldOutStatus(
+  catalogYear: number,
+  seenKeys: { brand: string; name: string }[]
+): Promise<ReconcileSoldOutResult> {
+  const seen = new Set(seenKeys.map((k) => `${normalizeBrand(k.brand)}\u0000${k.name}`));
+
+  if (isMockMode()) {
+    let soldOutCount = 0;
+    let restoredCount = 0;
+    const now = new Date().toISOString();
+    for (const row of mockStore.equipment) {
+      if (row.catalog_year !== catalogYear || row.is_custom) continue;
+      const key = `${row.brand}\u0000${row.name}`;
+      const isSeen = seen.has(key);
+      if (!isSeen && !row.is_sold_out) {
+        row.is_sold_out = true;
+        row.updated_at = now;
+        soldOutCount += 1;
+      } else if (isSeen && row.is_sold_out) {
+        row.is_sold_out = false;
+        row.updated_at = now;
+        restoredCount += 1;
+      }
+    }
+    return { soldOutCount, restoredCount };
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const { data, error } = await supabase
+    .from("equipment")
+    .select("id, brand, name, is_sold_out")
+    .eq("catalog_year", catalogYear)
+    .eq("is_custom", false);
+  if (error) throw error;
+
+  const toSoldOut: string[] = [];
+  const toRestore: string[] = [];
+  for (const row of data ?? []) {
+    const key = `${row.brand as string}\u0000${row.name as string}`;
+    const isSeen = seen.has(key);
+    const isSoldOut = Boolean(row.is_sold_out);
+    if (!isSeen && !isSoldOut) toSoldOut.push(row.id as string);
+    else if (isSeen && isSoldOut) toRestore.push(row.id as string);
+  }
+
+  // id 목록 하나당 update 1번(총 최대 2번)으로 끝낸다 — 건당 UPDATE 를 수천 번
+  // 반복하면 품목 수만큼 왕복이 생겨 15분 백그라운드 함수 시간 예산을
+  // 갉아먹는다(upsertEquipmentMultiBrand 가 브랜드별 루프를 없앤 것과 같은 이유).
+  if (toSoldOut.length > 0) {
+    const { error: soldOutError } = await supabase
+      .from("equipment")
+      .update({ is_sold_out: true })
+      .in("id", toSoldOut);
+    if (soldOutError) throw soldOutError;
+  }
+  if (toRestore.length > 0) {
+    const { error: restoreError } = await supabase
+      .from("equipment")
+      .update({ is_sold_out: false })
+      .in("id", toRestore);
+    if (restoreError) throw restoreError;
+  }
+
+  return { soldOutCount: toSoldOut.length, restoredCount: toRestore.length };
 }
 
 // ── 동기화 실행 이력(sync_runs) ──────────────────────────────────────────────
@@ -906,6 +1026,8 @@ export interface CreateSyncRunInput {
   failedCount: number;
   distinctBrandCount: number;
   distinctCategoryCount: number;
+  soldOutCount: number;
+  restoredCount: number;
   message: string | null;
 }
 
@@ -922,6 +1044,8 @@ function toSyncRunRecord(row: {
   failed_count: number;
   distinct_brand_count: number;
   distinct_category_count: number;
+  sold_out_count: number;
+  restored_count: number;
   message: string | null;
 }): SyncRunRecord {
   return {
@@ -937,6 +1061,8 @@ function toSyncRunRecord(row: {
     failedCount: row.failed_count,
     distinctBrandCount: row.distinct_brand_count,
     distinctCategoryCount: row.distinct_category_count,
+    soldOutCount: row.sold_out_count,
+    restoredCount: row.restored_count,
     message: row.message,
   };
 }
@@ -957,6 +1083,8 @@ export async function createSyncRun(input: CreateSyncRunInput): Promise<void> {
       failed_count: input.failedCount,
       distinct_brand_count: input.distinctBrandCount,
       distinct_category_count: input.distinctCategoryCount,
+      sold_out_count: input.soldOutCount,
+      restored_count: input.restoredCount,
       message: input.message,
       created_at: now,
     });
@@ -977,6 +1105,8 @@ export async function createSyncRun(input: CreateSyncRunInput): Promise<void> {
     failed_count: input.failedCount,
     distinct_brand_count: input.distinctBrandCount,
     distinct_category_count: input.distinctCategoryCount,
+    sold_out_count: input.soldOutCount,
+    restored_count: input.restoredCount,
     message: input.message,
   });
   if (error) throw error;
@@ -1003,6 +1133,8 @@ export async function getRecentSyncRuns(limit: number): Promise<SyncRunRecord[]>
         failed_count: r.failed_count,
         distinct_brand_count: r.distinct_brand_count,
         distinct_category_count: r.distinct_category_count,
+        sold_out_count: r.sold_out_count,
+        restored_count: r.restored_count,
         message: r.message,
       })
     );
@@ -1013,7 +1145,7 @@ export async function getRecentSyncRuns(limit: number): Promise<SyncRunRecord[]>
   const { data, error } = await supabase
     .from("sync_runs")
     .select(
-      "id, source, started_at, finished_at, status, total_parsed, inserted_count, updated_count, protected_count, failed_count, distinct_brand_count, distinct_category_count, message"
+      "id, source, started_at, finished_at, status, total_parsed, inserted_count, updated_count, protected_count, failed_count, distinct_brand_count, distinct_category_count, sold_out_count, restored_count, message"
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -1033,6 +1165,8 @@ export async function getRecentSyncRuns(limit: number): Promise<SyncRunRecord[]>
         failed_count: number;
         distinct_brand_count: number;
         distinct_category_count: number;
+        sold_out_count: number;
+        restored_count: number;
         message: string | null;
       }
     )
