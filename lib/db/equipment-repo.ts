@@ -764,12 +764,19 @@ export async function markOptionsChecked(
 
   for (const key of checkedKeys) {
     const [brand, name] = key.split("\u0000");
-    await supabase
-      .from("equipment")
-      .update({ option_checked_at: now })
-      .eq("catalog_year", catalogYear)
-      .eq("brand", brand)
-      .eq("name", name);
+    try {
+      const { error } = await supabase
+        .from("equipment")
+        .update({ option_checked_at: now })
+        .eq("catalog_year", catalogYear)
+        .eq("brand", brand)
+        .eq("name", name);
+      if (error) throw error;
+    } catch (error) {
+      // 이 기록은 다음 번 보완 우선순위를 위한 부가 정보일 뿐이라, 실패해도
+      // 동기화 자체(이미 끝난 upsert)는 영향받지 않게 조용히 넘어간다.
+      console.error("option_checked_at 갱신 실패:", error);
+    }
   }
 }
 
