@@ -675,33 +675,67 @@ async function fetchDetailPage(goodsId: string): Promise<string> {
   return response.data;
 }
 
+/** 상세페이지 옵션 라벨 끝에 붙는 "(품절)" 표시만 떼어낸다(예: "M 블랙크롬 (품절)" →
+ *  "M 블랙크롬"). "M화이트(화이트스커트)"처럼 품절과 무관한 괄호 설명은 건드리지 않도록
+ *  정확히 "(품절)"로 끝나는 경우만 매칭한다. */
+function stripSoldOutSuffix(label: string): string {
+  return label.replace(/\s*\(품절\)\s*$/, "").trim();
+}
+
+interface DetailPageOptions {
+  /** 이 select가 담고 있는 옵션 종류. 첫 번째(안내용) <option>의 문구
+   *  ("- 색상 선택 -", "- 사이즈 선택 -" 등)로 판별한다 — "- 렌즈 선택 -"처럼
+   *  색상도 사이즈도 아닌 축이면 null(이 상품은 보완 대상에서 건너뜀). */
+  axis: "color" | "size" | null;
+  labels: string[];
+}
+
 /**
- * 상세페이지의 첫 번째 옵션 select(`id="0"`)에서, 품절이 아닌 옵션들의
- * 표시 텍스트를 뽑는다. 이 select 는 1차원(색상만 또는 사이즈만 있는)
- * 상품이면 전체 옵션이 정적 HTML에 그대로 내려오지만, 2차원(색상+사이즈
- * 두 단계) 상품의 두 번째 select(`id="1"`)는 1차원 값을 고른 뒤 AJAX로만
- * 채워지는 빈 셀렉트라 정적 요청 1번으로는 가져올 수 없다(상품당 1+N번
- * 요청이 필요해 조각 1번의 비용으로는 너무 큼) — 그런 상품은 이 보완
- * 대상에서 자연히 제외되고(1차원 결과만으로도 합계가 1 초과가 되면 아래
+ * 상세페이지의 첫 번째 옵션 select(`id="0"`)에서 옵션들의 표시 텍스트를
+ * 뽑는다. 품절(class="soldout"/disabled) 여부와 무관하게 전부 포함한다
+ * — 구매 가능 여부와 별개로 "이 상품에 어떤 옵션이 존재하는지"를 빠짐없이
+ * 보여주는 게 목적이라, 품절 표시(" (품절)" 접미사)만 라벨에서 떼어내고
+ * 옵션 값 자체는 그대로 살린다.
+ *
+ * 색상/사이즈 구분은 라벨 텍스트를 색상 키워드 사전과 대조하는 방식(목록
+ * 페이지의 자유 형식 item_variant 파싱에 쓰는 classifyVariantSegment)이
+ * 아니라, select 자체의 안내 문구("- 색상 선택 -" 등)로 판별한다 — 퐁당
+ * 사이트가 이미 "이 select는 색상 축이다/사이즈 축이다"를 명시해주므로
+ * 이쪽이 훨씬 정확하다(키워드 사전에 없는 색상명 — 예: "코랄", "터키" —
+ * 도 전부 포함된다).
+ *
+ * 이 select 는 1차원(색상만 또는 사이즈만 있는) 상품이면 전체 옵션이
+ * 정적 HTML에 그대로 내려오지만, 2차원(색상+사이즈 두 단계) 상품의 두
+ * 번째 select(`id="1"`)는 1차원 값을 고른 뒤 AJAX로만 채워지는 빈
+ * 셀렉트라 정적 요청 1번으로는 가져올 수 없다(상품당 1+N번 요청이
+ * 필요해 조각 1번의 비용으로는 너무 큼) — 그런 상품은 이 보완 대상에서
+ * 자연히 제외되고(1차원 결과만으로도 합계가 1 초과가 되면 아래
  * enrichLowVariantItems 가 애초에 후보로 고르지 않음) 목록 페이지에서
  * 뽑힌 값만 그대로 쓴다.
  */
-function extractDetailPageOptionLabels(html: string): string[] {
+function extractDetailPageOptions(html: string): DetailPageOptions {
   const $ = cheerio.load(html);
   const select = $('select[name="viewOptions[]"][id="0"]').first();
-  if (select.length === 0) return [];
+  if (select.length === 0) return { axis: null, labels: [] };
+
+  const placeholder = select.find("option").first().text();
+  const axis: DetailPageOptions["axis"] = placeholder.includes("색상")
+    ? "color"
+    : placeholder.includes("사이즈")
+      ? "size"
+      : null;
 
   const labels: string[] = [];
   select.find("option").each((_, el) => {
     const $opt = $(el);
     const value = $opt.attr("value") ?? "";
     if (!value) return; // "- 색상 선택 -" 같은 안내용 첫 옵션
-    const classAttr = $opt.attr("class") ?? "";
-    if (classAttr.includes("soldout") || $opt.attr("disabled") !== undefined) return;
-    const text = $opt.text().trim();
+    // "[재입고 미정] MMN 블루"(앞) / "M 블랙크롬 (품절)"(뒤) 두 형태 모두
+    // 품절 표시이므로 둘 다 떼어내고 순수 옵션명만 남긴다.
+    const text = stripBracketNote(stripSoldOutSuffix($opt.text().trim()));
     if (text) labels.push(text);
   });
-  return labels;
+  return { axis, labels };
 }
 
 /**
@@ -739,18 +773,14 @@ async function enrichLowVariantItems(
     }
     await sleep(REQUEST_DELAY_MS);
 
-    const labels = extractDetailPageOptionLabels(html);
-    if (labels.length === 0) continue;
+    const { axis, labels } = extractDetailPageOptions(html);
+    if (axis === null || labels.length === 0) continue;
 
     const colorSet = new Set(item.colors);
     const sizeSet = new Set(item.sizes);
     for (const label of labels) {
-      for (const segment of splitVariantSegments(label)) {
-        const cls = classifyVariantSegment(segment);
-        const cleaned = stripBracketNote(segment);
-        if (cls === "size") sizeSet.add(cleaned);
-        else if (cls === "color") colorSet.add(cleaned);
-      }
+      if (axis === "size") sizeSet.add(label);
+      else colorSet.add(label);
     }
 
     const nextColors = Array.from(colorSet).sort((a, b) => a.localeCompare(b, "ko"));
