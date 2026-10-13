@@ -730,9 +730,14 @@ function extractDetailPageOptions(html: string): DetailPageOptions {
     const $opt = $(el);
     const value = $opt.attr("value") ?? "";
     if (!value) return; // "- 색상 선택 -" 같은 안내용 첫 옵션
-    // "[재입고 미정] MMN 블루"(앞) / "M 블랙크롬 (품절)"(뒤) 두 형태 모두
-    // 품절 표시이므로 둘 다 떼어내고 순수 옵션명만 남긴다.
-    const text = stripBracketNote(stripSoldOutSuffix($opt.text().trim()));
+    const rawText = $opt.text().trim();
+    // "[재입고 미정]"은 다시 입고될 계획 자체가 없다는 뜻이라(단순
+    // 일시 품절과 다름) 이 옵션은 아예 제외한다(isOutOfStockIndefinitely
+    // 와 동일한 "재입고미정" 판정 기준 재사용). 그 외의 품절 표시
+    // ("(품절)" 접미사 — 다시 입고될 수 있는 일시 품절)는 표시만 떼어내고
+    // 옵션 자체는 그대로 남긴다.
+    if (rawText.replace(/\s+/g, "").includes(OUT_OF_STOCK_INDEFINITELY_MARK_NO_SPACE)) return;
+    const text = stripSoldOutSuffix(rawText);
     if (text) labels.push(text);
   });
   return { axis, labels };
