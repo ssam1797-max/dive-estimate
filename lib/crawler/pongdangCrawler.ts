@@ -654,7 +654,7 @@ const DETAIL_PATH = "/goods/view";
  * 10건으로 제한한다. 카탈로그 전체를 하루 안에 다 보완하지 못해도, 매일
  * 자동 동기화(Cron)가 반복되며 점진적으로 전수 보완된다.
  */
-const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
+export const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
 
 async function fetchDetailPage(goodsId: string): Promise<string> {
   const response = await axios.get<string>(`${BASE_URL}${DETAIL_PATH}`, {
@@ -743,10 +743,33 @@ function extractDetailPageOptions(html: string): DetailPageOptions {
   return { axis, labels };
 }
 
+/** (브랜드,품명) 키 하나를 만든다 — goodsIdByKey/selectedKeys 조회에 그대로 쓴다. */
+function itemKey(item: { brand: string; name: string }): string {
+  return `${item.brand}\u0000${item.name}`;
+}
+
 /**
  * 목록 페이지 응답만으로는 색상/사이즈 옵션 합계가 1개 이하로 보이는
- * 상품들을 대상으로, 상세페이지를 열어 실제 전체 옵션 목록을 보완한다.
- * 보완(또는 애초에 상세페이지 확인 대상도 아니었던 경우) 후에도 옵션이
+ * 상품들의 (브랜드,품명) 키 목록을 뽑는다. 실제로 이 중 몇 건을, 어떤
+ * 순서로 상세페이지까지 열어볼지는 호출부가 DB의 option_checked_at
+ * 값(가장 오래전에 확인했거나 아예 확인된 적 없는 품목 우선)을 기준으로
+ * 고른다(lib/db/equipment-repo.ts selectEnrichmentCandidates 참고) —
+ * 크롤러 자신은 "그 조각에서 가장 먼저 나온 N건"처럼 순서에 의존한
+ * 선택을 하지 않는다(매일 같은 품목만 반복 보완되는 문제를 피하기 위함).
+ */
+export function selectLowVariantCandidates(
+  items: PongdangEquipmentItem[]
+): { brand: string; name: string }[] {
+  return items
+    .filter((item) => item.colors.length + item.sizes.length <= 1)
+    .map((item) => ({ brand: item.brand, name: item.name }));
+}
+
+/**
+ * selectedKeys 로 지정된 품목만 상세페이지를 열어 실제 전체 옵션 목록을
+ * 보완한다 — 어떤 품목을 고를지는 호출부(selectLowVariantCandidates +
+ * DB의 option_checked_at 기준 선정)가 결정하고, 이 함수는 그 선택대로
+ * 가져오기만 한다. 보완(또는 애초에 선택되지 않은 경우) 후에도 옵션이
  * 전혀 없으면(진짜 단일 SKU) 색상에 "기본"을 채워, 화면에 빈 칸으로
  * 보이지 않게 한다.
  *
@@ -754,19 +777,19 @@ function extractDetailPageOptions(html: string): DetailPageOptions {
  * goods_id) 매핑이며, 상세페이지 URL(/goods/view?no=)에 그대로 쓴다.
  * items 는 제자리에서(in-place) colors/sizes 가 갱신된다.
  */
-async function enrichLowVariantItems(
+export async function enrichSelectedItems(
   items: PongdangEquipmentItem[],
-  goodsIdByKey: Map<string, string>
+  goodsIdByKey: Map<string, string>,
+  selectedKeys: Set<string>
 ): Promise<{ warnings: string[] }> {
   const warnings: string[] = [];
-  const candidates = items.filter((item) => item.colors.length + item.sizes.length <= 1);
-  const targets = candidates.slice(0, MAX_DETAIL_FETCHES_PER_CHUNK);
+  const targets = items.filter((item) => selectedKeys.has(itemKey(item)));
 
   let enrichedCount = 0;
   let detailFetchFailures = 0;
 
   for (const item of targets) {
-    const goodsId = goodsIdByKey.get(`${item.brand}\u0000${item.name}`);
+    const goodsId = goodsIdByKey.get(itemKey(item));
     if (!goodsId) continue;
 
     let html: string;
@@ -827,6 +850,10 @@ async function enrichLowVariantItems(
 export interface PongdangCrawlChunkResult extends PongdangCrawlResult {
   /** 이 카테고리에서 다음에 이어 받아야 할 페이지 번호. 더 받을 페이지가 없으면 null. */
   nextPage: number | null;
+  /** (브랜드,품명) 키 → 목록에서 처음 본 item_id(퐁당 goods_id). 서버
+   *  내부에서만 쓰며(enrichSelectedItems 호출용), API 응답으로는 내려가지
+   *  않는다(route.ts 가 별도 필드만 골라 JSON 응답을 만든다). */
+  goodsIdByKey: Map<string, string>;
 }
 
 /**
@@ -896,14 +923,14 @@ export async function crawlPongdangCategoryChunk(
     rawItems,
     domPriceByGoodsId
   );
-  const { warnings: enrichWarnings } = await enrichLowVariantItems(items, goodsIdByKey);
   const distinctBrandCount = new Set(items.map((item) => item.brand)).size;
 
   return {
     items,
-    warnings: [...warnings, ...mergeWarnings, ...enrichWarnings],
+    warnings: [...warnings, ...mergeWarnings],
     pagesFetched,
     distinctBrandCount,
     nextPage,
+    goodsIdByKey,
   };
 }

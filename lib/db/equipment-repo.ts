@@ -672,6 +672,107 @@ export async function deleteEquipment(id: string): Promise<boolean> {
 // 발생해 Netlify 서버 함수 실행 시간 제한을 넘기는 주된 원인이었다(페이지
 // 크롤링 자체보다 이 부분이 더 오래 걸렸다). 이 함수는 브랜드가 몇 개
 // 섞여 있든 조회 1번 + upsert 1번, 총 2번의 왕복으로 끝낸다.
+/**
+ * 상세페이지 옵션 보완 후보((브랜드,품명) 키 목록) 중, 이번 조각(chunk)에서
+ * 실제로 상세페이지를 열어볼 N건을 고른다 — option_checked_at이 없거나
+ * (한 번도 확인된 적 없음) 가장 오래된 품목부터 우선순위를 둔다.
+ *
+ * 예전에는 "그 조각에서 가장 먼저 발견된 N건"을 그대로 골랐는데, 목록
+ * 페이지 크롤링 순서가 날마다 거의 그대로라 매일 똑같은 품목만 반복
+ * 보완되고 나머지는 차례가 오지 않는 문제가 실측으로 확인됐다(동일한
+ * 전체 동기화를 하루에 두 번 돌려도 보완 후보 수가 거의 줄지 않음).
+ * option_checked_at 기준으로 우선순위를 두면 매번 다른 품목이 돌아가며
+ * 보완되어, 결국 전체 카탈로그가 전수 보완에 도달한다.
+ *
+ * 보호(is_custom=true) 품목은 애초에 후보에서 제외한다 — 자동 동기화가
+ * 보호 품목의 색상/사이즈를 저장하지 않으므로, 상세페이지를 열어봐도
+ * 결과가 버려져 조각의 보완 예산만 낭비하게 된다.
+ */
+export async function selectEnrichmentCandidates(
+  catalogYear: number,
+  candidateKeys: { brand: string; name: string }[],
+  limit: number
+): Promise<Set<string>> {
+  const keyOf = (brand: string, name: string) => `${brand}\u0000${name}`;
+  if (candidateKeys.length === 0 || limit <= 0) return new Set();
+
+  const candidateKeySet = new Set(candidateKeys.map((k) => keyOf(k.brand, k.name)));
+  const checkedAtByKey = new Map<string, string | null>();
+
+  if (isMockMode()) {
+    for (const e of mockStore.equipment) {
+      if (e.catalog_year !== catalogYear || e.is_custom) continue;
+      const key = keyOf(e.brand, e.name);
+      if (candidateKeySet.has(key)) checkedAtByKey.set(key, e.option_checked_at ?? null);
+    }
+  } else {
+    const { createAdminClient } = await import("@/lib/supabase/server");
+    const supabase = await createAdminClient();
+    const distinctBrands = Array.from(new Set(candidateKeys.map((k) => k.brand)));
+
+    try {
+      const { data, error } = await supabase
+        .from("equipment")
+        .select("brand, name, option_checked_at, is_custom")
+        .eq("catalog_year", catalogYear)
+        .in("brand", distinctBrands);
+      if (error) throw error;
+      for (const r of data ?? []) {
+        if (r.is_custom) continue;
+        const key = keyOf(r.brand as string, r.name as string);
+        if (candidateKeySet.has(key)) {
+          checkedAtByKey.set(key, (r.option_checked_at as string | null) ?? null);
+        }
+      }
+    } catch {
+      // 조회 실패해도 전체를 "한 번도 확인 안 됨"으로 간주하고 계속
+      // 진행한다 — 보완 자체를 아예 건너뛰는 것보다 낫다.
+    }
+  }
+
+  const prioritized = Array.from(candidateKeySet)
+    .map((key) => ({ key, checkedAt: checkedAtByKey.get(key) ?? "" }))
+    .sort((a, b) => a.checkedAt.localeCompare(b.checkedAt));
+
+  return new Set(prioritized.slice(0, limit).map((e) => e.key));
+}
+
+/**
+ * selectEnrichmentCandidates 로 고른 품목들의 상세페이지를 실제로 열어봤다는
+ * 사실을(결과적으로 옵션이 그대로였어도) option_checked_at 에 기록해,
+ * 다음 번 동기화에서는 우선순위가 뒤로 밀리도록 한다.
+ */
+export async function markOptionsChecked(
+  catalogYear: number,
+  checkedKeys: Set<string>
+): Promise<void> {
+  if (checkedKeys.size === 0) return;
+  const now = new Date().toISOString();
+
+  if (isMockMode()) {
+    for (const e of mockStore.equipment) {
+      if (e.catalog_year !== catalogYear) continue;
+      if (checkedKeys.has(`${e.brand}\u0000${e.name}`)) {
+        e.option_checked_at = now;
+      }
+    }
+    return;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  for (const key of checkedKeys) {
+    const [brand, name] = key.split("\u0000");
+    await supabase
+      .from("equipment")
+      .update({ option_checked_at: now })
+      .eq("catalog_year", catalogYear)
+      .eq("brand", brand)
+      .eq("name", name);
+  }
+}
+
 export async function upsertEquipmentMultiBrand(
   catalogYear: number,
   rawItems: (ParsedEquipmentItem & { brand: string })[]

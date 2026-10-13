@@ -32,6 +32,10 @@ export interface MockEquipment {
   /** 퐁당닷컴 동기화에서 더 이상 발견되지 않아 품절로 간주된 품목이면 true.
    *  삭제하지 않고 견적서 작성 화면의 선택 목록에서만 제외한다. */
   is_sold_out?: boolean;
+  /** 상세페이지에서 옵션(색상/사이즈)을 마지막으로 확인(보완 시도)한 시각.
+   *  null/undefined면 한 번도 확인된 적 없음 — 동기화 시 이 값이 가장
+   *  오래된 품목부터 우선 보완 대상으로 고른다(selectEnrichmentCandidates). */
+  option_checked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
