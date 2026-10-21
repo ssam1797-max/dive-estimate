@@ -150,17 +150,53 @@ function floorWon(value: number): number {
  * 최우선, 없으면 브랜드 기본 할인율" 규칙이라 등급별로 다른 값을 두지
  * 않는다.
  *
+ * realPrices(선택, 6번째 인자)는 퐁당닷컴 샵 계정 로그인으로 실제 수집한
+ * 등급별 금액이다(equipment.price_instructor/price_center/price_cost).
+ * overrideRate 가 없고 realPrices 에 해당 등급 값이 있으면, 브랜드 할인율
+ * 추정 계산을 건너뛰고 그 실제 금액을 그대로 쓴다 — "수집된 품목만 실제
+ * 값, 나머지는 기존 추정 방식 유지"라는 점진적 전환 규칙이다. 기존
+ * 호출부는 이 인자를 넘기지 않으면 지금까지와 완전히 동일하게 동작한다
+ * (하위 호환). 우선순위: overrideRate > realPrices > 브랜드 할인율.
+ *
  * 결과값은 소수점을 버리는 절사(floorWon)로 원단위까지 정리한다.
  */
+export interface RealTierPrices {
+  instructor?: number | null;
+  center?: number | null;
+  cost?: number | null;
+}
+
+function realPriceForTier(tier: PriceTier, realPrices: RealTierPrices | undefined): number | null {
+  if (!realPrices) return null;
+  switch (tier) {
+    case "INSTRUCTOR":
+      return realPrices.instructor ?? null;
+    case "CENTER":
+      return realPrices.center ?? null;
+    case "COST":
+      return realPrices.cost ?? null;
+    default:
+      return null;
+  }
+}
+
 export function calculateEffectiveUnitPrice(
   listPrice: number,
   brand: string,
   tier: PriceTier,
   discountPolicies: DiscountPolicyMap,
-  overrideRate?: number | null
+  overrideRate?: number | null,
+  realPrices?: RealTierPrices
 ): number {
   const numericListPrice = Number(listPrice);
   if (!Number.isFinite(numericListPrice)) return 0;
+
+  if (overrideRate == null) {
+    const real = realPriceForTier(tier, realPrices);
+    if (real != null && Number.isFinite(Number(real))) {
+      return Math.max(0, floorWon(Number(real)));
+    }
+  }
 
   const rate =
     overrideRate != null

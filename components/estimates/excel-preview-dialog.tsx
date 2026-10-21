@@ -58,12 +58,18 @@ export function ExcelPreviewDialog({
   const rows: EstimateDocumentRow[] = React.useMemo(
     () =>
       items.map((item, index) => {
+        const realPrices = {
+          instructor: item.priceInstructor,
+          center: item.priceCenter,
+          cost: item.priceCost,
+        };
         const unitPrice = calculateEffectiveUnitPrice(
           item.priceRetail,
           item.brand,
           priceTier,
           discountPolicies,
-          item.overrideDiscountRate
+          item.overrideDiscountRate,
+          realPrices
         );
         const amount = unitPrice * item.quantity;
         return {
@@ -85,7 +91,8 @@ export function ExcelPreviewDialog({
               item.brand,
               tier,
               discountPolicies,
-              item.overrideDiscountRate
+              item.overrideDiscountRate,
+              realPrices
             )
           ),
         };

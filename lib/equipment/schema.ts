@@ -59,6 +59,13 @@ export const equipmentCreateSchema = z.object({
     .max(100, "예외 할인율은 100 이하여야 합니다.")
     .nullable()
     .optional(),
+  /** 원가(COST 등급). 관리자가 직접 입력 — 자동 동기화는 절대 건드리지 않는다. */
+  price_cost: z
+    .number()
+    .finite("원가는 숫자여야 합니다.")
+    .min(0, "원가는 0 이상이어야 합니다.")
+    .nullable()
+    .optional(),
 });
 
 export type EquipmentCreateInput = z.infer<typeof equipmentCreateSchema>;

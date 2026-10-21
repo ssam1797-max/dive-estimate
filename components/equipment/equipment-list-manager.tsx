@@ -20,6 +20,117 @@ function formatCurrency(amount: number): string {
   return `₩${Math.round(amount).toLocaleString("ko-KR")}`;
 }
 
+/**
+ * 공급가(CENTER 등급) 인라인 입력칸. 클릭하면 바로 수정 모드로 바뀌고,
+ * Enter/blur로 저장한다 — 전체 수정 다이얼로그(EquipmentEditDialog)와
+ * 달리 is_custom 을 건드리지 않아, 저장해도 색상/사이즈/소비자가/샵가는
+ * 계속 평소대로 자동 동기화된다(PATCH /api/equipment/[id]/price-center).
+ * "자동으로" 버튼을 누르면 수동 고정을 풀어, 다음 동기화 때 샵가 기준으로
+ * 다시 자동 계산되게 한다.
+ */
+function PriceCenterCell({
+  item,
+  onSaved,
+}: {
+  item: EquipmentCatalogItem;
+  onSaved: (next: { price_center: number | null; price_center_overridden: boolean }) => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  const save = async (value: number | null) => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/equipment/${item.id}/price-center`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price_center: value }),
+      });
+      const data: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message =
+          data && typeof data === "object" && "error" in data
+            ? String((data as { error: unknown }).error)
+            : "공급가 저장 중 오류가 발생했습니다.";
+        throw new Error(message);
+      }
+      onSaved(
+        value == null
+          ? { price_center: item.price_center, price_center_overridden: false }
+          : { price_center: value, price_center_overridden: true }
+      );
+      setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "공급가 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1">
+        <Input
+          autoFocus
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={draft}
+          disabled={saving}
+          className="h-7 w-28 text-sm"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const num = Number(draft);
+              if (draft !== "" && Number.isFinite(num) && num >= 0) save(num);
+            } else if (e.key === "Escape") {
+              setEditing(false);
+            }
+          }}
+          onBlur={() => {
+            const num = Number(draft);
+            if (draft !== "" && Number.isFinite(num) && num >= 0) save(num);
+            else setEditing(false);
+          }}
+        />
+        {saveError && <p className="text-[10px] text-destructive">{saveError}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex flex-col items-start gap-0.5 rounded px-1 py-0.5 text-left hover:bg-muted/50"
+      disabled={saving}
+      onClick={() => {
+        setDraft(item.price_center != null ? String(Math.round(item.price_center)) : "");
+        setEditing(true);
+      }}
+    >
+      <span>{item.price_center != null ? formatCurrency(item.price_center) : "-"}</span>
+      {item.price_center_overridden ? (
+        <span
+          role="button"
+          tabIndex={0}
+          className="text-[10px] text-amber-600 underline underline-offset-2 dark:text-amber-400"
+          onClick={(e) => {
+            e.stopPropagation();
+            save(null);
+          }}
+        >
+          수동 고정됨 · 자동으로
+        </span>
+      ) : (
+        <span className="text-[10px] text-muted-foreground">자동 계산</span>
+      )}
+    </button>
+  );
+}
+
 // 이 화면은 브랜드 하나만 검색해도(예: "다이브라이트" 70여 건) 전체를 훑어봐야
 // 하므로, 견적서 작성 화면의 검색 드롭다운(기본 20건)보다 훨씬 넉넉하게 받는다
 // — 그래도 잘릴 수 있으니 아래에서 total 과 비교해 잘렸으면 안내 문구를 보여준다.
@@ -169,7 +280,7 @@ export function EquipmentListManager({
 
           {!loading && query.trim() !== "" && results.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[920px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
                     <th className="py-2 pr-2 font-medium" aria-hidden="true" />
@@ -177,6 +288,8 @@ export function EquipmentListManager({
                     <th className="py-2 pr-2 font-medium">카테고리</th>
                     <th className="py-2 pr-2 font-medium">모델명</th>
                     <th className="py-2 pr-2 font-medium">소비자가격</th>
+                    <th className="py-2 pr-2 font-medium">샵가</th>
+                    <th className="py-2 pr-2 font-medium">공급가</th>
                     <th className="py-2 pr-2 font-medium">색상 / 사이즈</th>
                     <th className="py-2 pr-2 font-medium text-right">작업</th>
                   </tr>
@@ -202,6 +315,19 @@ export function EquipmentListManager({
                         </span>
                       </td>
                       <td className="py-2 pr-2 align-top">{formatCurrency(item.price_retail)}</td>
+                      <td className="py-2 pr-2 align-top text-muted-foreground">
+                        {item.price_instructor != null ? formatCurrency(item.price_instructor) : "-"}
+                      </td>
+                      <td className="py-2 pr-2 align-top">
+                        <PriceCenterCell
+                          item={item}
+                          onSaved={(next) => {
+                            setResults((prev) =>
+                              prev.map((r) => (r.id === item.id ? { ...r, ...next } : r))
+                            );
+                          }}
+                        />
+                      </td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">
                         {(item.colors.length > 0 ? item.colors.join(", ") : "-") +
                           " / " +

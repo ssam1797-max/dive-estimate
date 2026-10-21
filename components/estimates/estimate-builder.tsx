@@ -91,6 +91,9 @@ function toItemPayloads(
     unitPrice: number;
     itemRemarks: string;
     overrideDiscountRate: number | null;
+    priceInstructor?: number | null;
+    priceCenter?: number | null;
+    priceCost?: number | null;
   }[],
   discountPolicies: DiscountPolicyMap,
   activeTier: PriceTier
@@ -104,7 +107,8 @@ function toItemPayloads(
             item.brand,
             tier,
             discountPolicies,
-            item.overrideDiscountRate
+            item.overrideDiscountRate,
+            { instructor: item.priceInstructor, center: item.priceCenter, cost: item.priceCost }
           );
 
     return {
@@ -154,6 +158,9 @@ function toExportItemPayloads(
     priceRetail: number;
     itemRemarks: string;
     overrideDiscountRate: number | null;
+    priceInstructor?: number | null;
+    priceCenter?: number | null;
+    priceCost?: number | null;
   }[]
 ): ExportEstimateItemPayload[] {
   return items.map((item) => ({
@@ -166,6 +173,9 @@ function toExportItemPayloads(
     priceRetail: item.priceRetail,
     itemRemarks: item.itemRemarks,
     overrideDiscountRate: item.overrideDiscountRate,
+    priceInstructor: item.priceInstructor,
+    priceCenter: item.priceCenter,
+    priceCost: item.priceCost,
   }));
 }
 

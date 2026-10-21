@@ -71,12 +71,18 @@ export async function POST(request: Request) {
 
     // priceRetail(소비자 정가)을 기준으로 서버 할인율 정책을 적용해 실제 단가를 재계산합니다.
     const workbookItems: WorkbookEstimateItem[] = items.map((item, index) => {
+      const realPrices = {
+        instructor: item.priceInstructor,
+        center: item.priceCenter,
+        cost: item.priceCost,
+      };
       const effectiveUnitPrice = calculateEffectiveUnitPrice(
         item.priceRetail,
         item.brand,
         priceTier,
         discountPolicies,
-        item.overrideDiscountRate
+        item.overrideDiscountRate,
+        realPrices
       );
       const amount = effectiveUnitPrice * item.quantity;
 
@@ -98,7 +104,8 @@ export async function POST(request: Request) {
             item.brand,
             tier,
             discountPolicies,
-            item.overrideDiscountRate
+            item.overrideDiscountRate,
+            realPrices
           )
         ),
       };

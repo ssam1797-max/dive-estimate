@@ -49,6 +49,9 @@ interface FormState {
   catalogYear: number | null;
   /** 빈 문자열이면 예외 할인율 없음(브랜드 기본 할인율 적용) — 저장 시 null로 변환. */
   overrideDiscountRate: string;
+  /** 원가(COST 등급). 빈 문자열이면 미입력(null) — 자동 동기화가 절대 건드리지
+   *  않는 값이라, 소비자가/할인율과 달리 수정 저장 때만 반영된다. */
+  priceCost: string;
 }
 
 function fmtWon(value: number): string {
@@ -165,6 +168,7 @@ export function EquipmentEditDialog({
           sizes: string[];
           catalog_year: number | null;
           override_discount_rate: number | null;
+          price_cost: number | null;
         };
 
         setForm({
@@ -177,6 +181,7 @@ export function EquipmentEditDialog({
           catalogYear: eq.catalog_year,
           overrideDiscountRate:
             eq.override_discount_rate == null ? "" : String(eq.override_discount_rate),
+          priceCost: eq.price_cost == null ? "" : String(eq.price_cost),
         });
         setDiscountMap(
           buildDiscountPolicyMap(
@@ -225,6 +230,10 @@ export function EquipmentEditDialog({
       if (Number.isNaN(rate) || rate < 0 || rate > 100)
         next.overrideDiscountRate = "예외 할인율은 0~100 사이 숫자여야 합니다.";
     }
+    if (current.priceCost !== "") {
+      const cost = Number(current.priceCost);
+      if (Number.isNaN(cost) || cost < 0) next.priceCost = "원가는 0 이상의 숫자여야 합니다.";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -250,6 +259,7 @@ export function EquipmentEditDialog({
           catalog_year: form.catalogYear,
           override_discount_rate:
             form.overrideDiscountRate === "" ? null : Number(form.overrideDiscountRate),
+          price_cost: form.priceCost === "" ? null : Number(form.priceCost),
         }),
       });
       const data: unknown = await res.json();
@@ -347,24 +357,44 @@ export function EquipmentEditDialog({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:w-1/2">
-              <Label htmlFor="edit-override-discount-rate">
-                예외 할인율(%) <span className="text-muted-foreground font-normal">(선택)</span>
-              </Label>
-              <Input
-                id="edit-override-discount-rate"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={100}
-                value={form.overrideDiscountRate}
-                disabled={isSubmitting}
-                placeholder="비워두면 브랜드 기본 할인율 적용"
-                onChange={(e) => set("overrideDiscountRate", e.target.value)}
-              />
-              {errors.overrideDiscountRate && (
-                <p className="text-xs text-destructive">{errors.overrideDiscountRate}</p>
-              )}
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-override-discount-rate">
+                  예외 할인율(%) <span className="text-muted-foreground font-normal">(선택)</span>
+                </Label>
+                <Input
+                  id="edit-override-discount-rate"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={100}
+                  value={form.overrideDiscountRate}
+                  disabled={isSubmitting}
+                  placeholder="비워두면 브랜드 기본 할인율 적용"
+                  onChange={(e) => set("overrideDiscountRate", e.target.value)}
+                />
+                {errors.overrideDiscountRate && (
+                  <p className="text-xs text-destructive">{errors.overrideDiscountRate}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-price-cost">
+                  원가 (원) <span className="text-muted-foreground font-normal">(선택)</span>
+                </Label>
+                <Input
+                  id="edit-price-cost"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={form.priceCost}
+                  disabled={isSubmitting}
+                  placeholder="직접 입력 — 자동 동기화가 건드리지 않음"
+                  onChange={(e) => set("priceCost", e.target.value)}
+                />
+                {errors.priceCost && (
+                  <p className="text-xs text-destructive">{errors.priceCost}</p>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">

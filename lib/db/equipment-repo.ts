@@ -32,6 +32,14 @@ function sanitizePriceRetail(value: number | string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** 공급가(CENTER 등급) 자동 계산 비율. 샵가(price_instructor)에서 2% 추가 할인. */
+const PRICE_CENTER_DISCOUNT_RATE = 0.02;
+
+/** 샵가로부터 공급가를 자동 계산한다(원 단위 절사). */
+function computePriceCenter(priceInstructor: number): number {
+  return Math.floor(priceInstructor * (1 - PRICE_CENTER_DISCOUNT_RATE));
+}
+
 // ── 브랜드 목록 ────────────────────────────────────────────────────────────────
 // equipment 테이블이 4천 건을 넘어가면서, 페이지네이션 없이 select 하면
 // Supabase 기본 제한(1000행)에 걸려 브랜드 가나다순 뒤쪽(예: "스쿠버프로")이
@@ -71,6 +79,10 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
         sizes: e.sizes,
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
+        price_instructor: e.price_instructor ?? null,
+        price_center: e.price_center ?? null,
+        price_center_overridden: e.price_center_overridden ?? false,
+        price_cost: e.price_cost ?? null,
       }));
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
@@ -86,11 +98,15 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       sizes: string[] | null;
       override_discount_rate: number | string | null;
       image_url: string | null;
+      price_instructor: number | string | null;
+      price_center: number | string | null;
+      price_center_overridden: boolean | null;
+      price_cost: number | string | null;
     }>((from, to) =>
       supabase
         .from("equipment")
         .select(
-          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url",
+          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, price_instructor, price_center, price_center_overridden, price_cost",
           { count: "exact" }
         )
         // 품절(is_sold_out=true) 품목은 삭제하지 않고 DB에 남겨두되, 견적서
@@ -112,6 +128,10 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       override_discount_rate:
         row.override_discount_rate == null ? null : Number(row.override_discount_rate),
       image_url: row.image_url ?? null,
+      price_instructor: row.price_instructor == null ? null : Number(row.price_instructor),
+      price_center: row.price_center == null ? null : Number(row.price_center),
+      price_center_overridden: Boolean(row.price_center_overridden),
+      price_cost: row.price_cost == null ? null : Number(row.price_cost),
     }));
   } catch (error) {
     console.error(
@@ -244,6 +264,10 @@ export async function searchEquipment(
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
         is_sold_out: e.is_sold_out ?? false,
+        price_instructor: e.price_instructor ?? null,
+        price_center: e.price_center ?? null,
+        price_center_overridden: e.price_center_overridden ?? false,
+        price_cost: e.price_cost ?? null,
       })),
       total: matched.length,
     };
@@ -263,6 +287,10 @@ export async function searchEquipment(
     override_discount_rate: number | string | null;
     image_url: string | null;
     is_sold_out: boolean | null;
+    price_instructor: number | string | null;
+    price_center: number | string | null;
+    price_center_overridden: boolean | null;
+    price_cost: number | string | null;
   }
 
   // ILIKE는 컬럼 값 자체의 공백을 제거하고 비교하지 못하므로, 글자 사이에
@@ -283,7 +311,7 @@ export async function searchEquipment(
     let q = supabase
       .from("equipment")
       .select(
-        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out",
+        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
         { count: "exact" }
       )
       .or(orFilter);
@@ -315,6 +343,10 @@ export async function searchEquipment(
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
     image_url: row.image_url ?? null,
     is_sold_out: row.is_sold_out ?? false,
+    price_instructor: row.price_instructor == null ? null : Number(row.price_instructor),
+    price_center: row.price_center == null ? null : Number(row.price_center),
+    price_center_overridden: Boolean(row.price_center_overridden),
+    price_cost: row.price_cost == null ? null : Number(row.price_cost),
   }));
 
   return { items, total };
@@ -332,6 +364,11 @@ export interface InsertEquipmentData {
   catalog_year: number | null;
   /** 품목별 예외 할인율(%, 0~100). null이면 브랜드 기본 할인율을 그대로 쓴다. */
   override_discount_rate: number | null;
+  /** 원가(COST 등급). 관리자가 직접 입력하는 값 — 자동 동기화가 절대 안
+   *  건드리므로 이 타입을 쓰는 insertEquipment/updateEquipment 에서만 바뀐다.
+   *  생략하면(undefined) 기존 값을 그대로 둔다(updateEquipment)/null로
+   *  시작한다(insertEquipment). */
+  price_cost?: number | null;
 }
 
 /**
@@ -399,6 +436,7 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
       sizes: row.sizes,
       catalog_year: row.catalog_year,
       override_discount_rate: row.override_discount_rate ?? null,
+      price_cost: row.price_cost ?? null,
     };
   }
   const { createAdminClient } = await import("@/lib/supabase/server");
@@ -406,7 +444,7 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
   const { data: row, error } = await supabase
     .from("equipment")
     .select(
-      "id, brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate"
+      "id, brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate, price_cost"
     )
     .eq("id", id)
     .maybeSingle();
@@ -423,6 +461,7 @@ export async function getEquipmentById(id: string): Promise<EquipmentDetail | nu
     catalog_year: row.catalog_year as number | null,
     override_discount_rate:
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
+    price_cost: row.price_cost == null ? null : Number(row.price_cost as number | string | null),
   };
 }
 
@@ -540,6 +579,58 @@ export async function updateEquipmentPriceBulk(
     if ((count ?? 0) > 0) updatedIds.push(id);
   }
   return updatedIds;
+}
+
+// ── 공급가(CENTER 등급) 단건 수동 고정/해제 ──────────────────────────────────────
+// "장비 목록" 화면의 공급가 인라인 입력칸 전용. updateEquipment()와 달리
+// is_custom 을 건드리지 않는다 — 공급가 하나만 보호하고 싶을 뿐, 품목 전체를
+// 보호(자동 동기화 전면 중단) 상태로 만들고 싶은 건 아니기 때문이다. 색상/
+// 사이즈/소비자가/샵가는 계속 평소대로 자동 동기화된다.
+
+/**
+ * value 가 숫자면 공급가를 그 값으로 고정하고(price_center_overridden=true),
+ * null 이면 "자동 계산으로 되돌리기" — price_center_overridden 을 false로
+ * 풀어 다음 동기화 때 샵가 기준으로 다시 자동 계산되게 한다(이번 호출에서는
+ * price_center 자체를 건드리지 않으며, 다음 동기화가 채워줄 때까지 기존
+ * 값이 화면에 남아있을 수 있다).
+ */
+export async function updateEquipmentPriceCenter(
+  id: string,
+  value: number | null
+): Promise<void> {
+  if (isMockMode()) {
+    const row = mockStore.equipment.find((e) => e.id === id);
+    if (!row) {
+      const err = new Error("장비를 찾을 수 없습니다.") as Error & { code?: string };
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+    if (value == null) {
+      row.price_center_overridden = false;
+    } else {
+      row.price_center = sanitizePriceRetail(value);
+      row.price_center_overridden = true;
+    }
+    row.updated_at = new Date().toISOString();
+    return;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const payload =
+    value == null
+      ? { price_center_overridden: false }
+      : { price_center: sanitizePriceRetail(value), price_center_overridden: true };
+  const { error, count } = await supabase
+    .from("equipment")
+    .update(payload, { count: "exact" })
+    .eq("id", id);
+  if (error) throw error;
+  if ((count ?? 0) === 0) {
+    const err = new Error("장비를 찾을 수 없습니다.") as Error & { code?: string };
+    err.code = "NOT_FOUND";
+    throw err;
+  }
 }
 
 // ── 가격 변동 검토: "현재가 유지"(확인 완료, 가격은 그대로) ───────────────────────
@@ -782,7 +873,7 @@ export async function markOptionsChecked(
 
 export async function upsertEquipmentMultiBrand(
   catalogYear: number,
-  rawItems: (ParsedEquipmentItem & { brand: string })[]
+  rawItems: (ParsedEquipmentItem & { brand: string; price_instructor: number | null })[]
 ): Promise<UpsertBulkResult> {
   if (rawItems.length === 0) {
     return { insertedCount: 0, updatedCount: 0, protectedCount: 0, failedCount: 0, items: [] };
@@ -832,13 +923,27 @@ export async function upsertEquipmentMultiBrand(
           newPrice: item.price_retail,
         });
       } else if (idx >= 0) {
+        const existing = mockStore.equipment[idx];
+        // 샵가는 로그인 성공한 조각에서만 채워진다(null이면 이번 동기화에서
+        // 수집 안 됨 — 기존 값을 그대로 둔다). 공급가는 관리자가 직접
+        // 고정(price_center_overridden)하지 않았을 때만 샵가 기준으로
+        // 재계산한다.
+        const priceInstructor = item.price_instructor ?? existing.price_instructor ?? null;
+        const priceCenter =
+          existing.price_center_overridden
+            ? existing.price_center
+            : item.price_instructor != null
+              ? computePriceCenter(item.price_instructor)
+              : existing.price_center ?? null;
         mockStore.equipment[idx] = {
-          ...mockStore.equipment[idx],
+          ...existing,
           category: item.category,
           price_retail: item.price_retail,
+          price_instructor: priceInstructor,
+          price_center: priceCenter,
           colors: item.colors,
           sizes: item.sizes,
-          image_url: item.image_url ?? mockStore.equipment[idx].image_url ?? null,
+          image_url: item.image_url ?? existing.image_url ?? null,
           // 이번 동기화에서 다시 발견됐으니 품절 상태였다면 즉시 해제한다.
           is_sold_out: false,
           updated_at: now,
@@ -852,6 +957,10 @@ export async function upsertEquipmentMultiBrand(
           category: item.category,
           name: item.name,
           price_retail: item.price_retail,
+          price_instructor: item.price_instructor ?? null,
+          price_center: item.price_instructor != null ? computePriceCenter(item.price_instructor) : null,
+          price_center_overridden: false,
+          price_cost: null,
           colors: item.colors,
           sizes: item.sizes,
           image_url: item.image_url ?? null,
@@ -883,12 +992,17 @@ export async function upsertEquipmentMultiBrand(
       price_retail: number;
       image_url: string | null;
       pending_review_price: number | null;
+      price_instructor: number | null;
+      price_center: number | null;
+      price_center_overridden: boolean;
     }
   >;
   try {
     const { data, error } = await supabase
       .from("equipment")
-      .select("id, brand, name, is_custom, price_retail, image_url, pending_review_price")
+      .select(
+        "id, brand, name, is_custom, price_retail, image_url, pending_review_price, price_instructor, price_center, price_center_overridden"
+      )
       .eq("catalog_year", catalogYear)
       .in("brand", distinctBrands);
     if (error) throw error;
@@ -902,6 +1016,9 @@ export async function upsertEquipmentMultiBrand(
           image_url: (r.image_url as string | null) ?? null,
           pending_review_price:
             r.pending_review_price == null ? null : Number(r.pending_review_price),
+          price_instructor: r.price_instructor == null ? null : Number(r.price_instructor),
+          price_center: r.price_center == null ? null : Number(r.price_center),
+          price_center_overridden: Boolean(r.price_center_overridden),
         },
       ])
     );
@@ -916,20 +1033,37 @@ export async function upsertEquipmentMultiBrand(
     (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom !== true
   );
 
-  const rows = itemsToUpsert.map((item) => ({
-    brand: item.brand,
-    catalog_year: catalogYear,
-    category: item.category,
-    name: item.name,
-    price_retail: item.price_retail,
-    colors: item.colors,
-    sizes: item.sizes,
-    image_url: item.image_url ?? null,
-    // 이번 동기화에서 다시 발견된 품목이니 품절 상태였다면 즉시 해제한다
-    // (reconcileSoldOutStatus 는 "더 이상 안 보이는" 쪽만 처리하므로, 다시
-    // 보이는 쪽은 여기서 바로 풀어줘야 한다).
-    is_sold_out: false,
-  }));
+  const rows = itemsToUpsert.map((item) => {
+    const existing = existingByKey.get(keyOf(item.brand, item.name));
+    // 샵가는 로그인 성공한 조각에서만 채워진다(null이면 이번 동기화에서
+    // 수집 안 됨 — 기존 값을 그대로 보존). 공급가는 관리자가
+    // price_center_overridden 으로 직접 고정하지 않았을 때만 샵가 기준으로
+    // 재계산한다 — 두 컬럼 다 payload 에 명시적으로 넣어야(onConflict
+    // merge-duplicates는 포함된 컬럼만 덮어씀) 기존 값이 안 날아간다.
+    const priceInstructor = item.price_instructor ?? existing?.price_instructor ?? null;
+    const priceCenter = existing?.price_center_overridden
+      ? existing.price_center
+      : item.price_instructor != null
+        ? computePriceCenter(item.price_instructor)
+        : (existing?.price_center ?? null);
+
+    return {
+      brand: item.brand,
+      catalog_year: catalogYear,
+      category: item.category,
+      name: item.name,
+      price_retail: item.price_retail,
+      price_instructor: priceInstructor,
+      price_center: priceCenter,
+      colors: item.colors,
+      sizes: item.sizes,
+      image_url: item.image_url ?? null,
+      // 이번 동기화에서 다시 발견된 품목이니 품절 상태였다면 즉시 해제한다
+      // (reconcileSoldOutStatus 는 "더 이상 안 보이는" 쪽만 처리하므로, 다시
+      // 보이는 쪽은 여기서 바로 풀어줘야 한다).
+      is_sold_out: false,
+    };
+  });
 
   try {
     if (rows.length > 0) {

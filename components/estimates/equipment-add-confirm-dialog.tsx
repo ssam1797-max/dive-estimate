@@ -67,7 +67,8 @@ export function EquipmentAddConfirmDialog({
     item.brand,
     priceTier,
     discountPolicies,
-    item.override_discount_rate
+    item.override_discount_rate,
+    { instructor: item.price_instructor, center: item.price_center, cost: item.price_cost }
   );
   const discountRate = calculateDiscountRate(item.price_retail, unitPrice);
 

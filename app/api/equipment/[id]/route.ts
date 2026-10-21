@@ -57,8 +57,17 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
-    const { brand, category, name, price_retail, colors, sizes, catalog_year, override_discount_rate } =
-      parsed.data;
+    const {
+      brand,
+      category,
+      name,
+      price_retail,
+      colors,
+      sizes,
+      catalog_year,
+      override_discount_rate,
+      price_cost,
+    } = parsed.data;
 
     try {
       await updateEquipment(id, {
@@ -70,6 +79,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         sizes,
         catalog_year: catalog_year ?? null,
         override_discount_rate: override_discount_rate ?? null,
+        price_cost: price_cost ?? null,
       });
       return NextResponse.json({ ok: true });
     } catch (error) {

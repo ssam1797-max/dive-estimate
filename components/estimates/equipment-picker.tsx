@@ -146,7 +146,12 @@ export function EquipmentPicker({
       selectedEquipment.brand,
       priceTier,
       discountPolicies,
-      selectedEquipment.override_discount_rate
+      selectedEquipment.override_discount_rate,
+      {
+        instructor: selectedEquipment.price_instructor,
+        center: selectedEquipment.price_center,
+        cost: selectedEquipment.price_cost,
+      }
     );
   }, [selectedEquipment, priceTier, discountPolicies]);
 
@@ -202,7 +207,12 @@ export function EquipmentPicker({
       equipment.brand,
       priceTier,
       discountPolicies,
-      equipment.override_discount_rate
+      equipment.override_discount_rate,
+      {
+        instructor: equipment.price_instructor,
+        center: equipment.price_center,
+        cost: equipment.price_cost,
+      }
     );
 
     onAdd({
@@ -218,6 +228,9 @@ export function EquipmentPicker({
       unitPrice,
       itemRemarks: opts.itemRemarks,
       overrideDiscountRate: equipment.override_discount_rate,
+      priceInstructor: equipment.price_instructor,
+      priceCenter: equipment.price_center,
+      priceCost: equipment.price_cost,
     });
 
     // 최근 사용 기록 갱신 — 구독 중인 useSyncExternalStore 가 자동으로

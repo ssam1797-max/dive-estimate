@@ -6,6 +6,8 @@ import type { PongdangCategoryCode } from "@/lib/equipment/pongdangCategories";
 
 const BASE_URL = "https://pongdang.com";
 const LIST_PATH = "/goods/search_list";
+const LOGIN_PAGE_PATH = "/member/login";
+const LOGIN_PROCESS_PATH = "/login_process/login";
 const REFERER_BY_CATEGORY: Record<string, string> = {
   c0002: `${BASE_URL}/goods/catalog?code=0002`,
   c0003: `${BASE_URL}/goods/catalog?code=0003`,
@@ -157,6 +159,10 @@ interface RawPongdangItem {
 
 export interface PongdangEquipmentItem extends ParsedEquipmentItem {
   brand: string;
+  /** 퐁당닷컴 샵 계정 로그인 상태로 수집했을 때만 채워지는 실제 샵가(INSTRUCTOR 등급).
+   *  로그인에 실패/미설정이면 이번 동기화에서는 null(기존에 저장된 값은 보존됨 —
+   *  equipment-repo.ts upsertEquipmentMultiBrand 가 null이면 덮어쓰지 않음). */
+  price_instructor: number | null;
 }
 
 export interface PongdangCrawlResult {
@@ -170,7 +176,94 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchSearchListPage(pageNo: number, categoryCode: string): Promise<string> {
+/** Set-Cookie 응답 헤더 배열을 기존 쿠키 문자열에 병합한다(같은 이름은 최신 값으로 덮어씀). */
+function mergeSetCookie(existingCookie: string, setCookieHeaders: string[] | undefined): string {
+  const jar = new Map<string, string>(
+    existingCookie
+      .split("; ")
+      .filter(Boolean)
+      .map((kv) => {
+        const idx = kv.indexOf("=");
+        return [kv.slice(0, idx), kv.slice(idx + 1)] as [string, string];
+      })
+  );
+  for (const raw of setCookieHeaders ?? []) {
+    const kv = raw.split(";")[0];
+    const idx = kv.indexOf("=");
+    if (idx === -1) continue;
+    jar.set(kv.slice(0, idx), kv.slice(idx + 1));
+  }
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+/**
+ * 퐁당닷컴 샵(도매) 계정으로 서버가 직접 로그인해 세션 쿠키를 받아온다.
+ * 매 동기화 조각(chunk) 호출마다 새로 로그인한다(쿠키를 수동 복사/보관하지
+ * 않음 — 세션 만료 걱정이 없다). 실측 기준 로그인 자체는 1초 미만이라
+ * 조각 1번의 시간 예산(Netlify 비배경 함수 ~30초 한도)에 미치는 영향은
+ * 무시할 수 있다.
+ *
+ * PONGDANG_SHOP_USERID/PASSWORD 가 설정되지 않았거나 로그인에 실패하면
+ * null을 반환한다 — 호출부는 이 경우 비로그인(익명) 크롤링으로 조용히
+ * 폴백해, 샵가 수집만 건너뛰고 색상/사이즈/소비자가 동기화는 평소대로
+ * 계속되게 한다(resolveRegularPrice 는 로그인 여부와 무관하게 동일한
+ * consumer_price 를 뽑으므로 안전).
+ */
+async function fetchShopSessionCookie(): Promise<string | null> {
+  const userid = process.env.PONGDANG_SHOP_USERID;
+  const password = process.env.PONGDANG_SHOP_PASSWORD;
+  if (!userid || !password) return null;
+
+  try {
+    const loginPageRes = await axios.get<string>(`${BASE_URL}${LOGIN_PAGE_PATH}`, {
+      headers: { "User-Agent": USER_AGENT },
+      timeout: REQUEST_TIMEOUT_MS,
+      responseType: "text",
+      validateStatus: () => true,
+    });
+    let cookie = mergeSetCookie("", loginPageRes.headers["set-cookie"]);
+
+    const orderAuth = loginPageRes.data.match(/name=["']order_auth["']\s+value=["']([^"']*)["']/)?.[1] ?? "0";
+    const returnUrl = loginPageRes.data.match(/name=["']return_url["']\s+value=["']([^"']*)["']/)?.[1] ?? "";
+
+    const params = new URLSearchParams();
+    params.set("return_url", returnUrl);
+    params.set("order_auth", orderAuth);
+    params.set("userid", userid);
+    params.set("password", password);
+
+    const loginRes = await axios.post<string>(`${BASE_URL}${LOGIN_PROCESS_PATH}`, params.toString(), {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: cookie,
+        Referer: `${BASE_URL}${LOGIN_PAGE_PATH}`,
+      },
+      timeout: REQUEST_TIMEOUT_MS,
+      maxRedirects: 0,
+      responseType: "text",
+      validateStatus: () => true,
+    });
+    cookie = mergeSetCookie(cookie, loginRes.headers["set-cookie"]);
+
+    // 로그인 실패 시 에러 alert 스크립트를 돌려준다(HTTP 상태는 200). 성공
+    // 시에는 location.replace('/') 류의 리다이렉트 스크립트가 온다 — 정확한
+    // 성공 문구에 의존하지 않고, 실패를 나타내는 openDialogAlert 호출이
+    // 없으면 성공으로 간주한다.
+    if (typeof loginRes.data === "string" && loginRes.data.includes("openDialogAlert")) {
+      return null;
+    }
+    return cookie;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchSearchListPage(
+  pageNo: number,
+  categoryCode: string,
+  shopCookie: string | null
+): Promise<string> {
   const response = await axios.get<string>(`${BASE_URL}${LIST_PATH}`, {
     params: {
       category: categoryCode,
@@ -183,6 +276,7 @@ async function fetchSearchListPage(pageNo: number, categoryCode: string): Promis
       "X-Requested-With": "XMLHttpRequest",
       Referer: REFERER_BY_CATEGORY[categoryCode] ?? REFERER_BY_CATEGORY["c0002"],
       "Accept-Language": "ko-KR,ko;q=0.9",
+      ...(shopCookie ? { Cookie: shopCookie } : {}),
     },
     timeout: REQUEST_TIMEOUT_MS,
     responseType: "text",
@@ -503,6 +597,33 @@ function resolveRegularPrice(
 }
 
 /**
+ * 샵 계정 로그인 상태로 받은 목록 페이지에서 실제 샵가(INSTRUCTOR 등급)를
+ * 뽑는다. 실측으로 확인한 규칙(비로그인/로그인 응답을 직접 대조):
+ *   - `.consumer_price`(취소선 정상가)는 로그인 여부와 무관하게 항상 동일
+ *     (= 진짜 공개 소비자가). resolveRegularPrice가 이미 이 값을 price_retail로 쓴다.
+ *   - `.sale_price`(노출가)만 로그인 시 회원 할인가로 바뀐다 — 즉 로그인
+ *     상태의 sale_price가 곧 샵가다.
+ *   - consumer_price 태그 자체가 없는(공개 할인이 전혀 없는) 상품은 샵
+ *     할인도 없다는 뜻이라, 소비자가와 동일한 값을 그대로 쓴다.
+ * 비로그인으로 크롤링했을 때(shopCookie 없음)는 이 함수를 아예 호출하지
+ * 않고 null을 유지해, 기존에 저장된 price_instructor 값을 건드리지 않는다
+ * (equipment-repo.ts upsertEquipmentMultiBrand 참고).
+ */
+function resolveInstructorPrice(
+  domPrice: DomPriceEntry | undefined,
+  retailPrice: number
+): number | null {
+  if (!domPrice) return null;
+  if (domPrice.consumerPrice !== null && domPrice.consumerPrice > 0) {
+    return domPrice.salePrice !== null && domPrice.salePrice > 0 ? domPrice.salePrice : null;
+  }
+  if (domPrice.salePrice !== null && domPrice.salePrice > 0) {
+    return retailPrice;
+  }
+  return null;
+}
+
+/**
  * 수집한 원본 행들을 [브랜드, 카테고리, 모델명, 정상 소비자가격(할인 전)]
  * 단위 장비 목록으로 합친다(크롤링한 페이지 범위와 무관한 순수 변환 로직).
  *
@@ -525,7 +646,8 @@ function resolveRegularPrice(
  */
 function mergeRawItemsIntoEquipment(
   rawItems: RawPongdangItem[],
-  domPriceByGoodsId: Map<string, DomPriceEntry>
+  domPriceByGoodsId: Map<string, DomPriceEntry>,
+  loggedIn: boolean
 ): { items: PongdangEquipmentItem[]; warnings: string[]; goodsIdByKey: Map<string, string> } {
   const warnings: string[] = [];
 
@@ -575,11 +697,15 @@ function mergeRawItemsIntoEquipment(
     const existing = merged.get(key);
     const { colors, sizes, unclassifiedCount } = parseVariantSegments(raw.item_variant ?? "");
     unclassifiedVariantSegments += unclassifiedCount;
+    const instructorPrice = loggedIn ? resolveInstructorPrice(domPrice, price) : null;
 
     if (existing) {
-      // 더 싼 옵션(변형)이 나오면 대표 가격을 갱신한다.
+      // 더 싼 옵션(변형)이 나오면 대표 가격을 갱신한다 — 샵가도 같은 행의
+      // 값으로 함께 갱신해(소비자가와 짝이 어긋나지 않게) price_retail과
+      // 같은 조건에서만 바꾼다.
       if (price < existing.price_retail) {
         existing.price_retail = price;
+        existing.price_instructor = instructorPrice;
       }
       // 썸네일은 옵션(색상/사이즈)별로 달라지지 않는 상품 대표 이미지라,
       // 처음 찾은 값을 그대로 유지한다(없었다가 나중 행에서 발견되면 채움).
@@ -596,6 +722,7 @@ function mergeRawItemsIntoEquipment(
       category: mapCategory(raw.item_category2 ?? ""),
       name,
       price_retail: price,
+      price_instructor: instructorPrice,
       colors: [],
       sizes: [],
       image_url: domPrice?.imageUrl ?? null,
@@ -629,6 +756,7 @@ function mergeRawItemsIntoEquipment(
     category: acc.category,
     name: acc.name,
     price_retail: acc.price_retail,
+    price_instructor: acc.price_instructor,
     colors: Array.from(acc.colorSet).sort((a, b) => a.localeCompare(b, "ko")),
     sizes: Array.from(acc.sizeSet).sort((a, b) => a.localeCompare(b, "ko")),
     image_url: acc.image_url,
@@ -933,12 +1061,25 @@ export async function crawlPongdangCategoryChunk(
   let pagesFetched = 0;
   let nextPage: number | null = null;
 
+  // 조각(chunk)마다 새로 로그인한다 — 쿠키를 캐시/보관하지 않아 만료 걱정이
+  // 없고, 실측 기준 로그인 자체는 1초 미만이라 조각 1번의 시간 예산에
+  // 미치는 영향이 무시할 수준이다(fetchShopSessionCookie 주석 참고).
+  // 로그인 실패/미설정이면 비로그인으로 조용히 폴백한다 — 색상/사이즈/
+  // 소비자가 동기화는 평소대로 계속되고, 샵가(price_instructor)만
+  // 이번 조각에서 수집되지 않는다(기존 저장값은 유지됨).
+  const shopCookie = await fetchShopSessionCookie();
+  if (!shopCookie) {
+    warnings.push(
+      "퐁당닷컴 샵 계정 로그인에 실패해 이번 조각은 샵가(공급가) 수집 없이 진행했습니다. 기존 샵가 값은 그대로 유지됩니다."
+    );
+  }
+
   const lastPageInChunk = Math.min(startPage + pagesPerChunk - 1, MAX_PAGES);
 
   for (let page = startPage; page <= lastPageInChunk; page += 1) {
     let html: string;
     try {
-      html = await fetchSearchListPage(page, categoryCode);
+      html = await fetchSearchListPage(page, categoryCode, shopCookie);
     } catch (error) {
       const message = error instanceof Error ? error.message : "알 수 없는 오류";
       warnings.push(`[${categoryCode}] ${page}페이지 요청 실패: ${message}`);
@@ -975,7 +1116,8 @@ export async function crawlPongdangCategoryChunk(
 
   const { items, warnings: mergeWarnings, goodsIdByKey } = mergeRawItemsIntoEquipment(
     rawItems,
-    domPriceByGoodsId
+    domPriceByGoodsId,
+    shopCookie !== null
   );
   const distinctBrandCount = new Set(items.map((item) => item.brand)).size;
 

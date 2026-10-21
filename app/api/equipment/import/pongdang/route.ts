@@ -86,15 +86,18 @@ export async function POST(request: Request) {
     // Gateway Timeout 의 주된 원인이었다(위 PAGES_PER_CHUNK 주석 참고).
     const result = await upsertEquipmentMultiBrand(
       catalogYear,
-      chunk.items.map(({ brand, category, name, price_retail, colors, sizes, image_url }) => ({
-        brand,
-        category,
-        name,
-        price_retail,
-        colors,
-        sizes,
-        image_url,
-      }))
+      chunk.items.map(
+        ({ brand, category, name, price_retail, price_instructor, colors, sizes, image_url }) => ({
+          brand,
+          category,
+          name,
+          price_retail,
+          price_instructor,
+          colors,
+          sizes,
+          image_url,
+        })
+      )
     );
     // 상세페이지 응답을 실제로 받아본 품목만(결과적으로 옵션이 그대로였어도)
     // option_checked_at 을 갱신해 다음 조각/날짜의 우선순위에서 뒤로 밀리게

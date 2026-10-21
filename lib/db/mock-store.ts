@@ -36,6 +36,14 @@ export interface MockEquipment {
    *  null/undefined면 한 번도 확인된 적 없음 — 동기화 시 이 값이 가장
    *  오래된 품목부터 우선 보완 대상으로 고른다(selectEnrichmentCandidates). */
   option_checked_at?: string | null;
+  /** 퐁당닷컴 샵 계정 로그인으로 수집한 실제 샵가(INSTRUCTOR 등급). */
+  price_instructor?: number | null;
+  /** 공급가(CENTER 등급). price_center_overridden=false면 자동 계산값. */
+  price_center?: number | null;
+  /** 공급가를 관리자가 직접 고정했으면 true — 동기화가 재계산하지 않는다. */
+  price_center_overridden?: boolean;
+  /** 원가(COST 등급). 관리자가 직접 입력, 동기화가 절대 안 건드림. */
+  price_cost?: number | null;
   created_at: string;
   updated_at: string;
 }

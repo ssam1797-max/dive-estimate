@@ -120,7 +120,12 @@ export function EstimateItemsTable({
                     item.brand,
                     "INSTRUCTOR",
                     discountPolicies,
-                    item.overrideDiscountRate
+                    item.overrideDiscountRate,
+                    {
+                      instructor: item.priceInstructor,
+                      center: item.priceCenter,
+                      cost: item.priceCost,
+                    }
                   );
                   return (
                   <tr key={item.clientId} className="border-b last:border-0">

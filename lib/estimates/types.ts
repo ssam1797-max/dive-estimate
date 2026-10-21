@@ -32,6 +32,17 @@ export interface EquipmentCatalogItem {
    *  searchEquipment 기본 호출)는 이런 품목을 아예 제외하므로, 이 필드는
    *  관리자 화면처럼 명시적으로 includeSoldOut 을 켠 조회에서만 실제로 채워진다. */
   is_sold_out?: boolean;
+  /** 퐁당닷컴 샵 계정 로그인으로 수집한 실제 샵가(INSTRUCTOR 등급). 아직
+   *  수집 안 됐으면 null — 이 경우 브랜드 할인율 기반 추정치로 폴백한다
+   *  (calculateEffectiveUnitPrice 참고). */
+  price_instructor: number | null;
+  /** 공급가(CENTER 등급). price_center_overridden=false면 price_instructor*0.98
+   *  자동 계산값, true면 관리자가 "장비 목록" 화면에서 직접 고정한 값. */
+  price_center: number | null;
+  /** 공급가를 관리자가 직접 고정했으면 true — 다음 동기화가 재계산하지 않는다. */
+  price_center_overridden: boolean;
+  /** 원가(COST 등급). 관리자가 직접 입력하는 값, 동기화가 절대 안 건드림. */
+  price_cost: number | null;
 }
 
 /** 공급자/수신자 드롭다운에 쓰는 프로필 옵션 (엑셀 미리보기/다운로드에 필요한 주소·도장 이미지 포함) */
@@ -72,6 +83,17 @@ export interface EstimateItemDraft {
    * 브랜드 기본 할인율을 쓴다.
    */
   overrideDiscountRate: number | null;
+  /**
+   * 장바구니에 담을 때(equipment-picker.tsx addItemToCart) equipment 마스터에서
+   * 함께 떠온 실제 수집 등급별 단가 스냅샷. calculateEffectiveUnitPrice의
+   * realPrices 인자로 그대로 전달되어, 등급 탭 전환 미리보기와 저장 스냅샷
+   * (estimate-builder.tsx toItemPayloads) 양쪽에서 브랜드 할인율 추정 대신
+   * 이 실제값을 우선 사용한다. 수동 입력 품목(연결된 equipment 없음)은 항상
+   * undefined — 기존처럼 브랜드 할인율로만 계산된다.
+   */
+  priceInstructor?: number | null;
+  priceCenter?: number | null;
+  priceCost?: number | null;
 }
 
 /** 저장된 템플릿 요약 (불러오기 목록용) */
@@ -137,6 +159,11 @@ export interface ExportEstimateItemPayload {
   unit?: string;
   /** 품목별 예외 할인율(%). 있으면 서버 재계산 시 브랜드 할인율보다 우선한다. */
   overrideDiscountRate?: number | null;
+  /** equipment 마스터에서 수집한 실제 등급별 단가. 있으면 서버가 브랜드
+   *  할인율 추정 대신 이 값을 그대로 쓴다(calculateEffectiveUnitPrice 참고). */
+  priceInstructor?: number | null;
+  priceCenter?: number | null;
+  priceCost?: number | null;
 }
 
 /** 엑셀 다운로드(POST /api/estimates/export) 요청 바디 */

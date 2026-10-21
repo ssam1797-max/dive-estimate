@@ -133,7 +133,8 @@ function reducer(
           item.brand,
           action.tier,
           action.discountPolicies,
-          item.overrideDiscountRate
+          item.overrideDiscountRate,
+          { instructor: item.priceInstructor, center: item.priceCenter, cost: item.priceCost }
         ),
       }));
       return { ...state, priceTier: action.tier, items: recalculated };

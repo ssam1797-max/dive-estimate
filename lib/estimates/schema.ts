@@ -92,6 +92,11 @@ export const exportEstimateItemSchema = z.object({
   unit: z.string().trim().optional(),
   /** 품목별 예외 할인율(%). 있으면 서버 재계산 시 브랜드 할인율보다 우선한다. */
   overrideDiscountRate: z.number().min(0).max(100).nullable().optional(),
+  /** equipment 마스터에서 수집한 실제 등급별 단가. 있으면 브랜드 할인율
+   *  추정 대신 이 값을 그대로 쓴다(calculateEffectiveUnitPrice 참고). */
+  priceInstructor: z.number().nullable().optional(),
+  priceCenter: z.number().nullable().optional(),
+  priceCost: z.number().nullable().optional(),
 });
 
 /** 엑셀 미리보기/다운로드(POST /api/estimates/export) 요청 검증 스키마 */
