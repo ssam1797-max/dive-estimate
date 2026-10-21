@@ -16,6 +16,8 @@ export interface PolicyRow {
   rate_instructor: number;
   rate_center: number;
   rate_cost: number;
+  /** 사용자가 이 화면에서 직접 저장했으면 true(저장 전 신규 입력 중엔 false). */
+  is_custom: boolean;
 }
 
 /** "SCUBAPRO, 스쿠버프로" 같은 콤마 구분 입력을 별칭 배열로 정규화. */
@@ -125,15 +127,24 @@ export function DiscountPolicyTable({
   // 대소문자·한/영 표기를 가리지 않고 매칭한다(matchesKoreanSearch 는 대소문자·
   // 공백 차이는 무시하지만, 한글⇄영문 자동 번역은 아니라 별칭에 등록된
   // 표기와 일치할 때만 찾아진다).
+  // 사용자가 이 화면에서 직접 저장한(is_custom) 브랜드를 위로, 나머지는 아래로 —
+  // 각 그룹 안에서는 가나다(브랜드명 locale) 순으로 정렬한다.
+  const sortedRows = React.useMemo(() => {
+    return [...rows].sort((a, b) => {
+      if (a.values.is_custom !== b.values.is_custom) return a.values.is_custom ? -1 : 1;
+      return a.values.brand.localeCompare(b.values.brand, "ko");
+    });
+  }, [rows]);
+
   const filteredRows = React.useMemo(() => {
     const query = searchQuery.trim();
-    if (!query) return rows;
-    return rows.filter(
+    if (!query) return sortedRows;
+    return sortedRows.filter(
       (row) =>
         matchesKoreanSearch(row.values.brand, query) ||
         row.values.aliases.some((alias) => matchesKoreanSearch(alias, query))
     );
-  }, [rows, searchQuery]);
+  }, [sortedRows, searchQuery]);
 
   // 검색창은 기본적으로 "이미 할인율이 등록된 브랜드"만 찾는다(filteredRows).
   // 장비 마스터에는 있지만 아직 할인율을 한 번도 설정한 적 없는 브랜드는
@@ -196,8 +207,13 @@ export function DiscountPolicyTable({
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error ?? "저장 실패");
       }
+      const saved = (await res.json()) as PolicyRow;
       setRows((prev) =>
-        prev.map((r) => (r.values.brand === brand ? { ...r, status: "saved", errorMsg: null } : r))
+        prev.map((r) =>
+          r.values.brand === brand
+            ? { ...r, values: { ...r.values, is_custom: saved.is_custom }, status: "saved", errorMsg: null }
+            : r
+        )
       );
     } catch (error) {
       setRows((prev) =>
@@ -353,7 +369,14 @@ export function DiscountPolicyTable({
       {filteredRows.map((row) => (
         <div key={row.values.brand} className="flex flex-col gap-3 rounded-lg border p-4">
           <div className="flex items-center justify-between">
-            <span className="font-medium">{row.values.brand}</span>
+            <span className="flex items-center gap-2 font-medium">
+              {row.values.brand}
+              {row.values.is_custom && (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-normal text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                  수동 설정
+                </span>
+              )}
+            </span>
             <div className="flex items-center gap-2">
               {row.status === "saved" && (
                 <span className="flex items-center gap-1 text-xs text-emerald-600">

@@ -28,6 +28,7 @@ export default async function DiscountPoliciesPage() {
         rate_instructor: p.rate_instructor,
         rate_center: p.rate_center,
         rate_cost: p.rate_cost,
+        is_custom: p.is_custom,
       }));
       allBrands = [...new Set([...eqBrands, ...rawPolicies.map((p) => p.brand)])].sort();
     } catch {
