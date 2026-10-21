@@ -1186,10 +1186,6 @@ export async function upsertEquipmentMultiBrand(
 export interface ReconcileSoldOutResult {
   soldOutCount: number;
   restoredCount: number;
-  /** 임시 디버그 필드(원인 조사용) — 원인 확인 후 제거 예정. */
-  debugTotalRows?: number;
-  debugSeenSize?: number;
-  debugSampleUnmatched?: { brand: string; name: string; isSoldOut: boolean }[];
 }
 
 export async function reconcileSoldOutStatus(
@@ -1242,18 +1238,10 @@ export async function reconcileSoldOutStatus(
 
   const toSoldOut: string[] = [];
   const toRestore: string[] = [];
-  const debugSampleUnmatched: { brand: string; name: string; isSoldOut: boolean }[] = [];
   for (const row of data ?? []) {
     const key = `${row.brand as string}\u0000${row.name as string}`;
     const isSeen = seen.has(key);
     const isSoldOut = Boolean(row.is_sold_out);
-    if ((row.name as string).includes("땡처리") && debugSampleUnmatched.length < 10) {
-      debugSampleUnmatched.push({
-        brand: `${row.brand as string}|key=${key}|isSeen=${isSeen}`,
-        name: row.name as string,
-        isSoldOut,
-      });
-    }
     if (!isSeen && !isSoldOut) toSoldOut.push(row.id as string);
     else if (isSeen && isSoldOut) toRestore.push(row.id as string);
   }
@@ -1276,13 +1264,7 @@ export async function reconcileSoldOutStatus(
     if (restoreError) throw restoreError;
   }
 
-  return {
-    soldOutCount: toSoldOut.length,
-    restoredCount: toRestore.length,
-    debugTotalRows: data.length,
-    debugSeenSize: seen.size,
-    debugSampleUnmatched,
-  };
+  return { soldOutCount: toSoldOut.length, restoredCount: toRestore.length };
 }
 
 // ── 동기화 실행 이력(sync_runs) ──────────────────────────────────────────────
