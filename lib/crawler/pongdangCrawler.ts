@@ -209,6 +209,15 @@ function mergeSetCookie(existingCookie: string, setCookieHeaders: string[] | und
  * 계속되게 한다(resolveRegularPrice 는 로그인 여부와 무관하게 동일한
  * consumer_price 를 뽑으므로 안전).
  */
+/**
+ * 로그인 전용 타임아웃. 조각 1번의 실질적 30초 한도(위 MAX_DETAIL_FETCHES_PER_CHUNK
+ * 주석 참고) 안에서 로그인 GET+POST 두 요청이 차지할 수 있는 몫을 좁게
+ * 제한한다 — REQUEST_TIMEOUT_MS(15초)를 그대로 쓰면 둘 다 타임아웃될 경우
+ * 그것만으로 30초를 다 써버려 뒤에 오는 목록 페이지 수집까지 끊길 위험이
+ * 있다(운영 환경에서 실측: 조각 1번이 30~31초까지 늘어나는 것을 확인).
+ */
+const LOGIN_TIMEOUT_MS = 6000;
+
 async function fetchShopSessionCookie(): Promise<string | null> {
   const userid = process.env.PONGDANG_SHOP_USERID;
   const password = process.env.PONGDANG_SHOP_PASSWORD;
@@ -217,10 +226,16 @@ async function fetchShopSessionCookie(): Promise<string | null> {
   try {
     const loginPageRes = await axios.get<string>(`${BASE_URL}${LOGIN_PAGE_PATH}`, {
       headers: { "User-Agent": USER_AGENT },
-      timeout: REQUEST_TIMEOUT_MS,
+      timeout: LOGIN_TIMEOUT_MS,
       responseType: "text",
       validateStatus: () => true,
     });
+    if (loginPageRes.status !== 200) {
+      console.error(
+        `[fetchShopSessionCookie] 로그인 페이지 요청 실패: HTTP ${loginPageRes.status}`
+      );
+      return null;
+    }
     let cookie = mergeSetCookie("", loginPageRes.headers["set-cookie"]);
 
     const orderAuth = loginPageRes.data.match(/name=["']order_auth["']\s+value=["']([^"']*)["']/)?.[1] ?? "0";
@@ -239,7 +254,7 @@ async function fetchShopSessionCookie(): Promise<string | null> {
         Cookie: cookie,
         Referer: `${BASE_URL}${LOGIN_PAGE_PATH}`,
       },
-      timeout: REQUEST_TIMEOUT_MS,
+      timeout: LOGIN_TIMEOUT_MS,
       maxRedirects: 0,
       responseType: "text",
       validateStatus: () => true,
@@ -251,10 +266,19 @@ async function fetchShopSessionCookie(): Promise<string | null> {
     // 성공 문구에 의존하지 않고, 실패를 나타내는 openDialogAlert 호출이
     // 없으면 성공으로 간주한다.
     if (typeof loginRes.data === "string" && loginRes.data.includes("openDialogAlert")) {
+      const alertMatch = loginRes.data.match(/openDialogAlert\('([^']*)'/);
+      console.error(
+        `[fetchShopSessionCookie] 로그인 거부됨(status ${loginRes.status}): ${alertMatch?.[1] ?? "(메시지 없음)"}`
+      );
       return null;
     }
     return cookie;
-  } catch {
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? `${error.name}: ${error.message}${"code" in error ? ` (code=${(error as { code?: string }).code})` : ""}`
+        : String(error);
+    console.error(`[fetchShopSessionCookie] 로그인 요청 중 예외: ${detail}`);
     return null;
   }
 }
