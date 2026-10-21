@@ -32,12 +32,18 @@ function sanitizePriceRetail(value: number | string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/** 공급가(CENTER 등급) 자동 계산 비율. 샵가(price_instructor)에서 2% 추가 할인. */
-const PRICE_CENTER_DISCOUNT_RATE = 0.02;
+/**
+ * 공급가(CENTER 등급) 자동 계산 비율 — 소비자가 기준 할인율에 2%p를
+ * 추가로 얹는다("샵가에서 2% 더 할인"이 아니라 "소비자가 대비 할인율 자체를
+ * 2%p 더 키운다"는 뜻). 예: 소비자가 100원, 샵가가 20% 할인된 80원이면
+ * 공급가는 22% 할인된 78원 — 샵가(80)에 0.98을 곱한 78.4원이 아니다.
+ */
+const PRICE_CENTER_EXTRA_DISCOUNT_RATE = 0.02;
 
-/** 샵가로부터 공급가를 자동 계산한다(원 단위 절사). */
-function computePriceCenter(priceInstructor: number): number {
-  return Math.floor(priceInstructor * (1 - PRICE_CENTER_DISCOUNT_RATE));
+/** 소비자가·샵가로부터 공급가를 자동 계산한다(원 단위 절사).
+ *  공급가 = 샵가 - 소비자가 × 2%p (= 소비자가 × (할인율 + 2%p)). */
+function computePriceCenter(priceRetail: number, priceInstructor: number): number {
+  return Math.floor(priceInstructor - priceRetail * PRICE_CENTER_EXTRA_DISCOUNT_RATE);
 }
 
 // ── 브랜드 목록 ────────────────────────────────────────────────────────────────
@@ -933,7 +939,7 @@ export async function upsertEquipmentMultiBrand(
           existing.price_center_overridden
             ? existing.price_center
             : item.price_instructor != null
-              ? computePriceCenter(item.price_instructor)
+              ? computePriceCenter(item.price_retail, item.price_instructor)
               : existing.price_center ?? null;
         mockStore.equipment[idx] = {
           ...existing,
@@ -958,7 +964,7 @@ export async function upsertEquipmentMultiBrand(
           name: item.name,
           price_retail: item.price_retail,
           price_instructor: item.price_instructor ?? null,
-          price_center: item.price_instructor != null ? computePriceCenter(item.price_instructor) : null,
+          price_center: item.price_instructor != null ? computePriceCenter(item.price_retail, item.price_instructor) : null,
           price_center_overridden: false,
           price_cost: null,
           colors: item.colors,
@@ -1044,7 +1050,7 @@ export async function upsertEquipmentMultiBrand(
     const priceCenter = existing?.price_center_overridden
       ? existing.price_center
       : item.price_instructor != null
-        ? computePriceCenter(item.price_instructor)
+        ? computePriceCenter(item.price_retail, item.price_instructor)
         : (existing?.price_center ?? null);
 
     return {
