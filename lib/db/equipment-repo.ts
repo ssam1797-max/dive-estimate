@@ -1218,12 +1218,23 @@ export async function reconcileSoldOutStatus(
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
 
-  const { data, error } = await supabase
-    .from("equipment")
-    .select("id, brand, name, is_sold_out")
-    .eq("catalog_year", catalogYear)
-    .eq("is_custom", false);
-  if (error) throw error;
+  // range() 페이지네이션 없이 그냥 select 하면 Supabase 기본 상한(요청당
+  // 최대 1000행)에 걸려 나머지 품목은 조용히 빠진 채 "품절로 안 보임"으로
+  // 처리된다 — 장비가 1000건을 훌쩍 넘는 지금 규모에서는 fetchAllPages 로
+  // 전량을 가져와야 한다(다른 대형 조회들과 동일 패턴).
+  const data = await fetchAllPages<{
+    id: string;
+    brand: string;
+    name: string;
+    is_sold_out: boolean | null;
+  }>((from, to) =>
+    supabase
+      .from("equipment")
+      .select("id, brand, name, is_sold_out", { count: "exact" })
+      .eq("catalog_year", catalogYear)
+      .eq("is_custom", false)
+      .range(from, to)
+  );
 
   const toSoldOut: string[] = [];
   const toRestore: string[] = [];
