@@ -218,10 +218,22 @@ function mergeSetCookie(existingCookie: string, setCookieHeaders: string[] | und
  */
 const LOGIN_TIMEOUT_MS = 6000;
 
-async function fetchShopSessionCookie(): Promise<string | null> {
+interface ShopLoginResult {
+  cookie: string | null;
+  /** 실패 사유(성공이면 null). Netlify의 "Next.js Server Handler" 통합
+   *  함수는 console.log/error 가 대시보드 Functions 로그에 전혀 찍히지
+   *  않는 제약이 실측으로 확인돼, 호출부가 이 값을 그대로 동기화 결과
+   *  warnings 에 노출해 API 응답만으로 원인을 바로 알 수 있게 한다
+   *  (crawlPongdangCategoryChunk 참고). */
+  failReason: string | null;
+}
+
+async function fetchShopSessionCookie(): Promise<ShopLoginResult> {
   const userid = process.env.PONGDANG_SHOP_USERID;
   const password = process.env.PONGDANG_SHOP_PASSWORD;
-  if (!userid || !password) return null;
+  if (!userid || !password) {
+    return { cookie: null, failReason: "PONGDANG_SHOP_USERID 또는 PONGDANG_SHOP_PASSWORD 환경변수가 설정되지 않음" };
+  }
 
   try {
     const loginPageRes = await axios.get<string>(`${BASE_URL}${LOGIN_PAGE_PATH}`, {
@@ -231,10 +243,7 @@ async function fetchShopSessionCookie(): Promise<string | null> {
       validateStatus: () => true,
     });
     if (loginPageRes.status !== 200) {
-      console.error(
-        `[fetchShopSessionCookie] 로그인 페이지 요청 실패: HTTP ${loginPageRes.status}`
-      );
-      return null;
+      return { cookie: null, failReason: `로그인 페이지 요청 실패: HTTP ${loginPageRes.status}` };
     }
     let cookie = mergeSetCookie("", loginPageRes.headers["set-cookie"]);
 
@@ -267,19 +276,18 @@ async function fetchShopSessionCookie(): Promise<string | null> {
     // 없으면 성공으로 간주한다.
     if (typeof loginRes.data === "string" && loginRes.data.includes("openDialogAlert")) {
       const alertMatch = loginRes.data.match(/openDialogAlert\('([^']*)'/);
-      console.error(
-        `[fetchShopSessionCookie] 로그인 거부됨(status ${loginRes.status}): ${alertMatch?.[1] ?? "(메시지 없음)"}`
-      );
-      return null;
+      return {
+        cookie: null,
+        failReason: `로그인 거부됨(status ${loginRes.status}): ${alertMatch?.[1] ?? "(메시지 없음)"}`,
+      };
     }
-    return cookie;
+    return { cookie, failReason: null };
   } catch (error) {
     const detail =
       error instanceof Error
         ? `${error.name}: ${error.message}${"code" in error ? ` (code=${(error as { code?: string }).code})` : ""}`
         : String(error);
-    console.error(`[fetchShopSessionCookie] 로그인 요청 중 예외: ${detail}`);
-    return null;
+    return { cookie: null, failReason: `로그인 요청 중 예외: ${detail}` };
   }
 }
 
@@ -1091,10 +1099,10 @@ export async function crawlPongdangCategoryChunk(
   // 로그인 실패/미설정이면 비로그인으로 조용히 폴백한다 — 색상/사이즈/
   // 소비자가 동기화는 평소대로 계속되고, 샵가(price_instructor)만
   // 이번 조각에서 수집되지 않는다(기존 저장값은 유지됨).
-  const shopCookie = await fetchShopSessionCookie();
+  const { cookie: shopCookie, failReason: shopLoginFailReason } = await fetchShopSessionCookie();
   if (!shopCookie) {
     warnings.push(
-      "퐁당닷컴 샵 계정 로그인에 실패해 이번 조각은 샵가(공급가) 수집 없이 진행했습니다. 기존 샵가 값은 그대로 유지됩니다."
+      `퐁당닷컴 샵 계정 로그인에 실패해 이번 조각은 샵가(공급가) 수집 없이 진행했습니다. 기존 샵가 값은 그대로 유지됩니다. (사유: ${shopLoginFailReason})`
     );
   }
 
