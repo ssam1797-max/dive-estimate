@@ -20,6 +20,13 @@ function formatCurrency(amount: number): string {
   return `₩${Math.round(amount).toLocaleString("ko-KR")}`;
 }
 
+/** 소비자가 대비 할인율(%). 소비자가가 0이거나 가격이 없으면 표시하지 않는다. */
+function formatDiscountPercent(retail: number, price: number | null): string | null {
+  if (price == null || retail <= 0) return null;
+  const rate = (1 - price / retail) * 100;
+  return `-${rate.toFixed(1)}%`;
+}
+
 /**
  * 공급가(CENTER 등급) 인라인 입력칸. 클릭하면 바로 수정 모드로 바뀌고,
  * Enter/blur로 저장한다 — 전체 수정 다이얼로그(EquipmentEditDialog)와
@@ -112,6 +119,11 @@ function PriceCenterCell({
       }}
     >
       <span>{item.price_center != null ? formatCurrency(item.price_center) : "-"}</span>
+      {formatDiscountPercent(item.price_retail, item.price_center) && (
+        <span className="text-[10px] text-muted-foreground">
+          {formatDiscountPercent(item.price_retail, item.price_center)}
+        </span>
+      )}
       {item.price_center_overridden ? (
         <span
           role="button"
@@ -316,7 +328,18 @@ export function EquipmentListManager({
                       </td>
                       <td className="py-2 pr-2 align-top">{formatCurrency(item.price_retail)}</td>
                       <td className="py-2 pr-2 align-top text-muted-foreground">
-                        {item.price_instructor != null ? formatCurrency(item.price_instructor) : "-"}
+                        {item.price_instructor != null ? (
+                          <span className="flex flex-col gap-0.5">
+                            <span>{formatCurrency(item.price_instructor)}</span>
+                            {formatDiscountPercent(item.price_retail, item.price_instructor) && (
+                              <span className="text-[10px]">
+                                {formatDiscountPercent(item.price_retail, item.price_instructor)}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td className="py-2 pr-2 align-top">
                         <PriceCenterCell
