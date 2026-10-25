@@ -44,6 +44,8 @@ export interface BrandDiscountRates {
   rate_instructor: number;
   rate_center: number;
   rate_cost: number;
+  /** 사용자가 [브랜드 할인율 설정] 화면에서 직접 저장했으면 true. */
+  is_custom: boolean;
 }
 
 /** 브랜드명 -> 할인율 맵 */
@@ -56,7 +58,15 @@ export type DiscountPolicyMap = Record<string, BrandDiscountRates>;
  * 별칭 매핑 규칙을 쓰기 위해 순수 함수로 분리했다.
  */
 export function buildDiscountPolicyMap(
-  policies: { brand: string; aliases: string[]; rate_retail: number; rate_instructor: number; rate_center: number; rate_cost: number }[]
+  policies: {
+    brand: string;
+    aliases: string[];
+    rate_retail: number;
+    rate_instructor: number;
+    rate_center: number;
+    rate_cost: number;
+    is_custom?: boolean;
+  }[]
 ): DiscountPolicyMap {
   const map: DiscountPolicyMap = {};
   for (const p of policies) {
@@ -65,6 +75,7 @@ export function buildDiscountPolicyMap(
       rate_instructor: p.rate_instructor,
       rate_center: p.rate_center,
       rate_cost: p.rate_cost,
+      is_custom: p.is_custom ?? false,
     };
     map[p.brand] = rates;
     for (const alias of p.aliases) {
@@ -154,9 +165,14 @@ function floorWon(value: number): number {
  * 등급별 금액이다(equipment.price_instructor/price_center/price_cost).
  * overrideRate 가 없고 realPrices 에 해당 등급 값이 있으면, 브랜드 할인율
  * 추정 계산을 건너뛰고 그 실제 금액을 그대로 쓴다 — "수집된 품목만 실제
- * 값, 나머지는 기존 추정 방식 유지"라는 점진적 전환 규칙이다. 기존
- * 호출부는 이 인자를 넘기지 않으면 지금까지와 완전히 동일하게 동작한다
- * (하위 호환). 우선순위: overrideRate > realPrices > 브랜드 할인율.
+ * 값, 나머지는 기존 추정 방식 유지"라는 점진적 전환 규칙이다. 단, 그
+ * 브랜드가 [브랜드 할인율 설정] 화면에서 사용자가 직접 저장한
+ * 수동(is_custom=true) 정책이면 실제 수집 데이터보다 그 수동 할인율을
+ * 항상 우선한다 — 사용자가 직접 지정한 값은 실측 샵가가 있어도 덮어쓰지
+ * 말아달라는 요청에 따른 규칙이다(2026-10-25). 기존 호출부는 이 인자를
+ * 넘기지 않으면 지금까지와 완전히 동일하게 동작한다(하위 호환).
+ * 우선순위: overrideRate > 브랜드 수동(is_custom) 할인율 > realPrices >
+ * 브랜드 자동 할인율.
  *
  * 결과값은 소수점을 버리는 절사(floorWon)로 원단위까지 정리한다.
  */
@@ -191,17 +207,16 @@ export function calculateEffectiveUnitPrice(
   const numericListPrice = Number(listPrice);
   if (!Number.isFinite(numericListPrice)) return 0;
 
-  if (overrideRate == null) {
+  const brandRates = findDiscountRates(brand, discountPolicies);
+
+  if (overrideRate == null && !brandRates?.is_custom) {
     const real = realPriceForTier(tier, realPrices);
     if (real != null && Number.isFinite(Number(real))) {
       return Math.max(0, floorWon(Number(real)));
     }
   }
 
-  const rate =
-    overrideRate != null
-      ? Number(overrideRate)
-      : rateForTier(tier, findDiscountRates(brand, discountPolicies));
+  const rate = overrideRate != null ? Number(overrideRate) : rateForTier(tier, brandRates);
   return Math.max(0, floorWon(numericListPrice * (1 - rate / 100)));
 }
 

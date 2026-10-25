@@ -192,6 +192,7 @@ export function EquipmentEditDialog({
               rate_instructor: number;
               rate_center: number;
               rate_cost: number;
+              is_custom: boolean;
             }[]
           )
         );
