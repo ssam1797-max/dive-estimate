@@ -165,14 +165,23 @@ function floorWon(value: number): number {
  * 등급별 금액이다(equipment.price_instructor/price_center/price_cost).
  * overrideRate 가 없고 realPrices 에 해당 등급 값이 있으면, 브랜드 할인율
  * 추정 계산을 건너뛰고 그 실제 금액을 그대로 쓴다 — "수집된 품목만 실제
- * 값, 나머지는 기존 추정 방식 유지"라는 점진적 전환 규칙이다. 단, 그
- * 브랜드가 [브랜드 할인율 설정] 화면에서 사용자가 직접 저장한
- * 수동(is_custom=true) 정책이면 실제 수집 데이터보다 그 수동 할인율을
- * 항상 우선한다 — 사용자가 직접 지정한 값은 실측 샵가가 있어도 덮어쓰지
- * 말아달라는 요청에 따른 규칙이다(2026-10-25). 기존 호출부는 이 인자를
- * 넘기지 않으면 지금까지와 완전히 동일하게 동작한다(하위 호환).
- * 우선순위: overrideRate > 브랜드 수동(is_custom) 할인율 > realPrices >
- * 브랜드 자동 할인율.
+ * 값, 나머지는 기존 추정 방식 유지"라는 점진적 전환 규칙이다.
+ *
+ * 단, **공급가(CENTER) 등급만** 예외로, 그 브랜드가 [브랜드 할인율 설정]
+ * 화면에서 사용자가 직접 저장한 수동(is_custom=true) 정책이면 실제 수집
+ * 데이터보다 그 수동 할인율을 항상 우선한다 — 사용자가 직접 지정한
+ * 공급가는 실측 샵가가 있어도 덮어쓰지 말아달라는 요청에 따른 규칙이다
+ * (2026-10-25). 샵가(INSTRUCTOR)는 공급처가 실제로 부르는 가격 그 자체라
+ * 이 예외를 적용하지 않는다 — 적용했더니 "공급가만 수동 지정했는데
+ * 브랜드 설정에 비워둔(기본값 0%) 샵가 할인율까지 실측 데이터를 덮어써
+ * 0%로 보이는" 부작용이 바로 발견돼(마레스 브랜드 사례) 범위를
+ * CENTER로 좁혔다. 원가(COST)의 realPrices.cost 는 애초에 브랜드
+ * 추정치가 아니라 품목마다 사용자가 직접 입력한 값(equipment.price_cost)
+ * 이라 마찬가지로 이 예외 대상이 아니다(항상 실제 입력값이 우선).
+ * 기존 호출부는 이 인자를 넘기지 않으면 지금까지와 완전히 동일하게
+ * 동작한다(하위 호환). 우선순위:
+ *   - CENTER: overrideRate > 브랜드 수동(is_custom) 할인율 > realPrices > 브랜드 자동 할인율
+ *   - 그 외 등급: overrideRate > realPrices > 브랜드 할인율(수동/자동 무관)
  *
  * 결과값은 소수점을 버리는 절사(floorWon)로 원단위까지 정리한다.
  */
@@ -208,8 +217,9 @@ export function calculateEffectiveUnitPrice(
   if (!Number.isFinite(numericListPrice)) return 0;
 
   const brandRates = findDiscountRates(brand, discountPolicies);
+  const brandCustomOverridesReal = tier === "CENTER" && brandRates?.is_custom === true;
 
-  if (overrideRate == null && !brandRates?.is_custom) {
+  if (overrideRate == null && !brandCustomOverridesReal) {
     const real = realPriceForTier(tier, realPrices);
     if (real != null && Number.isFinite(Number(real))) {
       return Math.max(0, floorWon(Number(real)));
