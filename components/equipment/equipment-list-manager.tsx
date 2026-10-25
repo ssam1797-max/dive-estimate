@@ -10,6 +10,11 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EquipmentEditDialog } from "@/components/equipment/equipment-edit-dialog";
 import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
+import {
+  buildDiscountPolicyMap,
+  calculateEffectiveUnitPrice,
+  type DiscountPolicyMap,
+} from "@/lib/estimates/pricing";
 
 interface EquipmentListManagerProps {
   initialBrands: string[];
@@ -28,6 +33,36 @@ function formatDiscountPercent(retail: number, price: number | null): string | n
 }
 
 /**
+ * 이 화면에 표시할 공급가를 결정한다 — 품목을 수동 고정(price_center_overridden)
+ * 했으면 그 값을 그대로 쓰고, 아니면 견적서 계산과 똑같은 우선순위
+ * (calculateEffectiveUnitPrice 참고: 품목 예외 할인율 > 브랜드 수동 지정
+ * 할인율 > 실제 수집 데이터 > 브랜드 자동 할인율)로 재계산한다. 품목
+ * 예외나 브랜드 수동 지정이 전혀 없으면(실제 데이터 또는 0%만 있는
+ * 보통 경우) 굳이 재계산하지 않고 원래 저장된 값을 그대로 보여준다 —
+ * 데이터가 전혀 없는 품목에 "소비자가 그대로(0% 할인)"를 잘못 채워
+ * 보여주지 않기 위함이다.
+ */
+function resolveDisplayPriceCenter(
+  item: EquipmentCatalogItem,
+  discountMap: DiscountPolicyMap
+): number | null {
+  if (item.price_center_overridden) return item.price_center;
+
+  const brandRates = discountMap[item.brand];
+  const hasOverrideOrCustom = item.override_discount_rate != null || brandRates?.is_custom;
+  if (!hasOverrideOrCustom) return item.price_center;
+
+  return calculateEffectiveUnitPrice(
+    item.price_retail,
+    item.brand,
+    "CENTER",
+    discountMap,
+    item.override_discount_rate,
+    { instructor: item.price_instructor, center: item.price_center, cost: item.price_cost }
+  );
+}
+
+/**
  * 공급가(CENTER 등급) 인라인 입력칸. 클릭하면 바로 수정 모드로 바뀌고,
  * Enter/blur로 저장한다 — 전체 수정 다이얼로그(EquipmentEditDialog)와
  * 달리 is_custom 을 건드리지 않아, 저장해도 색상/사이즈/소비자가/샵가는
@@ -37,9 +72,11 @@ function formatDiscountPercent(retail: number, price: number | null): string | n
  */
 function PriceCenterCell({
   item,
+  discountMap,
   onSaved,
 }: {
   item: EquipmentCatalogItem;
+  discountMap: DiscountPolicyMap;
   onSaved: (next: { price_center: number | null; price_center_overridden: boolean }) => void;
 }) {
   const [editing, setEditing] = React.useState(false);
@@ -76,6 +113,9 @@ function PriceCenterCell({
       setSaving(false);
     }
   };
+
+  const displayCenter = resolveDisplayPriceCenter(item, discountMap);
+  const brandIsCustom = discountMap[item.brand]?.is_custom === true;
 
   if (editing) {
     return (
@@ -114,14 +154,14 @@ function PriceCenterCell({
       className="flex flex-col items-start gap-0.5 rounded px-1 py-0.5 text-left hover:bg-muted/50"
       disabled={saving}
       onClick={() => {
-        setDraft(item.price_center != null ? String(Math.round(item.price_center)) : "");
+        setDraft(displayCenter != null ? String(Math.round(displayCenter)) : "");
         setEditing(true);
       }}
     >
-      <span>{item.price_center != null ? formatCurrency(item.price_center) : "-"}</span>
-      {formatDiscountPercent(item.price_retail, item.price_center) && (
+      <span>{displayCenter != null ? formatCurrency(displayCenter) : "-"}</span>
+      {formatDiscountPercent(item.price_retail, displayCenter) && (
         <span className="text-[10px] text-muted-foreground">
-          {formatDiscountPercent(item.price_retail, item.price_center)}
+          {formatDiscountPercent(item.price_retail, displayCenter)}
         </span>
       )}
       {item.price_center_overridden ? (
@@ -136,6 +176,10 @@ function PriceCenterCell({
         >
           수동 고정됨 · 자동으로
         </span>
+      ) : item.override_discount_rate != null ? (
+        <span className="text-[10px] text-muted-foreground">품목 예외 할인율 적용</span>
+      ) : brandIsCustom ? (
+        <span className="text-[10px] text-muted-foreground">브랜드 수동 지정 적용</span>
       ) : (
         <span className="text-[10px] text-muted-foreground">자동 계산</span>
       )}
@@ -176,6 +220,40 @@ export function EquipmentListManager({
   const [editTargetId, setEditTargetId] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<EquipmentCatalogItem | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
+
+  // 공급가 칸이 브랜드 수동 지정(is_custom) 할인율을 실제 데이터보다
+  // 우선 적용해 보여주려면 브랜드별 할인율 정책이 필요하다 — 검색할
+  // 때마다 다시 받을 필요는 없어 목록 화면 진입 시 한 번만 불러온다.
+  const [discountMap, setDiscountMap] = React.useState<DiscountPolicyMap>({});
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/discount-policies")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: unknown) => {
+        if (cancelled || !Array.isArray(data)) return;
+        setDiscountMap(
+          buildDiscountPolicyMap(
+            data as {
+              brand: string;
+              aliases: string[];
+              rate_retail: number;
+              rate_instructor: number;
+              rate_center: number;
+              rate_cost: number;
+              is_custom: boolean;
+            }[]
+          )
+        );
+      })
+      .catch(() => {
+        // 할인율 정책을 못 불러와도 공급가 칸은 원래(실제 데이터) 값으로
+        // 표시되므로 화면 자체를 막을 필요는 없다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 검색 실행: 디바운스된 검색어가 바뀔 때뿐 아니라, 수정 다이얼로그 저장 후
   // 목록을 새로고침할 때도 이 값을 증가시켜 아래 effect를 다시 돈다.
@@ -344,6 +422,7 @@ export function EquipmentListManager({
                       <td className="py-2 pr-2 align-top">
                         <PriceCenterCell
                           item={item}
+                          discountMap={discountMap}
                           onSaved={(next) => {
                             setResults((prev) =>
                               prev.map((r) => (r.id === item.id ? { ...r, ...next } : r))
