@@ -3,9 +3,11 @@ import type { SavedEstimateDetail, SavedEstimateItemDetail } from "@/lib/estimat
 /**
  * 보관함 견적서 → 카카오톡/문자 발주용 텍스트.
  *
- * 형식(품목마다 한 줄, 끝에 받는사람 정보):
+ * 형식(품목마다 한 줄, 같은 브랜드는 첫 줄에만 브랜드를 쓰고 나머지는 들여쓰기,
+ * 끝에 받는사람 정보):
+ *   스쿠버프로 MK25 EVO / 1개 / 블랙
+ *              R105 옥토퍼스 / 1개
  *   아쿠아렁 레전드 LX / 2개 / 블랙, L
- *   스쿠버프로 MK25 / 1개
  *
  *   받는사람: 홍길동
  *   연락처: 010-1234-5678
@@ -49,15 +51,69 @@ function formatItemOptions(item: SavedEstimateItemDetail): string {
     .join(", ");
 }
 
-export function formatOrderItemLine(item: SavedEstimateItemDetail): string {
-  const parts = [formatItemName(item), `${item.quantity}개`];
+/** 장비명 앞에 브랜드가 이미 붙어 있으면 떼어낸다(브랜드는 묶음 첫 줄에 한 번만 쓰므로). */
+function stripLeadingBrand(name: string, brand: string): string {
+  if (!brand) return name;
+  if (name.toLowerCase().startsWith(brand.toLowerCase())) {
+    const rest = name.slice(brand.length).replace(/^[\s\-_/·:]+/, "");
+    if (rest) return rest;
+  }
+  return name;
+}
+
+/**
+ * 브랜드 글자 폭만큼의 들여쓰기 공백. 카카오톡·문자는 고정폭 글꼴이 아니라
+ * 일반 공백으로는 줄이 안 맞으므로, 한글/한자는 전각 공백(U+3000, 한글 한
+ * 글자 폭), 그 외 글자는 en 공백(U+2002, 반각 폭)으로 채워 최대한 맞춘다.
+ */
+function indentFor(text: string): string {
+  return [...text]
+    .map((ch) => (/[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/.test(ch) ? "\u3000" : "\u2002"))
+    .join("");
+}
+
+function formatQuantityAndOptions(item: SavedEstimateItemDetail): string {
+  const parts = [`${item.quantity}개`];
   const options = formatItemOptions(item);
   if (options) parts.push(options);
   return parts.join(" / ");
 }
 
+/**
+ * 품목 목록 → 발주 문구 줄들. 같은 브랜드 품목은 처음 나온 위치에 모아서,
+ * 첫 줄에만 브랜드를 쓰고 이어지는 줄은 브랜드 폭만큼 들여쓴다.
+ */
+export function formatOrderItemLines(items: SavedEstimateItemDetail[]): string[] {
+  const byBrand = new Map<string, SavedEstimateItemDetail[]>();
+  for (const item of items) {
+    const brandKey = item.brand.trim().toLowerCase();
+    const list = byBrand.get(brandKey);
+    if (list) list.push(item);
+    else byBrand.set(brandKey, [item]);
+  }
+
+  const lines: string[] = [];
+  for (const group of byBrand.values()) {
+    const brand = group[0].brand.trim();
+    if (!brand) {
+      // 브랜드가 없는 품목(수동 입력 등)은 기존처럼 한 줄씩 그대로 쓴다.
+      group.forEach((item) =>
+        lines.push(`${formatItemName(item)} / ${formatQuantityAndOptions(item)}`)
+      );
+      continue;
+    }
+    const indent = indentFor(brand);
+    group.forEach((item, index) => {
+      const name = stripLeadingBrand(item.name.trim(), brand) || "(품목명 없음)";
+      const prefix = index === 0 ? `${brand} ` : `${indent} `;
+      lines.push(`${prefix}${name} / ${formatQuantityAndOptions(item)}`);
+    });
+  }
+  return lines;
+}
+
 export function buildSupplierOrderText(detail: SavedEstimateDetail): SupplierOrderText {
-  const itemLines = detail.items.map(formatOrderItemLine);
+  const itemLines = formatOrderItemLines(detail.items);
 
   const receiver = detail.receiver;
   const name = receiver?.name?.trim() || detail.receiverName?.trim() || "";
