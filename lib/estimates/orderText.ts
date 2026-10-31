@@ -31,11 +31,21 @@ function formatItemName(item: SavedEstimateItemDetail): string {
   return `${brand} ${name}`;
 }
 
+/**
+ * 발주처에 알려줄 필요가 없는 "옵션 없음" 표기. 단일 옵션 상품은 색상/사이즈가
+ * "기본"으로 저장되는데, 발주 문구에 "기본"이라고 쓰면 오히려 헷갈리므로 뺀다.
+ */
+const NO_OPTION_VALUES = new Set(["-", "기본", "기본옵션", "기본형"]);
+
+function isMeaningfulOption(value: string): boolean {
+  return value.length > 0 && !NO_OPTION_VALUES.has(value.replace(/\s+/g, ""));
+}
+
 /** 색상·사이즈·품목 비고를 "블랙, L, 각인요청" 처럼 쉼표로 이어 붙인다. 없으면 빈 문자열. */
 function formatItemOptions(item: SavedEstimateItemDetail): string {
   return [item.color, item.size, item.itemRemarks]
     .map((value) => value?.trim() ?? "")
-    .filter((value) => value.length > 0 && value !== "-")
+    .filter(isMeaningfulOption)
     .join(", ");
 }
 
