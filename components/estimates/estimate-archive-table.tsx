@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PriceTierSelect } from "@/components/estimates/price-tier-select";
 import { CopyOrderTextButton } from "@/components/estimates/copy-order-text-button";
+import { ShareOrderTextButton } from "@/components/estimates/share-order-text-button";
 import { buildSupplierOrderText } from "@/lib/estimates/orderText";
 import { matchesKoreanSearch } from "@/lib/hangul";
 import type {
@@ -38,6 +39,7 @@ const STATUS_LABELS: Record<EstimateStatus, string> = {
   draft: "작성중",
   sent: "발송됨",
   approved: "승인됨",
+  ordered: "발주완료",
   cancelled: "취소됨",
 };
 
@@ -45,6 +47,7 @@ const STATUS_TEXT_CLASS: Record<EstimateStatus, string> = {
   draft: "text-muted-foreground",
   sent: "text-blue-600 dark:text-blue-400",
   approved: "text-emerald-600 dark:text-emerald-400",
+  ordered: "text-violet-600 dark:text-violet-400",
   cancelled: "text-destructive",
 };
 
@@ -126,6 +129,16 @@ function EstimateDetailDialog({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
   const [deletePassword, setDeletePassword] = React.useState("");
   const [isChangingStatus, setIsChangingStatus] = React.useState(false);
+  const [markOrderedOpen, setMarkOrderedOpen] = React.useState(false);
+  const orderText = React.useMemo(
+    () => (detail ? buildSupplierOrderText(detail).text : ""),
+    [detail]
+  );
+
+  /** 발주 복사/공유 후, 아직 발주완료가 아니면 상태를 바꿀지 묻는다. */
+  const askMarkOrdered = () => {
+    if (detail && detail.status !== "ordered") setMarkOrderedOpen(true);
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -268,10 +281,17 @@ function EstimateDetailDialog({
                 <p className="text-xs font-medium text-muted-foreground">
                   발주 문구 미리보기 (카카오톡·문자용)
                 </p>
-                <CopyOrderTextButton estimateId={detail.id} detail={detail} />
+                <div className="flex items-center gap-1.5">
+                  <ShareOrderTextButton text={orderText} onShared={askMarkOrdered} />
+                  <CopyOrderTextButton
+                    estimateIds={[detail.id]}
+                    detail={detail}
+                    onCopied={askMarkOrdered}
+                  />
+                </div>
               </div>
               <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-keep rounded-md border bg-muted/50 px-3 py-2 font-sans text-sm leading-relaxed">
-                {buildSupplierOrderText(detail).text}
+                {orderText}
               </pre>
             </div>
 
@@ -328,6 +348,16 @@ function EstimateDetailDialog({
         )}
       </DialogContent>
       <ConfirmDialog
+        open={markOrderedOpen}
+        onOpenChange={setMarkOrderedOpen}
+        title="발주완료로 표시할까요?"
+        description="상태를 '발주완료'로 바꾸면 보관함에서 이미 발주한 견적서를 쉽게 구분할 수 있습니다."
+        confirmLabel="발주완료로 변경"
+        cancelLabel="나중에"
+        variant="default"
+        onConfirm={() => handleStatusChange("ordered")}
+      />
+      <ConfirmDialog
         open={confirmDeleteOpen}
         onOpenChange={(open) => {
           setConfirmDeleteOpen(open);
@@ -368,6 +398,10 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
   const [dateTo, setDateTo] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<EstimateStatus | "all">("all");
   const rowDeleteTargetEstimate = estimates.find((e) => e.id === rowDeleteTarget);
+  // 묶음 발주용 체크박스 선택. 삭제된 견적서 id 가 남아 있을 수 있어 아래에서 걸러 쓴다.
+  const [checkedIds, setCheckedIds] = React.useState<Set<string>>(() => new Set());
+  // 발주 복사 후 "발주완료로 바꿀까요?" 확인 대상(1건 또는 묶음).
+  const [markOrderedTargets, setMarkOrderedTargets] = React.useState<string[]>([]);
 
   // 공급받는자명 또는 견적서 번호로 검색하고, 발행일 범위/상태로 좁힌다.
   // 목록을 전부 미리 불러온 상태(initialEstimates)에서 클라이언트 쪽에서만
@@ -388,6 +422,57 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
       return true;
     });
   }, [estimates, searchQuery, dateFrom, dateTo, statusFilter]);
+
+  const checkedEstimates = React.useMemo(
+    () => estimates.filter((e) => checkedIds.has(e.id)),
+    [estimates, checkedIds]
+  );
+  const checkedEstimateIds = React.useMemo(
+    () => checkedEstimates.map((e) => e.id),
+    [checkedEstimates]
+  );
+  const allFilteredChecked =
+    filteredEstimates.length > 0 && filteredEstimates.every((e) => checkedIds.has(e.id));
+
+  const toggleChecked = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllFiltered = () => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredChecked) filteredEstimates.forEach((e) => next.delete(e.id));
+      else filteredEstimates.forEach((e) => next.add(e.id));
+      return next;
+    });
+  };
+
+  /** 발주 복사가 끝난 견적서 중 아직 발주완료가 아닌 것만 골라 확인창을 띄운다. */
+  const askMarkOrdered = (ids: string[]) => {
+    const targets = ids.filter((id) => estimates.find((e) => e.id === id)?.status !== "ordered");
+    if (targets.length > 0) setMarkOrderedTargets(targets);
+  };
+
+  const handleMarkOrdered = async () => {
+    const failed: string[] = [];
+    for (const id of markOrderedTargets) {
+      try {
+        await updateEstimateStatus(id, "ordered");
+        handleStatusChange(id, "ordered");
+      } catch {
+        failed.push(estimates.find((e) => e.id === id)?.estimateNumber ?? id);
+      }
+    }
+    if (failed.length > 0) {
+      throw new Error(`일부 견적서의 상태를 바꾸지 못했습니다: ${failed.join(", ")}`);
+    }
+    setCheckedIds(new Set());
+  };
 
   const handleStatusChange = (id: string, status: EstimateStatus) => {
     setEstimates((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
@@ -485,6 +570,30 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
 
       {rowError && <p className="text-sm text-destructive">{rowError}</p>}
 
+      {checkedEstimates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm dark:border-violet-900 dark:bg-violet-950/40">
+          <span className="font-medium">{checkedEstimates.length}건 선택</span>
+          <span className="text-xs text-muted-foreground">
+            같은 받는사람끼리 묶고, 같은 품목·옵션은 수량을 합쳐 복사합니다.
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setCheckedIds(new Set())}
+            >
+              선택 해제
+            </Button>
+            <CopyOrderTextButton
+              estimateIds={checkedEstimateIds}
+              label="묶음 발주 복사"
+              onCopied={() => askMarkOrdered(checkedEstimateIds)}
+            />
+          </div>
+        </div>
+      )}
+
       {filteredEstimates.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
@@ -498,6 +607,15 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="w-10 py-3 pl-4 pr-0">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredChecked}
+                    onChange={toggleAllFiltered}
+                    aria-label="표시된 견적서 전체 선택"
+                    className="size-4 cursor-pointer accent-violet-600"
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">견적서 번호</th>
                 <th className="px-4 py-3 font-medium">날짜</th>
                 <th className="px-4 py-3 font-medium">공급받는자</th>
@@ -518,8 +636,26 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                 <tr
                   key={estimate.id}
                   onClick={() => setSelectedId(estimate.id)}
-                  className="cursor-pointer border-b last:border-0 hover:bg-accent/60"
+                  className={`cursor-pointer border-b last:border-0 hover:bg-accent/60 ${
+                    checkedIds.has(estimate.id) ? "bg-violet-50/60 dark:bg-violet-950/30" : ""
+                  }`}
                 >
+                  <td
+                    className="w-10 py-3 pl-4 pr-0"
+                    onClick={(event) => {
+                      // 체크박스 주변 여백을 눌러도 상세 창이 열리지 않고 선택만 바뀌게 한다.
+                      event.stopPropagation();
+                      if (event.target === event.currentTarget) toggleChecked(estimate.id);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.has(estimate.id)}
+                      onChange={() => toggleChecked(estimate.id)}
+                      aria-label={`${estimate.estimateNumber} 선택`}
+                      className="size-4 cursor-pointer accent-violet-600"
+                    />
+                  </td>
                   <td className="px-4 py-3 font-medium">{estimate.estimateNumber}</td>
                   <td className="px-4 py-3 text-muted-foreground">{estimate.date}</td>
                   <td className="px-4 py-3 text-muted-foreground">
@@ -549,7 +685,11 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-end gap-1">
-                      <CopyOrderTextButton estimateId={estimate.id} variant="icon" />
+                      <CopyOrderTextButton
+                        estimateIds={[estimate.id]}
+                        variant="icon"
+                        onCopied={() => askMarkOrdered([estimate.id])}
+                      />
                       <Link
                         href={`/estimates/new?duplicateFrom=${estimate.id}`}
                         aria-label={`${estimate.estimateNumber} 복제`}
@@ -666,6 +806,23 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
           />
         )}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={markOrderedTargets.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setMarkOrderedTargets([]);
+        }}
+        title={
+          markOrderedTargets.length > 1
+            ? `${markOrderedTargets.length}건을 발주완료로 표시할까요?`
+            : "발주완료로 표시할까요?"
+        }
+        description="상태를 '발주완료'로 바꾸면 보관함에서 이미 발주한 견적서를 쉽게 구분할 수 있습니다."
+        confirmLabel="발주완료로 변경"
+        cancelLabel="나중에"
+        variant="default"
+        onConfirm={handleMarkOrdered}
+      />
     </>
   );
 }

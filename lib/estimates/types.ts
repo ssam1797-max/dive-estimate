@@ -179,7 +179,7 @@ export interface ExportEstimatePayload {
 
 /** 견적서 보관함 목록 1건 (실제 저장된 견적서 — 템플릿 제외) */
 /** 견적서 진행 상태. 템플릿 행에는 의미 없음(기본값 그대로 방치). */
-export type EstimateStatus = "draft" | "sent" | "approved" | "cancelled";
+export type EstimateStatus = "draft" | "sent" | "approved" | "ordered" | "cancelled";
 
 export interface SavedEstimateSummary {
   id: string;

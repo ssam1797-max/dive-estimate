@@ -11,7 +11,7 @@ import { getIsAdmin } from "@/lib/auth/admin-session";
 import { stripCostForViewer } from "@/lib/estimates/adminVisibility";
 import { checkEstimateEditAccess } from "@/lib/estimates/estimateAccess";
 
-const VALID_STATUSES: EstimateStatus[] = ["draft", "sent", "approved", "cancelled"];
+const VALID_STATUSES: EstimateStatus[] = ["draft", "sent", "approved", "ordered", "cancelled"];
 
 /** GET /api/estimates/[id] - 견적서 보관함 상세(항목 포함) 조회 */
 export async function GET(
@@ -89,7 +89,7 @@ export async function PUT(
   }
 }
 
-/** PATCH /api/estimates/[id] - 견적서 진행 상태(작성중/발송됨/승인됨/취소됨)만 변경 */
+/** PATCH /api/estimates/[id] - 견적서 진행 상태(작성중/발송됨/승인됨/발주완료/취소됨)만 변경 */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

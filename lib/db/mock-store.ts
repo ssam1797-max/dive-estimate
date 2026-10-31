@@ -111,7 +111,7 @@ export interface MockEstimate {
   template_name: string | null;
   /** 저장 시점 선택되어 있던 가격 등급 ("RETAIL"|"INSTRUCTOR"|"CENTER"|"COST"). 템플릿은 null. */
   price_tier: string | null;
-  /** "draft"|"sent"|"approved"|"cancelled". 템플릿 행에는 의미 없음. */
+  /** "draft"|"sent"|"approved"|"ordered"|"cancelled". 템플릿 행에는 의미 없음. */
   status: string;
   /** 수정/삭제 보호 비밀번호 해시("salt:hash"). null이면 보호 없음(템플릿 포함). */
   edit_password_hash: string | null;

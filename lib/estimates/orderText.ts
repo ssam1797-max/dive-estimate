@@ -71,3 +71,66 @@ export function buildSupplierOrderText(detail: SavedEstimateDetail): SupplierOrd
     missingFields,
   };
 }
+
+// ── 여러 견적서 묶음 발주 ─────────────────────────────────────────────────────
+
+export interface BatchOrderText extends SupplierOrderText {
+  /** 받는사람(배송지) 묶음 수 — 2 이상이면 배송지가 여러 곳이라는 뜻. */
+  receiverGroupCount: number;
+}
+
+/**
+ * 여러 견적서를 한 번에 발주할 때 쓰는 텍스트.
+ *
+ * - 받는사람(이름·연락처·주소)이 같은 견적서끼리 묶는다 — 배송지가 다르면
+ *   품목을 합쳐도 의미가 없기 때문.
+ * - 같은 묶음 안에서는 품목명·옵션이 완전히 같은 품목의 수량을 합친다.
+ * - 배송지가 여러 곳이면 "----------" 구분선으로 나눠 이어 붙인다.
+ */
+export function buildBatchOrderText(details: SavedEstimateDetail[]): BatchOrderText {
+  const groups = new Map<
+    string,
+    { headerDetail: SavedEstimateDetail; items: Map<string, SavedEstimateItemDetail> }
+  >();
+
+  for (const detail of details) {
+    const receiver = detail.receiver;
+    const receiverKey = [
+      receiver?.name?.trim() || detail.receiverName?.trim() || "",
+      (receiver?.contact ?? "").replace(/\D/g, ""),
+      (receiver?.address ?? "").replace(/\s+/g, ""),
+    ].join("|");
+
+    let group = groups.get(receiverKey);
+    if (!group) {
+      group = { headerDetail: detail, items: new Map() };
+      groups.set(receiverKey, group);
+    }
+
+    for (const item of detail.items) {
+      const itemKey = `${formatItemName(item)}|${formatItemOptions(item)}`;
+      const existing = group.items.get(itemKey);
+      if (existing) {
+        group.items.set(itemKey, { ...existing, quantity: existing.quantity + item.quantity });
+      } else {
+        group.items.set(itemKey, { ...item });
+      }
+    }
+  }
+
+  const missing = new Set<string>();
+  const blocks = [...groups.values()].map((group) => {
+    const result = buildSupplierOrderText({
+      ...group.headerDetail,
+      items: [...group.items.values()],
+    });
+    result.missingFields.forEach((field) => missing.add(field));
+    return result.text;
+  });
+
+  return {
+    text: blocks.join("\n\n----------\n\n"),
+    missingFields: [...missing],
+    receiverGroupCount: groups.size,
+  };
+}
