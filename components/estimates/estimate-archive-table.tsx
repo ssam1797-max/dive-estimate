@@ -18,6 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { PriceTierSelect } from "@/components/estimates/price-tier-select";
+import { CopyOrderTextButton } from "@/components/estimates/copy-order-text-button";
+import { buildSupplierOrderText } from "@/lib/estimates/orderText";
 import { matchesKoreanSearch } from "@/lib/hangul";
 import type {
   EstimateStatus,
@@ -259,6 +261,18 @@ function EstimateDetailDialog({
                   </tr>
                 </tfoot>
               </table>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  발주 문구 미리보기 (카카오톡·문자용)
+                </p>
+                <CopyOrderTextButton estimateId={detail.id} detail={detail} />
+              </div>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-keep rounded-md border bg-muted/50 px-3 py-2 font-sans text-sm leading-relaxed">
+                {buildSupplierOrderText(detail).text}
+              </pre>
             </div>
 
             <DialogFooter>
@@ -535,6 +549,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="flex items-center justify-end gap-1">
+                      <CopyOrderTextButton estimateId={estimate.id} variant="icon" />
                       <Link
                         href={`/estimates/new?duplicateFrom=${estimate.id}`}
                         aria-label={`${estimate.estimateNumber} 복제`}
