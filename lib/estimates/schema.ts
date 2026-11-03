@@ -33,14 +33,15 @@ export const saveEstimateItemSchema = z.object({
   color: z.string().trim().default(""),
   size: z.string().trim().default(""),
   quantity: z.number().int("수량은 정수여야 합니다.").min(1, "수량은 1개 이상이어야 합니다."),
-  unitPrice: z.number().min(0, "단가는 0 이상이어야 합니다."),
+  // 할인 품목은 음수 단가로 담는다(합계에서 차감됨).
+  unitPrice: z.number(),
   itemRemarks: z.string().trim().default(""),
   // 저장 시점 4개 가격 등급 단가 스냅샷 (상세/인쇄 화면 탭 전환용). 템플릿
   // 저장 등 일부 경로에서는 생략될 수 있어 선택 필드로 둔다.
-  priceRetail: z.number().min(0).optional(),
-  priceInstructor: z.number().min(0).optional(),
-  priceCenter: z.number().min(0).optional(),
-  priceCost: z.number().min(0).optional(),
+  priceRetail: z.number().optional(),
+  priceInstructor: z.number().optional(),
+  priceCenter: z.number().optional(),
+  priceCost: z.number().optional(),
 });
 
 /** 실제 견적서 저장 요청 검증 스키마 */
@@ -87,7 +88,7 @@ export const exportEstimateItemSchema = z.object({
   color: z.string().trim().default(""),
   size: z.string().trim().default(""),
   quantity: z.number().int("수량은 정수여야 합니다.").min(1, "수량은 1개 이상이어야 합니다."),
-  priceRetail: z.number().min(0, "정가는 0 이상이어야 합니다."),
+  priceRetail: z.number(),
   itemRemarks: z.string().trim().default(""),
   unit: z.string().trim().optional(),
   /** 품목별 예외 할인율(%). 있으면 서버 재계산 시 브랜드 할인율보다 우선한다. */

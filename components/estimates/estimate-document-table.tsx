@@ -1,7 +1,13 @@
 "use client";
 
+import * as React from "react";
+
 import type { ProfileOption } from "@/lib/estimates/types";
-import { formatDiscountRate } from "@/lib/estimates/pricing";
+import {
+  formatDiscountRate,
+  formatSignedWonDraft,
+  parseSignedWon,
+} from "@/lib/estimates/pricing";
 
 /**
  * 실제 견적서 문서(미리보기 다이얼로그·인쇄 화면·다운로드되는 .xlsx)가 전부
@@ -174,19 +180,46 @@ const discountBadge = "text-[8px] leading-none text-gray-500 whitespace-nowrap";
 // 테두리/배경을 없애고 글꼴 크기·정렬을 cellPrice 와 맞춘다. 포커스가 와야만
 // 가는 테두리가 비쳐 "지금 수정 중"임을 알려준다.
 //
-// type="number" 대신 type="text" + inputMode="numeric" 을 쓴다 — Safari(맥OS/
-// iOS)의 number input은 입력 중간값(예: 자릿수를 지우는 도중)을 엄격하게
-// 검증하다가 포커스를 잃거나 값이 빈 문자열로 리셋되는 경우가 있어("맥북에서
-// 수정이 안 된다"는 증상의 실제 원인), 모바일 숫자 키패드는 그대로 띄우되
-// 검증은 onChange에서 직접 숫자만 걸러내는 방식이 크로스브라우저로 더 안전하다.
+// type="number" 대신 type="text" 를 쓴다 — Safari(맥OS/iOS)의 number input은
+// 입력 중간값(예: 자릿수를 지우는 도중)을 엄격하게 검증하다가 포커스를 잃거나
+// 값이 빈 문자열로 리셋되는 경우가 있어("맥북에서 수정이 안 된다"는 증상의
+// 실제 원인), 검증은 onChange에서 직접 걸러내는 방식이 크로스브라우저로 더
+// 안전하다. inputMode="numeric" 은 쓰지 않는다 — iOS 숫자 키패드에는 "-" 가
+// 없어 할인 금액(음수)을 입력할 수 없다.
 const editableInput =
   "w-full bg-transparent text-right text-[10px] leading-tight text-gray-900 outline-none " +
   "focus:rounded-sm focus:ring-1 focus:ring-primary";
 
-/** 숫자가 아닌 문자를 전부 제거하고 정수로 변환한다(빈 입력은 0). */
-function parseDigits(raw: string): number {
-  const digitsOnly = raw.replace(/[^0-9]/g, "");
-  return digitsOnly ? Number(digitsOnly) : 0;
+/**
+ * 단가/금액 인라인 입력란. 입력 중에는 친 글자를 그대로 들고 있다 — value 를
+ * 항상 숫자에서 다시 그리면 "-" 만 친 순간 0 으로 바뀌어 음수를 입력할 수 없다.
+ */
+function EditableMoneyInput({
+  value,
+  label,
+  onChange,
+}: {
+  value: number;
+  label: string;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = React.useState<string | null>(null);
+
+  return (
+    <input
+      type="text"
+      className={editableInput}
+      value={draft ?? fmtNum(value)}
+      onFocus={() => setDraft(fmtNum(value))}
+      onBlur={() => setDraft(null)}
+      onChange={(event) => {
+        const next = formatSignedWonDraft(event.target.value);
+        setDraft(next);
+        onChange(parseSignedWon(next));
+      }}
+      aria-label={label}
+    />
+  );
 }
 
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
@@ -526,13 +559,10 @@ export function EstimateDocumentTable({
                 좁아져 큰 금액이 잘리거나 안 보이는 문제가 생긴다. */}
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className={editableInput}
-                  value={fmtNum(row.unitPrice)}
-                  onChange={(e) => onUnitPriceChange?.(row.key, parseDigits(e.target.value))}
-                  aria-label={`${row.name} 단가 수정`}
+                <EditableMoneyInput
+                  value={row.unitPrice}
+                  label={`${row.name} 단가 수정`}
+                  onChange={(value) => onUnitPriceChange?.(row.key, value)}
                 />
               ) : (
                 fmtNum(row.unitPrice)
@@ -545,13 +575,10 @@ export function EstimateDocumentTable({
             </td>
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className={editableInput}
-                  value={fmtNum(row.amount)}
-                  onChange={(e) => onAmountChange?.(row.key, parseDigits(e.target.value))}
-                  aria-label={`${row.name} 금액 수정`}
+                <EditableMoneyInput
+                  value={row.amount}
+                  label={`${row.name} 금액 수정`}
+                  onChange={(value) => onAmountChange?.(row.key, value)}
                 />
               ) : (
                 fmtNum(row.amount)

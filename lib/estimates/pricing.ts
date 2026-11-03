@@ -216,6 +216,10 @@ export function calculateEffectiveUnitPrice(
   const numericListPrice = Number(listPrice);
   if (!Number.isFinite(numericListPrice)) return 0;
 
+  // 음수 금액은 "할인 품목" 줄이다 — 깎아 주기로 한 금액 자체이므로 브랜드
+  // 할인율을 곱하지 않고, 어느 가격 등급에서든 입력한 금액 그대로 쓴다.
+  if (numericListPrice < 0) return Math.round(numericListPrice);
+
   const brandRates = findDiscountRates(brand, discountPolicies);
   const brandCustomOverridesReal = tier === "CENTER" && brandRates?.is_custom === true;
 
@@ -228,6 +232,27 @@ export function calculateEffectiveUnitPrice(
 
   const rate = overrideRate != null ? Number(overrideRate) : rateForTier(tier, brandRates);
   return Math.max(0, floorWon(numericListPrice * (1 - rate / 100)));
+}
+
+/**
+ * 금액 입력 문자열을 부호 있는 정수(원)로 바꾼다. 콤마 등 숫자가 아닌 문자는
+ * 무시하고, "-" 가 어디든 있으면 음수로 본다(빈 입력이나 "-" 만 있으면 0).
+ */
+export function parseSignedWon(raw: string): number {
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (!digits) return 0;
+  const value = Number(digits);
+  return raw.includes("-") && value !== 0 ? -value : value;
+}
+
+/**
+ * 입력 중인 금액 문자열을 콤마 표기로 정리한다. parseSignedWon 과 달리 "-" 만
+ * 입력한 중간 상태를 그대로 남겨, 이어서 숫자를 칠 수 있게 한다.
+ */
+export function formatSignedWonDraft(raw: string): string {
+  const sign = raw.includes("-") ? "-" : "";
+  const digits = raw.replace(/[^0-9]/g, "");
+  return digits ? `${sign}${Number(digits).toLocaleString("ko-KR")}` : sign;
 }
 
 /**

@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import type { EquipmentCatalogItem, EstimateItemDraft } from "@/lib/estimates/types";
 import {
   calculateEffectiveUnitPrice,
+  formatSignedWonDraft,
+  parseSignedWon,
   type DiscountPolicyMap,
   type PriceTier,
 } from "@/lib/estimates/pricing";
@@ -47,7 +49,9 @@ export function ManualItemForm({
   const [color, setColor] = React.useState("");
   const [size, setSize] = React.useState("");
   const [quantity, setQuantity] = React.useState(1);
-  const [priceRetail, setPriceRetail] = React.useState(0);
+  // 입력 중인 문자열 그대로 보관한다 — 숫자로 들고 있으면 "-" 만 친 순간
+  // 0 으로 되돌아가 마이너스 금액(할인 품목)을 입력할 수 없다.
+  const [priceRetailText, setPriceRetailText] = React.useState("");
   const [discountRate, setDiscountRate] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -57,6 +61,7 @@ export function ManualItemForm({
     return unique.map((value) => ({ value, label: value }));
   }, [catalog]);
 
+  const priceRetail = parseSignedWon(priceRetailText);
   const overrideRate = discountRate.trim() === "" ? null : Number(discountRate);
 
   const previewUnitPrice = React.useMemo(() => {
@@ -77,7 +82,7 @@ export function ManualItemForm({
     setColor("");
     setSize("");
     setQuantity(1);
-    setPriceRetail(0);
+    setPriceRetailText("");
     setDiscountRate("");
     setError(null);
   };
@@ -245,12 +250,13 @@ export function ManualItemForm({
           <Label htmlFor="manual-price-retail">소비자가 *</Label>
           <Input
             id="manual-price-retail"
-            type="number"
-            min={0}
-            step={100}
-            value={priceRetail}
+            // type="number" 와 숫자 키패드는 "-" 입력을 막는 환경이 있어 일반
+            // 텍스트 입력으로 받고 숫자/부호만 걸러낸다.
+            type="text"
+            value={priceRetailText}
             disabled={disabled}
-            onChange={(event) => setPriceRetail(Math.max(0, Number(event.target.value) || 0))}
+            placeholder="할인은 -10000"
+            onChange={(event) => setPriceRetailText(formatSignedWonDraft(event.target.value))}
           />
         </div>
 
@@ -269,6 +275,11 @@ export function ManualItemForm({
           />
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        할인 품목은 소비자가에 마이너스 금액을 입력하세요. 합계에서 차감되며, 할인율은
+        적용되지 않습니다.
+      </p>
 
       {previewUnitPrice !== null && (
         <p className="text-xs text-muted-foreground">

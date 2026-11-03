@@ -79,7 +79,8 @@ function formatQuantityAndOptions(item: SavedEstimateItemDetail): string {
  */
 export function formatOrderItemLines(items: SavedEstimateItemDetail[]): string[] {
   const byBrand = new Map<string, SavedEstimateItemDetail[]>();
-  for (const item of items) {
+  // 할인 품목(음수 단가)은 발주할 물건이 아니므로 발주 문구에서 뺀다.
+  for (const item of items.filter((candidate) => candidate.unitPrice >= 0)) {
     const brandKey = item.brand.trim().toLowerCase();
     const list = byBrand.get(brandKey);
     if (list) list.push(item);
