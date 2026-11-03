@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 
 import { PrintControls } from "@/components/estimates/print-controls";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/components/estimates/delivery-note-table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { SavedEstimateDetail } from "@/lib/estimates/types";
+import type { SavedEstimateDetail, SavedEstimateItemDetail } from "@/lib/estimates/types";
 import {
   calculateDiscountRate,
   calculateInclusiveVat,
@@ -50,7 +51,88 @@ interface PriceOverride {
   amount?: number;
 }
 
+const TIER_SNAPSHOT_KEYS = {
+  RETAIL: "priceRetail",
+  INSTRUCTOR: "priceInstructor",
+  CENTER: "priceCenter",
+  COST: "priceCost",
+} as const satisfies Record<PriceTier, keyof SavedEstimateItemDetail>;
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/**
+ * 입력한 단가/금액을 품목에 반영한다. 금액 칸을 고친 경우 DB 에는 금액 컬럼이
+ * 없으므로 금액 ÷ 수량을 단가로 저장한다(원 미만은 소수 둘째 자리까지 보관).
+ * unit_price(견적서 합계의 기준)는 저장 등급을 고쳤을 때만 함께 바뀐다.
+ */
+function applyPriceOverride(
+  item: SavedEstimateItemDetail,
+  override: PriceOverride,
+  tier: PriceTier,
+  savedTier: PriceTier
+): SavedEstimateItemDetail {
+  const nextPrice =
+    override.amount != null
+      ? Math.round((override.amount / item.quantity) * 100) / 100
+      : override.unitPrice;
+  if (nextPrice == null) return item;
+
+  return {
+    ...item,
+    [TIER_SNAPSHOT_KEYS[tier]]: nextPrice,
+    unitPrice: tier === savedTier ? nextPrice : item.unitPrice,
+  };
+}
+
+/** 저장된 견적서를 같은 내용으로 덮어쓰되 품목 가격만 바꾼다(PUT 재사용). */
+async function saveEstimatePrices(
+  estimate: SavedEstimateDetail,
+  savedTier: PriceTier,
+  items: SavedEstimateItemDetail[]
+): Promise<void> {
+  const response = await fetch(`/api/estimates/${estimate.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    // 저장 직후 페이지를 벗어나도 요청이 끊기지 않게 한다.
+    keepalive: true,
+    body: JSON.stringify({
+      estimateNumber: estimate.estimateNumber,
+      date: estimate.date,
+      providerId: estimate.provider?.id,
+      receiverId: estimate.receiver?.id,
+      remarks: estimate.remarks,
+      priceTier: savedTier,
+      items: items.map((item) => ({
+        equipmentId: item.equipmentId,
+        name: item.name,
+        brand: item.brand,
+        category: item.category,
+        color: item.color,
+        size: item.size,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        itemRemarks: item.itemRemarks,
+        priceRetail: item.priceRetail ?? undefined,
+        priceInstructor: item.priceInstructor ?? undefined,
+        priceCenter: item.priceCenter ?? undefined,
+        priceCost: item.priceCost ?? undefined,
+      })),
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error ?? "저장에 실패했습니다.");
+  }
+}
+
 export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps) {
+  const router = useRouter();
+  const savedTier = estimate.priceTier ?? "RETAIL";
+  const [items, setItems] = React.useState(estimate.items);
+  const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  // 저장은 품목 전체를 덮어쓰므로, 빠르게 연달아 고쳐도 순서가 뒤집히지 않게 줄 세운다.
+  const saveQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const allowedPriceTiers = React.useMemo(() => getAllowedPriceTiers(isAdmin), [isAdmin]);
   const [tier, setTier] = React.useState<PriceTier>(
     resolveViewableTier(estimate.priceTier, isAdmin)
@@ -59,13 +141,8 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
   const [documentMode, setDocumentMode] = React.useState<"estimate" | "deliveryNote">(
     "estimate"
   );
-  // 관리자 전용 "일시적 단가/금액 수정" — 품목 index(=rows 의 key)별 덮어쓸
-  // 값만 들고 있는 순수 화면 state 다. 서버에 저장되지 않고(어떤 API 도
-  // 호출하지 않음), 새로고침/페이지 이탈 시 사라진다 — 저장된 견적서 원본
-  // (estimate.items)은 전혀 건드리지 않는다. 단가를 고치면 금액은 그
-  // 단가×수량으로 다시 계산하고(이전 금액 덮어쓰기는 버림), 금액만 고치면
-  // 단가는 그대로 두고 금액만 바뀐다(묶음 할인 등 수량 곱셈과 무관한 총액을
-  // 주고 싶을 때를 위함).
+  // 관리자 전용 단가/금액 수정 — 입력 중인 값만 품목 index(=rows 의 key)별로
+  // 들고 있다가, 입력을 마치면(commitPriceEdits) 품목에 반영해 저장한다.
   const [priceOverrides, setPriceOverrides] = React.useState<Record<number, PriceOverride>>({});
 
   const handleUnitPriceChange = React.useCallback((rowKey: string | number, value: number) => {
@@ -78,7 +155,41 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
     setPriceOverrides((prev) => ({ ...prev, [index]: { ...prev[index], amount: value } }));
   }, []);
 
-  const hasTierSnapshot = estimate.items.some(
+  const persistItems = React.useCallback(
+    (nextItems: SavedEstimateItemDetail[]) => {
+      setSaveStatus("saving");
+      setSaveError(null);
+      saveQueueRef.current = saveQueueRef.current.then(async () => {
+        try {
+          await saveEstimatePrices(estimate, savedTier, nextItems);
+          setSaveStatus("saved");
+          router.refresh();
+        } catch (error) {
+          console.error("견적서 가격 저장 실패:", error);
+          setSaveStatus("error");
+          setSaveError(error instanceof Error ? error.message : "저장에 실패했습니다.");
+        }
+      });
+    },
+    [estimate, savedTier, router]
+  );
+
+  const commitPriceEdits = () => {
+    const nextItems = items.map((item, index) => {
+      const override = priceOverrides[index];
+      return override ? applyPriceOverride(item, override, tier, savedTier) : item;
+    });
+    setPriceOverrides({});
+    const changed = nextItems.some(
+      (item, index) =>
+        tierPriceOfSnapshot(item, tier) !== tierPriceOfSnapshot(items[index], tier)
+    );
+    if (!changed) return;
+    setItems(nextItems);
+    persistItems(nextItems);
+  };
+
+  const hasTierSnapshot = items.some(
     (item) =>
       item.priceRetail !== null ||
       item.priceInstructor !== null ||
@@ -86,7 +197,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
       item.priceCost !== null
   );
 
-  const rows: EstimateDocumentRow[] = estimate.items.map((item, index) => {
+  const rows: EstimateDocumentRow[] = items.map((item, index) => {
     const baseUnitPrice = tierPriceOfSnapshot(item, tier);
     const baseAmount = baseUnitPrice * item.quantity;
     const override = priceOverrides[index];
@@ -121,7 +232,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
   // 그대로 쓰되, 공급가액/세액으로 역산해서 나눈다(calculateInclusiveVat 재사용).
   // 새로 부가세를 얹는 게 아니라 이미 확정된 금액을 쪼개는 것이라, 거래명세서
   // 합계금액은 견적서 합계금액과 항상 정확히 같다.
-  const deliveryNoteRows: DeliveryNoteRow[] = estimate.items.map((item, index) => {
+  const deliveryNoteRows: DeliveryNoteRow[] = items.map((item, index) => {
     const baseUnitPrice = tierPriceOfSnapshot(item, tier);
     const baseAmount = baseUnitPrice * item.quantity;
     const override = priceOverrides[index];
@@ -197,9 +308,26 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
             </p>
           )}
           {isAdmin && (
-            <p className="text-xs text-muted-foreground">
-              관리자 모드: 아래 표의 단가·금액 칸을 클릭하면 이 출력물에만 적용되는 임시 가격으로 고쳐 쓸 수 있습니다(저장된 견적서 원본은 바뀌지 않으며, 새로고침하면 원래 값으로 돌아갑니다).
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <p>
+                관리자 모드: 아래 표의 단가·금액을 고치고 칸을 벗어나면(또는 Enter) 보관된 견적서에 바로 저장됩니다.
+              </p>
+              {saveStatus === "saving" && <span>저장 중...</span>}
+              {saveStatus === "saved" && <span className="text-foreground">저장되었습니다.</span>}
+              {saveStatus === "error" && (
+                <>
+                  <span className="text-destructive">저장 실패: {saveError}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => persistItems(items)}
+                  >
+                    다시 저장
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -218,6 +346,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
               editable={isAdmin}
               onUnitPriceChange={handleUnitPriceChange}
               onAmountChange={handleAmountChange}
+              onPriceEditCommit={commitPriceEdits}
             />
           ) : (
             <div className="delivery-note-page">

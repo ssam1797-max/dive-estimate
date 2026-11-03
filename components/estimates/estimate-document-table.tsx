@@ -18,10 +18,9 @@ import {
  * 탭+브랜드 정책으로 즉시 계산, 보관함 인쇄는 저장 시점에 확정된 단가를 그대로 사용).
  *
  * editable(관리자 전용) 이 true면 단가/금액 셀이 인라인 입력창으로 바뀐다 —
- * 편집 결과는 onUnitPriceChange/onAmountChange 를 통해 호출부(상위 컴포넌트의
- * React state)로만 올라가고, 이 컴포넌트도 호출부도 서버에 저장하지 않는다
- * (estimate-print-view.tsx 의 priceOverrides 참고) — 화면에 보이는 출력물
- * 미리보기에만 일시적으로 반영되고 새로고침하면 원래 저장된 값으로 돌아간다.
+ * 편집 결과는 onUnitPriceChange/onAmountChange 로 호출부에 올라가고, 입력을
+ * 마치면(포커스 이탈/Enter) onPriceEditCommit 이 호출된다. 저장은 호출부가
+ * 맡는다(estimate-print-view.tsx 참고).
  */
 export interface EstimateDocumentRow {
   seq: number;
@@ -60,6 +59,8 @@ interface EstimateDocumentTableProps {
   editable?: boolean;
   onUnitPriceChange?: (rowKey: string | number, value: number) => void;
   onAmountChange?: (rowKey: string | number, value: number) => void;
+  /** 단가/금액 입력을 마쳤을 때(포커스 이탈/Enter) 호출된다. */
+  onPriceEditCommit?: () => void;
 }
 
 // ₩ 기호 없이 콤마만 (원본 견적서에 통화 기호가 전혀 없다)
@@ -198,10 +199,12 @@ function EditableMoneyInput({
   value,
   label,
   onChange,
+  onCommit,
 }: {
   value: number;
   label: string;
   onChange: (value: number) => void;
+  onCommit?: () => void;
 }) {
   const [draft, setDraft] = React.useState<string | null>(null);
 
@@ -211,7 +214,13 @@ function EditableMoneyInput({
       className={editableInput}
       value={draft ?? fmtNum(value)}
       onFocus={() => setDraft(fmtNum(value))}
-      onBlur={() => setDraft(null)}
+      onBlur={() => {
+        setDraft(null);
+        onCommit?.();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
       onChange={(event) => {
         const next = formatSignedWonDraft(event.target.value);
         setDraft(next);
@@ -236,6 +245,7 @@ export function EstimateDocumentTable({
   editable = false,
   onUnitPriceChange,
   onAmountChange,
+  onPriceEditCommit,
 }: EstimateDocumentTableProps) {
   const refCount = referenceTierLabels.length;
 
@@ -563,6 +573,7 @@ export function EstimateDocumentTable({
                   value={row.unitPrice}
                   label={`${row.name} 단가 수정`}
                   onChange={(value) => onUnitPriceChange?.(row.key, value)}
+                  onCommit={onPriceEditCommit}
                 />
               ) : (
                 fmtNum(row.unitPrice)
@@ -579,6 +590,7 @@ export function EstimateDocumentTable({
                   value={row.amount}
                   label={`${row.name} 금액 수정`}
                   onChange={(value) => onAmountChange?.(row.key, value)}
+                  onCommit={onPriceEditCommit}
                 />
               ) : (
                 fmtNum(row.amount)
