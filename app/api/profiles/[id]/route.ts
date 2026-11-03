@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateProfile, deleteProfile } from "@/lib/db/profile-repo";
+import { updateProfile, deleteProfile, ProfileInUseError } from "@/lib/db/profile-repo";
 import { profileSchema } from "@/lib/estimates/schema";
 
 export const runtime = "nodejs";
@@ -57,6 +57,9 @@ export async function DELETE(
     await deleteProfile(id);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
+    if (error instanceof ProfileInUseError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("프로필 삭제 중 예외 발생:", error);
     const message =
       error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
