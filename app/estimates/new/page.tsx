@@ -109,22 +109,49 @@ function extractErrorInfo(error: unknown): { message: string; details?: string }
   return { message: "화면에 필요한 데이터를 불러오지 못했습니다." };
 }
 
+/** PGRST303 재시도 대기 시간(ms). 길이가 곧 재시도 횟수다. */
+const JWT_CLOCK_RETRY_DELAYS_MS = [300, 800, 1500];
+
+/**
+ * PGRST303(JWT issued at future) 인지 판별한다. 서버리스 함수가 콜드 스타트
+ * 직후 시계가 어긋나 있을 때 간헐적으로 나오고 잠시 뒤 저절로 풀린다고 보아,
+ * 곧바로 에러 화면을 띄우지 않고 재시도한다. 조회 함수가 에러를 감쌌을 수
+ * 있어 cause 와 메시지 문자열도 함께 본다.
+ */
+function isJwtClockSkewError(error: unknown): boolean {
+  if (typeof error === "object" && error !== null) {
+    const { code, cause } = error as { code?: unknown; cause?: unknown };
+    if (code === "PGRST303") return true;
+    if (cause !== undefined && isJwtClockSkewError(cause)) return true;
+  }
+  const { message, details } = extractErrorInfo(error);
+  return /PGRST303|JWT issued at future/i.test(`${message} ${details ?? ""}`);
+}
+
 /** Promise.all 안의 5개 조회 중 어떤 것이 실패했는지 콘솔/화면에서 바로
  *  구분할 수 있도록 각 호출에 라벨을 붙여 감싼다. */
 async function loadNamed<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    const { message, details } = extractErrorInfo(error);
-    console.error(`견적서 작성 화면 데이터 조회 실패 [${label}]`, {
-      message,
-      details,
-      raw: error,
-    });
-    throw new Error(
-      details ? `[${label}] ${message} (${details})` : `[${label}] ${message}`
-    );
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      const delay = JWT_CLOCK_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isJwtClockSkewError(error)) throw describeLoadError(label, error);
+      console.warn(`견적서 작성 화면 조회 재시도 [${label}] ${attempt + 1}회차 (PGRST303)`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
+}
+
+/** 최종 실패를 콘솔에 남기고, 라벨이 붙은 화면 표시용 에러로 바꾼다. */
+function describeLoadError(label: string, error: unknown): Error {
+  const { message, details } = extractErrorInfo(error);
+  console.error(`견적서 작성 화면 데이터 조회 실패 [${label}]`, {
+    message,
+    details,
+    raw: error,
+  });
+  return new Error(details ? `[${label}] ${message} (${details})` : `[${label}] ${message}`);
 }
 
 async function loadPageData(): Promise<PageData> {

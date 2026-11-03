@@ -10,7 +10,7 @@ export async function getEquipmentCatalog(): Promise<EquipmentCatalogItem[]> {
     return await getAllEquipment();
   } catch (error) {
     console.error("장비 카탈로그 조회 실패:", error);
-    throw new Error("장비 목록을 불러오지 못했습니다.");
+    throw new Error("장비 목록을 불러오지 못했습니다.", { cause: error });
   }
 }
 
