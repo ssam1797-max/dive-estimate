@@ -2,6 +2,7 @@ import "server-only";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import type { ParsedEquipmentItem } from "@/lib/equipment/types";
+import { NO_OPTION_LABEL } from "@/lib/equipment/optionMerge";
 import type { PongdangCategoryCode } from "@/lib/equipment/pongdangCategories";
 
 const BASE_URL = "https://pongdang.com";
@@ -706,7 +707,7 @@ function mergeRawItemsIntoEquipment(
     colorSet: Set<string>;
     sizeSet: Set<string>;
     /** 이 (브랜드,품명) 묶음에서 처음 본 행의 item_id(퐁당 goods_id). 상세
-     *  페이지 옵션 보완(enrichLowVariantItems)이 /goods/view?no= 에 그대로 쓴다. */
+     *  페이지 옵션 보완이 /goods/view?no= 에 그대로 쓴다. */
     goodsId: string;
   }
   const merged = new Map<string, MergedAccumulator>();
@@ -806,54 +807,20 @@ function mergeRawItemsIntoEquipment(
 }
 
 const DETAIL_PATH = "/goods/view";
-/**
- * 조각(chunk) 1번 호출에서 상세페이지를 추가로 열어볼 상품 수 상한.
- *
- * 목록 페이지 API는 "그 페이지에 실제로 걸린 옵션 행" 만큼만 item_variant를
- * 내려주는데, 이게 그 상품의 전체 옵션과 항상 같지는 않다(실측으로 확인된
- * 사례: "델타 롱 5mm 부츠"가 목록에서는 사이즈 1개만 보였지만 실제로는
- * 여러 사이즈가 있었음). 색상/사이즈 합계가 1개 이하로 보이는 상품만
- * 상세페이지(/goods/view?no=)를 열어 실제 전체 옵션을 보완하되, 상품당
- * 요청이 1번 더 늘어나므로 상한을 둔다.
- *
- * [중요] route.ts 에 `export const maxDuration = 60` 이 선언돼 있지만,
- * Netlify 의 일반(백그라운드 아닌) 서버 함수는 이 값과 무관하게 응답
- * 시작까지 무응답 상태가 약 30초를 넘으면 플랫폼이 자체적으로
- * "Inactivity Timeout" 으로 끊어버린다 — Next.js 의 maxDuration 선언을
- * 그냥 무시하는 하드 리밋이다. 한 번 20으로 올려 실측했다가 조각 1번이
- * 30초를 넘겨 504로 끊기는 것을 직접 확인했다(멱등하지 않은 중간 상태로
- * 끊기므로 섣불리 올리면 안 됨). 동시 처리(아래 DETAIL_FETCH_CONCURRENCY)를
- * 3→5로 늘리면 배치 수는 줄어도 퐁당닷컴 서버 자체가 동시 요청 부하에
- * 응답이 느려져(요청 수가 늘수록 요청당 지연시간도 함께 늘어남) 오히려
- * 30초를 넘기는 것을 2026-10-24 실측으로 확인했다(프로덕션 조각 호출
- * 3건 중 1건이 타임아웃으로 실패) — "배치 수×건당 시간"이 아니라 "동시
- * 요청 수 자체"가 안전 마진을 좌우하므로, 상한은 3건 동시 처리를 유지한
- * 채 10으로 되돌린다. 10건 기준으로는 평균 약 21초로 안전 마진이
- * 있었으므로 10을 유지한다 — 처리량을 늘리려면 이 숫자나 동시 처리
- * 수보다는 동기화 자체를 하루에 여러 번 돌리는 방향이 안전하다.
- *
- * 카탈로그 전체를 하루 안에 다 보완하지 못해도, 매일 자동 동기화(Cron)가
- * 반복되며 option_checked_at 기준 라운드로빈으로 점진적으로 전수 보완된다
- * (selectEnrichmentCandidates 참고).
- */
-export const MAX_DETAIL_FETCHES_PER_CHUNK = 10;
 
 /**
- * 상세페이지 요청을 한 번에 몇 건까지 동시에 보낼지. 순차 요청(건당
- * ~1.8~2.4초)이 조각 1번의 30초 벽(위 MAX_DETAIL_FETCHES_PER_CHUNK 주석
- * 참고)을 거의 다 써버려서, 같은 요청 수를 동시에 묶어 보내 조각 1번의
- * 벽시계 시간을 줄인다 — 하루 총 요청 수 자체는 그대로이므로(더 많이
- * 가져오는 게 아니라 같은 양을 더 짧은 시간에 가져옴) 퐁당닷컴 서버에
- * 주는 부하가 실질적으로 늘지는 않는다. 5로 올려봤다가 퐁당닷컴 서버
- * 응답 자체가 느려져 조각 1번이 30초를 넘기는 것을 실측으로 확인해(위
- * MAX_DETAIL_FETCHES_PER_CHUNK 주석 참고) 3으로 되돌렸다. 그래도 보수적으로
- * 3건으로 제한한다.
+ * 상세페이지 요청을 한 번에 몇 건까지 동시에 보낼지. 5로 올렸을 때 퐁당닷컴
+ * 응답 자체가 느려져 30초 제한을 넘기는 것을 2026-10-24 실측으로 확인해
+ * 3으로 유지한다.
  */
-const DETAIL_FETCH_CONCURRENCY = 3;
+export const DETAIL_FETCH_CONCURRENCY = 3;
+
+/** 상세페이지 요청 묶음 사이의 대기 시간. */
+export const DETAIL_FETCH_DELAY_MS = REQUEST_DELAY_MS;
 
 /** fetchDetailPage 가 429(너무 많은 요청)/403(차단) 응답으로 실패했는지 확인한다.
  *  이런 응답이 오면 더 보내지 않고 즉시 멈춘다(isBlockingError 사용부 참고). */
-function isBlockingError(reason: unknown): boolean {
+export function isBlockingError(reason: unknown): boolean {
   return reason instanceof Error && /\bHTTP (429|403)\b/.test(reason.message);
 }
 
@@ -883,7 +850,7 @@ function stripSoldOutSuffix(label: string): string {
   return label.replace(/\s*\(품절\)\s*$/, "").trim();
 }
 
-interface DetailPageOptions {
+export interface DetailPageOptions {
   /** 이 select가 담고 있는 옵션 종류. 첫 번째(안내용) <option>의 문구
    *  ("- 색상 선택 -", "- 사이즈 선택 -" 등)로 판별한다 — "- 렌즈 선택 -"처럼
    *  색상도 사이즈도 아닌 축이면 null(이 상품은 보완 대상에서 건너뜀). */
@@ -909,10 +876,8 @@ interface DetailPageOptions {
  * 정적 HTML에 그대로 내려오지만, 2차원(색상+사이즈 두 단계) 상품의 두
  * 번째 select(`id="1"`)는 1차원 값을 고른 뒤 AJAX로만 채워지는 빈
  * 셀렉트라 정적 요청 1번으로는 가져올 수 없다(상품당 1+N번 요청이
- * 필요해 조각 1번의 비용으로는 너무 큼) — 그런 상품은 이 보완 대상에서
- * 자연히 제외되고(1차원 결과만으로도 합계가 1 초과가 되면 아래
- * enrichLowVariantItems 가 애초에 후보로 고르지 않음) 목록 페이지에서
- * 뽑힌 값만 그대로 쓴다.
+ * 필요해 비용이 크다) — 그런 상품은 첫 번째 축만 상세페이지 값으로 채우고,
+ * 두 번째 축은 목록 페이지에서 뽑힌 값만 그대로 쓴다.
  */
 function extractDetailPageOptions(html: string): DetailPageOptions {
   const $ = cheerio.load(html);
@@ -944,139 +909,32 @@ function extractDetailPageOptions(html: string): DetailPageOptions {
   return { axis, labels };
 }
 
-/** (브랜드,품명) 키 하나를 만든다 — goodsIdByKey/selectedKeys 조회에 그대로 쓴다. */
-function itemKey(item: { brand: string; name: string }): string {
-  return `${item.brand}\u0000${item.name}`;
+/** 상세페이지 1건을 열어 옵션 목록을 읽는다. 호출부는 lib/equipment/optionMerge.ts 의
+ *  applyDetailOptions 로 저장할 값을 정한다. */
+export async function fetchDetailPageOptions(goodsId: string): Promise<DetailPageOptions> {
+  return extractDetailPageOptions(await fetchDetailPage(goodsId));
 }
 
 /**
- * 목록 페이지 응답만으로는 색상/사이즈 옵션 합계가 1개 이하로 보이는
- * 상품들의 (브랜드,품명) 키 목록을 뽑는다. 실제로 이 중 몇 건을, 어떤
- * 순서로 상세페이지까지 열어볼지는 호출부가 DB의 option_checked_at
- * 값(가장 오래전에 확인했거나 아예 확인된 적 없는 품목 우선)을 기준으로
- * 고른다(lib/db/equipment-repo.ts selectEnrichmentCandidates 참고) —
- * 크롤러 자신은 "그 조각에서 가장 먼저 나온 N건"처럼 순서에 의존한
- * 선택을 하지 않는다(매일 같은 품목만 반복 보완되는 문제를 피하기 위함).
+ * 목록 페이지에서 옵션이 전혀 보이지 않은 품목은 색상에 "기본"을 채워 화면에
+ * 빈 칸으로 보이지 않게 한다. 실제 옵션이 있으면 옵션 보완 작업이 교체한다.
  */
-export function selectLowVariantCandidates(
-  items: PongdangEquipmentItem[]
-): { brand: string; name: string }[] {
-  return items
-    .filter((item) => item.colors.length + item.sizes.length <= 1)
-    .map((item) => ({ brand: item.brand, name: item.name }));
-}
-
-/**
- * selectedKeys 로 지정된 품목만 상세페이지를 열어 실제 전체 옵션 목록을
- * 보완한다 — 어떤 품목을 고를지는 호출부(selectLowVariantCandidates +
- * DB의 option_checked_at 기준 선정)가 결정하고, 이 함수는 그 선택대로
- * 가져오기만 한다. 보완(또는 애초에 선택되지 않은 경우) 후에도 옵션이
- * 전혀 없으면(진짜 단일 SKU) 색상에 "기본"을 채워, 화면에 빈 칸으로
- * 보이지 않게 한다.
- *
- * goodsIdByKey 는 (브랜드,품명) 키 → 목록에서 처음 본 item_id(퐁당
- * goods_id) 매핑이며, 상세페이지 URL(/goods/view?no=)에 그대로 쓴다.
- * items 는 제자리에서(in-place) colors/sizes 가 갱신된다.
- */
-export async function enrichSelectedItems(
-  items: PongdangEquipmentItem[],
-  goodsIdByKey: Map<string, string>,
-  selectedKeys: Set<string>
-): Promise<{ warnings: string[]; checkedKeys: Set<string> }> {
-  const warnings: string[] = [];
-  const targets = items.filter((item) => selectedKeys.has(itemKey(item)));
-
-  let enrichedCount = 0;
-  let detailFetchFailures = 0;
-  let blockedEarly = false;
-  // 실제로 상세페이지 응답을 성공적으로 받아본 품목만 "확인됨"으로 친다
-  // — 실패(차단 포함)한 품목은 option_checked_at 을 갱신하지 않아, 다음
-  // 조각/날짜에 금방 다시 시도된다(몇 주씩 밀리지 않도록).
-  const checkedKeys = new Set<string>();
-
-  // DETAIL_FETCH_CONCURRENCY 건씩 묶어서 동시에 요청한다 — 조각 1번의
-  // 벽시계 시간을 줄이기 위함이며, 묶음 수(targets.length)는 그대로라
-  // 하루 총 요청 수는 바뀌지 않는다. 429/403 같은 차단성 응답을 하나라도
-  // 받으면 그 즉시 더 보내지 않고 멈춘다.
-  for (let i = 0; i < targets.length && !blockedEarly; i += DETAIL_FETCH_CONCURRENCY) {
-    const batch = targets.slice(i, i + DETAIL_FETCH_CONCURRENCY);
-    const settled = await Promise.allSettled(
-      batch.map((item) => {
-        const goodsId = goodsIdByKey.get(itemKey(item));
-        return goodsId ? fetchDetailPage(goodsId) : Promise.reject(new Error("goodsId 없음"));
-      })
-    );
-
-    settled.forEach((result, idx) => {
-      if (result.status === "rejected") {
-        detailFetchFailures += 1;
-        if (isBlockingError(result.reason)) blockedEarly = true;
-        return;
-      }
-
-      const item = batch[idx];
-      checkedKeys.add(itemKey(item));
-      const { axis, labels } = extractDetailPageOptions(result.value);
-      if (axis === null || labels.length === 0) return;
-
-      const colorSet = new Set(item.colors);
-      const sizeSet = new Set(item.sizes);
-      for (const label of labels) {
-        if (axis === "size") sizeSet.add(label);
-        else colorSet.add(label);
-      }
-
-      const nextColors = Array.from(colorSet).sort((a, b) => a.localeCompare(b, "ko"));
-      const nextSizes = Array.from(sizeSet).sort((a, b) => a.localeCompare(b, "ko"));
-      if (nextColors.length !== item.colors.length || nextSizes.length !== item.sizes.length) {
-        enrichedCount += 1;
-      }
-      item.colors = nextColors;
-      item.sizes = nextSizes;
-    });
-
-    if (!blockedEarly && i + DETAIL_FETCH_CONCURRENCY < targets.length) {
-      await sleep(REQUEST_DELAY_MS);
-    }
-  }
-
-  // 상세페이지를 열어봤든(위 targets) 상한 밖이라 열어보지 않았든, 최종
-  // 색상/사이즈가 둘 다 비어 있으면 옵션이 전혀 없는 단일 SKU로 보고
-  // "기본"을 채운다 — 상한 밖 상품은 다음 번 동기화(매일 자동 Cron)에서
-  // 다시 후보로 잡혀 실제 옵션이 있다면 이 "기본" 값은 그때 덮어써진다.
+export function fillNoOptionFallback(items: PongdangEquipmentItem[]): string[] {
   let fallbackCount = 0;
   for (const item of items) {
     if (item.colors.length === 0 && item.sizes.length === 0) {
-      item.colors = ["기본"];
+      item.colors = [NO_OPTION_LABEL];
       fallbackCount += 1;
     }
   }
-
-  if (blockedEarly) {
-    warnings.push(
-      "퐁당닷컴이 요청을 일시적으로 거부(429/403)하는 것으로 보여 이번 조각의 상세페이지 보완을 중단했습니다."
-    );
-  }
-  if (enrichedCount > 0) {
-    warnings.push(`상세페이지 보완으로 ${enrichedCount}건의 옵션 목록을 더 채웠습니다.`);
-  }
-  if (detailFetchFailures > 0) {
-    warnings.push(
-      `상세페이지 옵션 보완 중 ${detailFetchFailures}건은 요청에 실패해 건너뛰었습니다.`
-    );
-  }
-  if (fallbackCount > 0) {
-    warnings.push(`옵션이 전혀 없는 ${fallbackCount}건은 색상에 "기본" 값을 채웠습니다.`);
-  }
-
-  return { warnings, checkedKeys };
+  return fallbackCount > 0 ? [`옵션이 보이지 않는 ${fallbackCount}건은 색상에 "기본" 값을 채웠습니다.`] : [];
 }
 
 export interface PongdangCrawlChunkResult extends PongdangCrawlResult {
   /** 이 카테고리에서 다음에 이어 받아야 할 페이지 번호. 더 받을 페이지가 없으면 null. */
   nextPage: number | null;
   /** (브랜드,품명) 키 → 목록에서 처음 본 item_id(퐁당 goods_id). 서버
-   *  내부에서만 쓰며(enrichSelectedItems 호출용), API 응답으로는 내려가지
+   *  내부에서만 쓰며(pongdang_goods_id 저장용), API 응답으로는 내려가지
    *  않는다(route.ts 가 별도 필드만 골라 JSON 응답을 만든다). */
   goodsIdByKey: Map<string, string>;
 }

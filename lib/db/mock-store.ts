@@ -33,9 +33,11 @@ export interface MockEquipment {
    *  삭제하지 않고 견적서 작성 화면의 선택 목록에서만 제외한다. */
   is_sold_out?: boolean;
   /** 상세페이지에서 옵션(색상/사이즈)을 마지막으로 확인(보완 시도)한 시각.
-   *  null/undefined면 한 번도 확인된 적 없음 — 동기화 시 이 값이 가장
-   *  오래된 품목부터 우선 보완 대상으로 고른다(selectEnrichmentCandidates). */
+   *  null/undefined면 한 번도 확인된 적 없음 — 옵션 보완 작업이 이 값이
+   *  가장 오래된 품목부터 확인한다(getOptionBackfillTargets). */
   option_checked_at?: string | null;
+  /** 퐁당닷컴 상품 번호(/goods/view?no=). */
+  pongdang_goods_id?: string | null;
   /** 퐁당닷컴 샵 계정 로그인으로 수집한 실제 샵가(INSTRUCTOR 등급). */
   price_instructor?: number | null;
   /** 공급가(CENTER 등급). price_center_overridden=false면 자동 계산값. */

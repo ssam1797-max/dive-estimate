@@ -5,7 +5,7 @@ import type { EquipmentImportChunkSummary } from "../../lib/equipment/types";
 
 /**
  * 퐁당닷컴 전체 카테고리×페이지 동기화 실제 작업을 수행하는 백그라운드
- * 함수(최대 15분). pongdang-sync-trigger.mts(매일 새벽 5시 예약 함수)가
+ * 함수(최대 15분). pongdang-sync-trigger.mts(6시간마다 도는 예약 함수)가
  * HTTP로 호출하며, Netlify가 즉시 202로 응답하고 이 함수는 큐에서 계속
  * 실행된다.
  *
@@ -37,6 +37,48 @@ interface RunTotals {
   updatedCount: number;
   protectedCount: number;
   failedCount: number;
+}
+
+const CHUNK_MAX_ATTEMPTS = 3;
+const CHUNK_RETRY_DELAY_MS = 10000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 조각 1개를 호출한다. 약 30초를 넘기면 Netlify가 JSON 대신 HTML 오류 페이지를
+ * 돌려주는데, 대개 일시적이라 잠시 뒤 다시 시도하면 성공한다. 조각은 같은
+ * 값으로 다시 저장되므로 재시도해도 안전하다.
+ */
+async function fetchChunkWithRetry(
+  url: string,
+  headers: Record<string, string>
+): Promise<EquipmentImportChunkSummary> {
+  let lastError = "동기화에 실패했습니다.";
+
+  for (let attempt = 1; attempt <= CHUNK_MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) await sleep(CHUNK_RETRY_DELAY_MS * (attempt - 1));
+
+    try {
+      const response = await fetch(url, { method: "POST", headers });
+      const text = await response.text();
+      let body: EquipmentImportChunkSummary | { error: string } | null = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        lastError = `JSON이 아닌 응답(HTTP ${response.status})`;
+      }
+
+      if (body) {
+        if (response.ok && !("error" in body)) return body;
+        lastError = "error" in body ? body.error : `HTTP ${response.status}`;
+        if (response.status < 500) break;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "요청 실패";
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 async function persistSyncRun(
@@ -96,14 +138,14 @@ const handler = async (request: Request) => {
       let page: number | null = 1;
 
       while (page !== null) {
-        const response = await fetch(
-          `${siteUrl}/api/equipment/import/pongdang?category=${category}&page=${page}`,
-          { method: "POST", headers }
-        );
-        const body = (await response.json()) as EquipmentImportChunkSummary | { error: string };
-
-        if (!response.ok || "error" in body) {
-          const message = "error" in body ? body.error : "동기화에 실패했습니다.";
+        let body: EquipmentImportChunkSummary;
+        try {
+          body = await fetchChunkWithRetry(
+            `${siteUrl}/api/equipment/import/pongdang?category=${category}&page=${page}`,
+            headers
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "동기화에 실패했습니다.";
           throw new Error(`[${category} ${page}페이지] ${message}`);
         }
 

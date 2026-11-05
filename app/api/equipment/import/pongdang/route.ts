@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
 import {
   crawlPongdangCategoryChunk,
-  selectLowVariantCandidates,
-  enrichSelectedItems,
-  MAX_DETAIL_FETCHES_PER_CHUNK,
+  fillNoOptionFallback,
 } from "@/lib/crawler/pongdangCrawler";
-import {
-  upsertEquipmentMultiBrand,
-  selectEnrichmentCandidates,
-  markOptionsChecked,
-} from "@/lib/db/equipment-repo";
+import { upsertEquipmentMultiBrand } from "@/lib/db/equipment-repo";
 import {
   PONGDANG_CATEGORY_CODES,
   type PongdangCategoryCode,
@@ -64,22 +58,9 @@ export async function POST(request: Request) {
     const catalogYear = new Date().getFullYear();
     const chunk = await crawlPongdangCategoryChunk(categoryParam, startPage, PAGES_PER_CHUNK);
 
-    // 색상/사이즈 옵션 합계가 1개 이하로 보이는 품목 중, 상세페이지 확인을
-    // 가장 오래 안 해봤거나 아예 확인한 적 없는 N건만 상세페이지까지 열어
-    // 전체 옵션을 보완한다(selectEnrichmentCandidates 참고) — 그 조각에서
-    // 가장 먼저 나온 N건을 그대로 고르던 예전 방식은 크롤링 순서가 날마다
-    // 거의 같아 매일 같은 품목만 반복 보완되는 문제가 있었다.
-    const candidateKeys = selectLowVariantCandidates(chunk.items);
-    const selectedKeys = await selectEnrichmentCandidates(
-      catalogYear,
-      candidateKeys,
-      MAX_DETAIL_FETCHES_PER_CHUNK
-    );
-    const { warnings: enrichWarnings, checkedKeys } = await enrichSelectedItems(
-      chunk.items,
-      chunk.goodsIdByKey,
-      selectedKeys
-    );
+    // 상세페이지 옵션은 여기서 다루지 않는다. 이 호출은 30초 제한 안에 끝나야
+    // 해서, 옵션 보완은 별도 작업으로 분리했다(/api/equipment/option-backfill).
+    const fallbackWarnings = fillNoOptionFallback(chunk.items);
 
     // 조각 하나에 브랜드가 몇 개 섞여 있든 DB 왕복 2번(보호 품목 조회 1번 +
     // upsert 1번)으로 끝낸다 — 브랜드별로 루프 돌리던 예전 방식이 504
@@ -96,15 +77,10 @@ export async function POST(request: Request) {
           colors,
           sizes,
           image_url,
+          pongdang_goods_id: chunk.goodsIdByKey.get(`${brand}\u0000${name}`) ?? null,
         })
       )
     );
-    // 상세페이지 응답을 실제로 받아본 품목만(결과적으로 옵션이 그대로였어도)
-    // option_checked_at 을 갱신해 다음 조각/날짜의 우선순위에서 뒤로 밀리게
-    // 한다 — 요청이 실패/차단된 품목은 selectedKeys 에는 있어도 checkedKeys
-    // 에서 빠지므로 갱신되지 않고, 금방 다시 후보로 잡힌다.
-    await markOptionsChecked(catalogYear, checkedKeys);
-
     const summary: EquipmentImportChunkSummary = {
       category: categoryParam,
       catalogYear,
@@ -115,7 +91,7 @@ export async function POST(request: Request) {
       protectedCount: result.protectedCount,
       failedCount: result.failedCount,
       items: result.items,
-      warnings: [...chunk.warnings, ...enrichWarnings],
+      warnings: [...chunk.warnings, ...fallbackWarnings],
       brands: Array.from(new Set(chunk.items.map((item) => item.brand))),
       nextPage: chunk.nextPage,
     };

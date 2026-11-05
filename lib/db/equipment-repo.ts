@@ -1,3 +1,4 @@
+import { mergeListedOptions } from "@/lib/equipment/optionMerge";
 import "server-only";
 import { isMockMode } from "@/lib/db/is-mock";
 import { mockStore } from "@/lib/db/mock-store";
@@ -769,88 +770,91 @@ export async function deleteEquipment(id: string): Promise<boolean> {
 // 발생해 Netlify 서버 함수 실행 시간 제한을 넘기는 주된 원인이었다(페이지
 // 크롤링 자체보다 이 부분이 더 오래 걸렸다). 이 함수는 브랜드가 몇 개
 // 섞여 있든 조회 1번 + upsert 1번, 총 2번의 왕복으로 끝낸다.
-/**
- * 상세페이지 옵션 보완 후보((브랜드,품명) 키 목록) 중, 이번 조각(chunk)에서
- * 실제로 상세페이지를 열어볼 N건을 고른다 — option_checked_at이 없거나
- * (한 번도 확인된 적 없음) 가장 오래된 품목부터 우선순위를 둔다.
- *
- * 예전에는 "그 조각에서 가장 먼저 발견된 N건"을 그대로 골랐는데, 목록
- * 페이지 크롤링 순서가 날마다 거의 그대로라 매일 똑같은 품목만 반복
- * 보완되고 나머지는 차례가 오지 않는 문제가 실측으로 확인됐다(동일한
- * 전체 동기화를 하루에 두 번 돌려도 보완 후보 수가 거의 줄지 않음).
- * option_checked_at 기준으로 우선순위를 두면 매번 다른 품목이 돌아가며
- * 보완되어, 결국 전체 카탈로그가 전수 보완에 도달한다.
- *
- * 보호(is_custom=true) 품목은 애초에 후보에서 제외한다 — 자동 동기화가
- * 보호 품목의 색상/사이즈를 저장하지 않으므로, 상세페이지를 열어봐도
- * 결과가 버려져 조각의 보완 예산만 낭비하게 된다.
- */
-export async function selectEnrichmentCandidates(
-  catalogYear: number,
-  candidateKeys: { brand: string; name: string }[],
-  limit: number
-): Promise<Set<string>> {
-  const keyOf = (brand: string, name: string) => `${brand}\u0000${name}`;
-  if (candidateKeys.length === 0 || limit <= 0) return new Set();
+/** Supabase가 요청 1번에 돌려주는 최대 행 수. */
+const SUPABASE_PAGE_SIZE = 1000;
 
-  const candidateKeySet = new Set(candidateKeys.map((k) => keyOf(k.brand, k.name)));
-  const checkedAtByKey = new Map<string, string | null>();
+export interface OptionBackfillTarget {
+  id: string;
+  goodsId: string;
+  colors: string[];
+  sizes: string[];
+}
 
-  if (isMockMode()) {
-    for (const e of mockStore.equipment) {
-      if (e.catalog_year !== catalogYear || e.is_custom) continue;
-      const key = keyOf(e.brand, e.name);
-      if (candidateKeySet.has(key)) checkedAtByKey.set(key, e.option_checked_at ?? null);
-    }
-  } else {
-    const { createAdminClient } = await import("@/lib/supabase/server");
-    const supabase = await createAdminClient();
-    const distinctBrands = Array.from(new Set(candidateKeys.map((k) => k.brand)));
-
-    try {
-      const { data, error } = await supabase
-        .from("equipment")
-        .select("brand, name, option_checked_at, is_custom")
-        .eq("catalog_year", catalogYear)
-        .in("brand", distinctBrands);
-      if (error) throw error;
-      for (const r of data ?? []) {
-        if (r.is_custom) continue;
-        const key = keyOf(r.brand as string, r.name as string);
-        if (candidateKeySet.has(key)) {
-          checkedAtByKey.set(key, (r.option_checked_at as string | null) ?? null);
-        }
-      }
-    } catch {
-      // 조회 실패해도 전체를 "한 번도 확인 안 됨"으로 간주하고 계속
-      // 진행한다 — 보완 자체를 아예 건너뛰는 것보다 낫다.
-    }
-  }
-
-  const prioritized = Array.from(candidateKeySet)
-    .map((key) => ({ key, checkedAt: checkedAtByKey.get(key) ?? "" }))
-    .sort((a, b) => a.checkedAt.localeCompare(b.checkedAt));
-
-  return new Set(prioritized.slice(0, limit).map((e) => e.key));
+/** 옵션 보완 대상: 한 번도 확인하지 않았거나 재확인 기준(cutoffIso)보다 오래된 품목. */
+function isOptionBackfillDue(checkedAt: string | null | undefined, cutoffIso: string): boolean {
+  return !checkedAt || checkedAt < cutoffIso;
 }
 
 /**
- * selectEnrichmentCandidates 로 고른 품목들의 상세페이지를 실제로 열어봤다는
- * 사실을(결과적으로 옵션이 그대로였어도) option_checked_at 에 기록해,
- * 다음 번 동기화에서는 우선순위가 뒤로 밀리도록 한다.
+ * 옵션 보완 대상을 확인이 가장 오래된 순서로 가져온다. remaining 은 limit 와
+ * 상관없는 전체 남은 건수다. 보호 품목과 품절 품목은 제외한다.
  */
-export async function markOptionsChecked(
+export async function getOptionBackfillTargets(
   catalogYear: number,
-  checkedKeys: Set<string>
-): Promise<void> {
-  if (checkedKeys.size === 0) return;
-  const now = new Date().toISOString();
-
+  limit: number,
+  cutoffIso: string
+): Promise<{ targets: OptionBackfillTarget[]; remaining: number }> {
   if (isMockMode()) {
-    for (const e of mockStore.equipment) {
-      if (e.catalog_year !== catalogYear) continue;
-      if (checkedKeys.has(`${e.brand}\u0000${e.name}`)) {
-        e.option_checked_at = now;
+    const due = mockStore.equipment
+      .filter(
+        (e) =>
+          e.catalog_year === catalogYear &&
+          !e.is_custom &&
+          !e.is_sold_out &&
+          Boolean(e.pongdang_goods_id) &&
+          isOptionBackfillDue(e.option_checked_at, cutoffIso)
+      )
+      .sort((a, b) => (a.option_checked_at ?? "").localeCompare(b.option_checked_at ?? ""));
+    return {
+      remaining: due.length,
+      targets: due.slice(0, limit).map((e) => ({
+        id: e.id,
+        goodsId: e.pongdang_goods_id as string,
+        colors: e.colors,
+        sizes: e.sizes,
+      })),
+    };
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+  const { data, error, count } = await supabase
+    .from("equipment")
+    .select("id, pongdang_goods_id, colors, sizes", { count: "exact" })
+    .eq("catalog_year", catalogYear)
+    .eq("is_custom", false)
+    .eq("is_sold_out", false)
+    .not("pongdang_goods_id", "is", null)
+    .or(`option_checked_at.is.null,option_checked_at.lt.${cutoffIso}`)
+    .order("option_checked_at", { ascending: true, nullsFirst: true })
+    .order("id", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+
+  return {
+    remaining: count ?? 0,
+    targets: (data ?? []).map((r) => ({
+      id: r.id as string,
+      goodsId: r.pongdang_goods_id as string,
+      colors: (r.colors as string[] | null) ?? [],
+      sizes: (r.sizes as string[] | null) ?? [],
+    })),
+  };
+}
+
+/** 옵션 보완 결과를 저장한다. options 가 없으면 확인 시각만 남긴다. */
+export async function saveOptionBackfillResult(
+  id: string,
+  checkedAtIso: string,
+  options?: { colors: string[]; sizes: string[] }
+): Promise<void> {
+  if (isMockMode()) {
+    const item = mockStore.equipment.find((e) => e.id === id);
+    if (item) {
+      item.option_checked_at = checkedAtIso;
+      if (options) {
+        item.colors = options.colors;
+        item.sizes = options.sizes;
       }
     }
     return;
@@ -858,28 +862,20 @@ export async function markOptionsChecked(
 
   const { createAdminClient } = await import("@/lib/supabase/server");
   const supabase = await createAdminClient();
-
-  for (const key of checkedKeys) {
-    const [brand, name] = key.split("\u0000");
-    try {
-      const { error } = await supabase
-        .from("equipment")
-        .update({ option_checked_at: now })
-        .eq("catalog_year", catalogYear)
-        .eq("brand", brand)
-        .eq("name", name);
-      if (error) throw error;
-    } catch (error) {
-      // 이 기록은 다음 번 보완 우선순위를 위한 부가 정보일 뿐이라, 실패해도
-      // 동기화 자체(이미 끝난 upsert)는 영향받지 않게 조용히 넘어간다.
-      console.error("option_checked_at 갱신 실패:", error);
-    }
-  }
+  const { error } = await supabase
+    .from("equipment")
+    .update({ option_checked_at: checkedAtIso, ...options })
+    .eq("id", id);
+  if (error) throw error;
 }
 
 export async function upsertEquipmentMultiBrand(
   catalogYear: number,
-  rawItems: (ParsedEquipmentItem & { brand: string; price_instructor: number | null })[]
+  rawItems: (ParsedEquipmentItem & {
+    brand: string;
+    price_instructor: number | null;
+    pongdang_goods_id?: string | null;
+  })[]
 ): Promise<UpsertBulkResult> {
   if (rawItems.length === 0) {
     return { insertedCount: 0, updatedCount: 0, protectedCount: 0, failedCount: 0, items: [] };
@@ -947,9 +943,9 @@ export async function upsertEquipmentMultiBrand(
           price_retail: item.price_retail,
           price_instructor: priceInstructor,
           price_center: priceCenter,
-          colors: item.colors,
-          sizes: item.sizes,
+          ...mergeListedOptions(existing, { colors: item.colors, sizes: item.sizes }),
           image_url: item.image_url ?? existing.image_url ?? null,
+          pongdang_goods_id: item.pongdang_goods_id ?? existing.pongdang_goods_id ?? null,
           // 이번 동기화에서 다시 발견됐으니 품절 상태였다면 즉시 해제한다.
           is_sold_out: false,
           updated_at: now,
@@ -970,6 +966,7 @@ export async function upsertEquipmentMultiBrand(
           colors: item.colors,
           sizes: item.sizes,
           image_url: item.image_url ?? null,
+          pongdang_goods_id: item.pongdang_goods_id ?? null,
           is_sold_out: false,
           created_at: now,
           updated_at: now,
@@ -990,47 +987,62 @@ export async function upsertEquipmentMultiBrand(
 
   const distinctBrands = Array.from(new Set(items.map((item) => item.brand)));
 
-  let existingByKey: Map<
-    string,
-    {
-      id: string;
-      is_custom: boolean;
-      price_retail: number;
-      image_url: string | null;
-      pending_review_price: number | null;
-      price_instructor: number | null;
-      price_center: number | null;
-      price_center_overridden: boolean;
-    }
-  >;
-  try {
+  interface ExistingEquipmentRow {
+    id: string;
+    brand: string;
+    name: string;
+    is_custom: boolean;
+    price_retail: number | string;
+    image_url: string | null;
+    pending_review_price: number | string | null;
+    price_instructor: number | string | null;
+    price_center: number | string | null;
+    price_center_overridden: boolean;
+    colors: string[] | null;
+    sizes: string[] | null;
+    option_checked_at: string | null;
+    pongdang_goods_id: string | null;
+  }
+
+  // 브랜드가 많이 섞인 조각은 기존 품목이 1,000행을 넘는다. Supabase는 한 번에
+  // 1,000행까지만 주므로 끝까지 나눠 읽어야 한다. 읽기에 실패하면 멈춘다 —
+  // 기존 값 없이 저장하면 보호 품목과 고정 공급가, 확인된 옵션을 덮어쓰게 된다.
+  const existingRows: ExistingEquipmentRow[] = [];
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("equipment")
       .select(
-        "id, brand, name, is_custom, price_retail, image_url, pending_review_price, price_instructor, price_center, price_center_overridden"
+        "id, brand, name, is_custom, price_retail, image_url, pending_review_price, price_instructor, price_center, price_center_overridden, colors, sizes, option_checked_at, pongdang_goods_id"
       )
       .eq("catalog_year", catalogYear)
-      .in("brand", distinctBrands);
-    if (error) throw error;
-    existingByKey = new Map(
-      (data ?? []).map((r) => [
-        keyOf(r.brand as string, r.name as string),
-        {
-          id: r.id as string,
-          is_custom: Boolean(r.is_custom),
-          price_retail: Number(r.price_retail),
-          image_url: (r.image_url as string | null) ?? null,
-          pending_review_price:
-            r.pending_review_price == null ? null : Number(r.pending_review_price),
-          price_instructor: r.price_instructor == null ? null : Number(r.price_instructor),
-          price_center: r.price_center == null ? null : Number(r.price_center),
-          price_center_overridden: Boolean(r.price_center_overridden),
-        },
-      ])
-    );
-  } catch {
-    existingByKey = new Map();
+      .in("brand", distinctBrands)
+      .order("id", { ascending: true })
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+    if (error) throw new Error(`기존 장비 조회 실패: ${error.message}`);
+    const page = (data ?? []) as unknown as ExistingEquipmentRow[];
+    existingRows.push(...page);
+    if (page.length < SUPABASE_PAGE_SIZE) break;
   }
+
+  const existingByKey = new Map(
+    existingRows.map((r) => [
+      keyOf(r.brand, r.name),
+      {
+        id: r.id,
+        is_custom: Boolean(r.is_custom),
+        price_retail: Number(r.price_retail),
+        image_url: r.image_url ?? null,
+        pending_review_price: r.pending_review_price == null ? null : Number(r.pending_review_price),
+        price_instructor: r.price_instructor == null ? null : Number(r.price_instructor),
+        price_center: r.price_center == null ? null : Number(r.price_center),
+        price_center_overridden: Boolean(r.price_center_overridden),
+        colors: r.colors ?? [],
+        sizes: r.sizes ?? [],
+        option_checked_at: r.option_checked_at,
+        pongdang_goods_id: r.pongdang_goods_id,
+      },
+    ])
+  );
 
   const protectedItems = items.filter(
     (item) => existingByKey.get(keyOf(item.brand, item.name))?.is_custom === true
@@ -1061,9 +1073,9 @@ export async function upsertEquipmentMultiBrand(
       price_retail: item.price_retail,
       price_instructor: priceInstructor,
       price_center: priceCenter,
-      colors: item.colors,
-      sizes: item.sizes,
-      image_url: item.image_url ?? null,
+      ...mergeListedOptions(existing, { colors: item.colors, sizes: item.sizes }),
+      image_url: item.image_url ?? existing?.image_url ?? null,
+      pongdang_goods_id: item.pongdang_goods_id ?? existing?.pongdang_goods_id ?? null,
       // 이번 동기화에서 다시 발견된 품목이니 품절 상태였다면 즉시 해제한다
       // (reconcileSoldOutStatus 는 "더 이상 안 보이는" 쪽만 처리하므로, 다시
       // 보이는 쪽은 여기서 바로 풀어줘야 한다).
