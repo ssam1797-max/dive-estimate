@@ -864,7 +864,10 @@ export async function saveOptionBackfillResult(
   const supabase = await createAdminClient();
   const { error } = await supabase
     .from("equipment")
-    .update({ option_checked_at: checkedAtIso, ...options })
+    .update({
+      option_checked_at: checkedAtIso,
+      ...(options && { colors: options.colors, sizes: options.sizes }),
+    })
     .eq("id", id);
   if (error) throw error;
 }
