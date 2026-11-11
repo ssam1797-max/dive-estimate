@@ -64,9 +64,26 @@ export function EstimateItemsTable({
     return map;
   }, [catalog]);
 
+  /** 품목 1건의 표시용 계산값 — 데스크톱 표와 모바일 카드가 같이 쓴다. */
+  const derivePricing = (item: EstimateItemDraft) => ({
+    discountRate: calculateDiscountRate(item.priceRetail, item.unitPrice),
+    shopPrice: calculateEffectiveUnitPrice(
+      item.priceRetail,
+      item.brand,
+      "INSTRUCTOR",
+      discountPolicies,
+      item.overrideDiscountRate,
+      {
+        instructor: item.priceInstructor,
+        center: item.priceCenter,
+        cost: item.priceCost,
+      }
+    ),
+  });
+
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 p-4 sm:p-6">
         <CardTitle>🛒 장바구니 ({items.length}건)</CardTitle>
         <Button
           type="button"
@@ -77,7 +94,8 @@ export function EstimateItemsTable({
           className="text-muted-foreground hover:text-destructive"
         >
           <X className="size-4" />
-          전체 목록 비우기
+          <span className="sm:hidden">비우기</span>
+          <span className="hidden sm:inline">전체 목록 비우기</span>
         </Button>
         <ConfirmDialog
           open={confirmClearOpen}
@@ -88,13 +106,174 @@ export function EstimateItemsTable({
           onConfirm={onClearAll}
         />
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {items.length === 0 ? (
           <p className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
             위에서 장비를 선택해 추가하면 이곳에 목록이 표시됩니다.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* 모바일(sm 미만): 9칸짜리 표(min-w 920px)는 휴대폰에서 가로로 한참
+              밀어야 수량·가격이 보였다 — 품목 1건을 카드 하나로 세로로 쌓아
+              스크롤 없이 전부 보이고, 버튼도 손가락으로 누르기 좋게 키운다. */}
+          <ul className="flex flex-col gap-3 sm:hidden">
+            {items.map((item, index) => {
+              const { discountRate, shopPrice } = derivePricing(item);
+              return (
+                <li key={item.clientId} className="flex flex-col gap-3 rounded-lg border p-3">
+                  <div className="flex gap-2">
+                    <EquipmentThumbnail
+                      src={imageByEquipmentId.get(item.equipmentId) ?? null}
+                      alt={item.name}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      {item.brand && (
+                        <span className="text-xs text-muted-foreground">{item.brand}</span>
+                      )}
+                      <Input
+                        value={item.name}
+                        disabled={disabled}
+                        title={item.name}
+                        className="h-10 text-base font-medium"
+                        aria-label="품명"
+                        onChange={(event) => onNameChange(item.clientId, event.target.value)}
+                      />
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={disabled || index === 0}
+                        onClick={() => onMoveUp(item.clientId)}
+                        aria-label={`${item.name} 위로 이동`}
+                      >
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={disabled || index === items.length - 1}
+                        onClick={() => onMoveDown(item.clientId)}
+                        aria-label={`${item.name} 아래로 이동`}
+                      >
+                        <ArrowDown className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      value={item.color}
+                      disabled={disabled}
+                      className="h-10 text-base"
+                      placeholder="색상"
+                      aria-label={`${item.name} 색상`}
+                      onChange={(event) => onColorChange(item.clientId, event.target.value)}
+                    />
+                    <Input
+                      value={item.size}
+                      disabled={disabled}
+                      className="h-10 text-base"
+                      placeholder="사이즈"
+                      aria-label={`${item.name} 사이즈`}
+                      onChange={(event) => onSizeChange(item.clientId, event.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-10 shrink-0"
+                        disabled={disabled || item.quantity <= 1}
+                        onClick={() => onQuantityChange(item.clientId, item.quantity - 1)}
+                        aria-label={`${item.name} 수량 줄이기`}
+                      >
+                        <Minus className="size-4" />
+                      </Button>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        step={1}
+                        value={item.quantity}
+                        disabled={disabled}
+                        aria-label={`${item.name} 수량`}
+                        className="h-10 w-16 text-center text-base [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        onChange={(event) =>
+                          onQuantityChange(
+                            item.clientId,
+                            Math.max(1, Number(event.target.value) || 1)
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-10 shrink-0"
+                        disabled={disabled}
+                        onClick={() => onQuantityChange(item.clientId, item.quantity + 1)}
+                        aria-label={`${item.name} 수량 늘리기`}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-10"
+                      disabled={disabled}
+                      onClick={() => onRemove(item.clientId)}
+                      aria-label={`${item.name} 삭제`}
+                    >
+                      <Trash2 className="size-5 text-destructive" />
+                    </Button>
+                  </div>
+
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                    <dt className="text-muted-foreground">소비자가격</dt>
+                    <dd className="text-right">{formatCurrency(item.priceRetail)}</dd>
+                    <dt className="text-muted-foreground">퐁당샵가격</dt>
+                    <dd className="text-right text-muted-foreground">
+                      {formatCurrency(shopPrice)}
+                    </dd>
+                    <dt className="text-muted-foreground">공급가격</dt>
+                    <dd className="text-right">
+                      {formatCurrency(item.unitPrice)}
+                      {discountRate > 0 && (
+                        <span className="ml-1.5 text-xs font-medium text-teal-400">
+                          {formatDiscountRate(discountRate)}%↓
+                        </span>
+                      )}
+                    </dd>
+                    <dt className="font-medium">소계</dt>
+                    <dd className="text-right font-semibold">
+                      {formatCurrency(item.unitPrice * item.quantity)}
+                    </dd>
+                  </dl>
+
+                  <Input
+                    value={item.itemRemarks}
+                    disabled={disabled}
+                    className="h-10 text-base"
+                    placeholder="비고 (예: 10% 할인)"
+                    aria-label={`${item.name} 비고`}
+                    onChange={(event) => onItemRemarksChange(item.clientId, event.target.value)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[920px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
@@ -111,22 +290,7 @@ export function EstimateItemsTable({
               </thead>
               <tbody>
                 {items.map((item, index) => {
-                  const discountRate = calculateDiscountRate(
-                    item.priceRetail,
-                    item.unitPrice
-                  );
-                  const shopPrice = calculateEffectiveUnitPrice(
-                    item.priceRetail,
-                    item.brand,
-                    "INSTRUCTOR",
-                    discountPolicies,
-                    item.overrideDiscountRate,
-                    {
-                      instructor: item.priceInstructor,
-                      center: item.priceCenter,
-                      cost: item.priceCost,
-                    }
-                  );
+                  const { discountRate, shopPrice } = derivePricing(item);
                   return (
                   <tr key={item.clientId} className="border-b last:border-0">
                     <td className="py-2 pr-2 align-top">
@@ -285,6 +449,7 @@ export function EstimateItemsTable({
               </tbody>
             </table>
           </div>
+          </>
         )}
         {items.length > 0 && (
           // 합계는 가로 스크롤되는 테이블 밖에 둔다 — 테이블 안(tfoot)에 있으면

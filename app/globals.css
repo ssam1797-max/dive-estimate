@@ -287,3 +287,24 @@
     border-top: 1px dashed #666;
   }
 }
+
+/*
+ * A4 문서를 좁은 화면 폭에 맞춰 축소해 보여주는 틀(a4-scale-frame.tsx).
+ * 안쪽(.a4-scale-inner)은 화면이 좁을 때 인라인 스타일로 width:794px + zoom
+ * 이 걸리는데, 축소 계산이 끝나기 전 한 프레임 동안 794px 이 화면 밖으로
+ * 삐져나와 페이지 전체에 가로 스크롤이 생기지 않도록 바깥에서 잘라둔다.
+ * 인쇄 시에는 축소/고정 폭이 종이 크기를 망가뜨리므로 전부 원래대로 되돌린다.
+ */
+.a4-scale-frame {
+  overflow: hidden;
+}
+
+@media print {
+  .a4-scale-frame {
+    overflow: visible;
+  }
+  .a4-scale-inner {
+    width: auto !important;
+    zoom: 1 !important;
+  }
+}

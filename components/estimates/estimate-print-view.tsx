@@ -16,6 +16,8 @@ import {
   DeliveryNoteTable,
   type DeliveryNoteRow,
 } from "@/components/estimates/delivery-note-table";
+import { A4ScaleFrame } from "@/components/estimates/a4-scale-frame";
+import { EstimateItemEditCards } from "@/components/estimates/estimate-item-edit-cards";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SavedEstimateDetail, SavedEstimateItemDetail } from "@/lib/estimates/types";
@@ -33,10 +35,15 @@ function formatSpec(color: string, size: string): string {
   return [color, size].filter(Boolean).join(" / ") || "-";
 }
 
+/** 장비 마스터에 등록된 옵션 후보(equipmentId 기준). 옵션 입력란 자동완성에 쓴다. */
+export type EquipmentOptionsMap = Record<string, { colors: string[]; sizes: string[] }>;
+
 interface EstimatePrintViewProps {
   estimate: SavedEstimateDetail;
   /** 관리자 모드 여부 — 원가("COST") 등급은 관리자 모드에서만 선택할 수 있다. */
   isAdmin: boolean;
+  /** 관리자 모드에서 옵션(색상/사이즈)을 고칠 때 보여줄 후보 목록. 없어도 직접 입력은 된다. */
+  equipmentOptions?: EquipmentOptionsMap;
 }
 
 /**
@@ -84,7 +91,7 @@ function applyPriceOverride(
   };
 }
 
-/** 저장된 견적서를 같은 내용으로 덮어쓰되 품목 가격만 바꾼다(PUT 재사용). */
+/** 저장된 견적서를 같은 내용으로 덮어쓰되 품목(가격·수량·옵션)만 바꾼다(PUT 재사용). */
 async function saveEstimatePrices(
   estimate: SavedEstimateDetail,
   savedTier: PriceTier,
@@ -125,7 +132,11 @@ async function saveEstimatePrices(
   }
 }
 
-export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps) {
+export function EstimatePrintView({
+  estimate,
+  isAdmin,
+  equipmentOptions,
+}: EstimatePrintViewProps) {
   const router = useRouter();
   const savedTier = estimate.priceTier ?? "RETAIL";
   const [items, setItems] = React.useState(estimate.items);
@@ -165,7 +176,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
           setSaveStatus("saved");
           router.refresh();
         } catch (error) {
-          console.error("견적서 가격 저장 실패:", error);
+          console.error("견적서 품목 저장 실패:", error);
           setSaveStatus("error");
           setSaveError(error instanceof Error ? error.message : "저장에 실패했습니다.");
         }
@@ -187,6 +198,32 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
     if (!changed) return;
     setItems(nextItems);
     persistItems(nextItems);
+  };
+
+  // 관리자 전용 수량/옵션 수정 — 가격과 달리 입력란이 확정값만 올려보내므로
+  // (editable-fields.tsx) 받은 즉시 품목에 반영하고 저장한다. 수량이 바뀌면
+  // 등급별 단가는 그대로 두고 금액(단가×수량)·합계만 따라 바뀐다.
+  const updateItem = (
+    rowKey: string | number,
+    patch: Partial<Pick<SavedEstimateItemDetail, "quantity" | "color" | "size">>
+  ) => {
+    const targetIndex = Number(rowKey);
+    const nextItems = items.map((item, index) =>
+      index === targetIndex ? { ...item, ...patch } : item
+    );
+    setItems(nextItems);
+    persistItems(nextItems);
+  };
+
+  const handleQuantityCommit = (rowKey: string | number, quantity: number) => {
+    updateItem(rowKey, { quantity });
+  };
+
+  const handleSpecCommit = (
+    rowKey: string | number,
+    spec: { color: string; size: string }
+  ) => {
+    updateItem(rowKey, spec);
   };
 
   const hasTierSnapshot = items.some(
@@ -213,6 +250,10 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
       // 품명만 표시한다.
       name: item.name.trim(),
       spec: formatSpec(item.color, item.size),
+      color: item.color,
+      size: item.size,
+      colorOptions: item.equipmentId ? equipmentOptions?.[item.equipmentId]?.colors : undefined,
+      sizeOptions: item.equipmentId ? equipmentOptions?.[item.equipmentId]?.sizes : undefined,
       unit: "개",
       quantity: item.quantity,
       unitPrice,
@@ -309,8 +350,11 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
           )}
           {isAdmin && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <p>
-                관리자 모드: 아래 표의 단가·금액을 고치고 칸을 벗어나면(또는 Enter) 보관된 견적서에 바로 저장됩니다.
+              <p className="hidden sm:block">
+                관리자 모드: 아래 표의 규격(색상/사이즈)·수량·단가·금액을 고치고 칸을 벗어나면(또는 Enter) 보관된 견적서에 바로 저장됩니다.
+              </p>
+              <p className="sm:hidden">
+                관리자 모드: 아래 [품목 수정]에서 옵션·수량·단가·금액을 고치면 보관된 견적서에 바로 저장됩니다.
               </p>
               {saveStatus === "saving" && <span>저장 중...</span>}
               {saveStatus === "saved" && <span className="text-foreground">저장되었습니다.</span>}
@@ -332,7 +376,23 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
         </div>
       )}
 
+      {isAdmin && documentMode === "estimate" && (
+        // 휴대폰에서는 아래 A4 문서가 화면 폭에 맞게 축소되어 표 안의 입력란을
+        // 누르기 어렵다 — 같은 수정 기능을 큰 입력란 카드로 따로 보여준다.
+        <div className="mx-auto w-full max-w-4xl px-4 sm:hidden print:hidden">
+          <EstimateItemEditCards
+            rows={rows}
+            onUnitPriceChange={handleUnitPriceChange}
+            onAmountChange={handleAmountChange}
+            onPriceEditCommit={commitPriceEdits}
+            onQuantityCommit={handleQuantityCommit}
+            onSpecCommit={handleSpecCommit}
+          />
+        </div>
+      )}
+
       <div className="mx-auto w-full max-w-4xl px-4">
+        <A4ScaleFrame>
         <div className="estimate-a4-page">
           {documentMode === "estimate" ? (
             <EstimateDocumentTable
@@ -347,6 +407,8 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
               onUnitPriceChange={handleUnitPriceChange}
               onAmountChange={handleAmountChange}
               onPriceEditCommit={commitPriceEdits}
+              onQuantityCommit={handleQuantityCommit}
+              onSpecCommit={handleSpecCommit}
             />
           ) : (
             <div className="delivery-note-page">
@@ -370,6 +432,7 @@ export function EstimatePrintView({ estimate, isAdmin }: EstimatePrintViewProps)
             </div>
           )}
         </div>
+        </A4ScaleFrame>
       </div>
     </main>
   );

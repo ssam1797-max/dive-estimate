@@ -48,6 +48,27 @@ export async function exportElementToPdf(
       scale: 2,
       useCORS: true,
       backgroundColor: "#ffffff",
+      // 휴대폰처럼 좁은 화면에서는 문서가 화면 폭에 맞게 축소(A4ScaleFrame 의
+      // CSS zoom)되어 보이는데, 그 상태 그대로 캡처하면 PDF 글자가 뭉개진다.
+      // 캡처용 복제 문서를 최소 데스크톱 폭으로 펼치고(windowWidth), 그
+      // 복제본 안에서만 축소를 풀어 항상 A4 원래 크기로 캡처한다 — 실제
+      // 화면은 건드리지 않으므로 다운로드 중에 화면이 출렁이지 않는다.
+      windowWidth: Math.max(window.innerWidth, 1024),
+      onclone: (_clonedDocument, clonedElement) => {
+        const scaled = clonedElement.closest<HTMLElement>("[data-a4-scale]");
+        if (scaled) {
+          scaled.style.setProperty("zoom", "1");
+          if (scaled.parentElement) scaled.parentElement.style.overflow = "visible";
+        }
+        // 화면 전용 편집 UI(옵션 입력란 등)는 숨기고, 인쇄용으로만 그려둔
+        // 텍스트를 대신 보이게 한다(estimate-document-table.tsx 의 data-pdf).
+        clonedElement.querySelectorAll<HTMLElement>('[data-pdf="hide"]').forEach((node) => {
+          node.style.display = "none";
+        });
+        clonedElement.querySelectorAll<HTMLElement>('[data-pdf="show"]').forEach((node) => {
+          node.style.display = "inline";
+        });
+      },
     });
   } finally {
     element.style.minHeight = previousMinHeight;

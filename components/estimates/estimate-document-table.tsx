@@ -1,13 +1,12 @@
 "use client";
 
-import * as React from "react";
-
 import type { ProfileOption } from "@/lib/estimates/types";
 import {
-  formatDiscountRate,
-  formatSignedWonDraft,
-  parseSignedWon,
-} from "@/lib/estimates/pricing";
+  EditableMoneyInput,
+  EditableOptionInput,
+  EditableQuantityInput,
+} from "@/components/estimates/editable-fields";
+import { formatDiscountRate } from "@/lib/estimates/pricing";
 
 /**
  * 실제 견적서 문서(미리보기 다이얼로그·인쇄 화면·다운로드되는 .xlsx)가 전부
@@ -21,6 +20,11 @@ import {
  * 편집 결과는 onUnitPriceChange/onAmountChange 로 호출부에 올라가고, 입력을
  * 마치면(포커스 이탈/Enter) onPriceEditCommit 이 호출된다. 저장은 호출부가
  * 맡는다(estimate-print-view.tsx 참고).
+ *
+ * 같은 editable 모드에서 수량·규격(옵션: 색상/사이즈)도 인라인으로 고칠 수
+ * 있다 — 이쪽은 입력 중인 값을 이 컴포넌트가 들고 있다가, 입력을 마친
+ * 순간(포커스 이탈/Enter)에만 onQuantityCommit/onSpecCommit 으로 확정값을
+ * 한 번 올려보낸다(값이 그대로면 호출하지 않는다).
  */
 export interface EstimateDocumentRow {
   seq: number;
@@ -28,6 +32,15 @@ export interface EstimateDocumentRow {
   key: string | number;
   name: string;
   spec: string;
+  /**
+   * 규격(spec)을 이루는 옵션 원본 값. editable 모드에서 색상/사이즈를 따로
+   * 고칠 수 있게 하려면 넘겨야 한다(생략하면 규격은 읽기 전용 텍스트로 남는다).
+   */
+  color?: string;
+  size?: string;
+  /** 옵션 입력란 자동완성 후보(장비 마스터에 등록된 색상/사이즈). */
+  colorOptions?: string[];
+  sizeOptions?: string[];
   unit: string;
   quantity: number;
   /** "기준 등급" 기준 실제 단가 — 총 합계금액(실제 결제 금액) 계산에 쓰이는 유일한 값. */
@@ -61,6 +74,10 @@ interface EstimateDocumentTableProps {
   onAmountChange?: (rowKey: string | number, value: number) => void;
   /** 단가/금액 입력을 마쳤을 때(포커스 이탈/Enter) 호출된다. */
   onPriceEditCommit?: () => void;
+  /** 수량 입력을 마쳤고 값이 바뀌었을 때 호출된다(1 이상의 정수). */
+  onQuantityCommit?: (rowKey: string | number, quantity: number) => void;
+  /** 옵션(색상/사이즈) 입력을 마쳤고 값이 바뀌었을 때 호출된다. */
+  onSpecCommit?: (rowKey: string | number, spec: { color: string; size: string }) => void;
 }
 
 // ₩ 기호 없이 콤마만 (원본 견적서에 통화 기호가 전혀 없다)
@@ -187,49 +204,14 @@ const discountBadge = "text-[8px] leading-none text-gray-500 whitespace-nowrap";
 // 실제 원인), 검증은 onChange에서 직접 걸러내는 방식이 크로스브라우저로 더
 // 안전하다. inputMode="numeric" 은 쓰지 않는다 — iOS 숫자 키패드에는 "-" 가
 // 없어 할인 금액(음수)을 입력할 수 없다.
-const editableInput =
-  "w-full bg-transparent text-right text-[10px] leading-tight text-gray-900 outline-none " +
+const editableInputBase =
+  "bg-transparent text-[10px] leading-tight text-gray-900 outline-none " +
   "focus:rounded-sm focus:ring-1 focus:ring-primary";
-
-/**
- * 단가/금액 인라인 입력란. 입력 중에는 친 글자를 그대로 들고 있다 — value 를
- * 항상 숫자에서 다시 그리면 "-" 만 친 순간 0 으로 바뀌어 음수를 입력할 수 없다.
- */
-function EditableMoneyInput({
-  value,
-  label,
-  onChange,
-  onCommit,
-}: {
-  value: number;
-  label: string;
-  onChange: (value: number) => void;
-  onCommit?: () => void;
-}) {
-  const [draft, setDraft] = React.useState<string | null>(null);
-
-  return (
-    <input
-      type="text"
-      className={editableInput}
-      value={draft ?? fmtNum(value)}
-      onFocus={() => setDraft(fmtNum(value))}
-      onBlur={() => {
-        setDraft(null);
-        onCommit?.();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-      }}
-      onChange={(event) => {
-        const next = formatSignedWonDraft(event.target.value);
-        setDraft(next);
-        onChange(parseSignedWon(next));
-      }}
-      aria-label={label}
-    />
-  );
-}
+const editableInput = `${editableInputBase} w-full text-right`;
+// 수량·옵션 입력란 — 가격과 달리 가운데 정렬. 옵션은 색상/사이즈 두 칸이 한
+// 셀을 반씩 나눠 쓰므로 w-full 대신 flex-1(min-w-0 로 셀 폭 아래로도 줄어듦).
+const editableQuantityInput = `${editableInputBase} w-full text-center`;
+const editableOptionInput = `${editableInputBase} w-0 min-w-0 flex-1 text-center placeholder:text-gray-300`;
 
 /** 공급자에 등록된 도장 이미지가 없을 때 대신 보여줄 기본(MOCK) 도장. */
 const MOCK_STAMP_SRC = "/mock-stamp.png";
@@ -246,6 +228,8 @@ export function EstimateDocumentTable({
   onUnitPriceChange,
   onAmountChange,
   onPriceEditCommit,
+  onQuantityCommit,
+  onSpecCommit,
 }: EstimateDocumentTableProps) {
   const refCount = referenceTierLabels.length;
 
@@ -551,10 +535,58 @@ export function EstimateDocumentTable({
               {row.name}
             </td>
             <td colSpan={2} className={`${BLACK_BORDER} ${cellText} text-center`}>
-              {row.spec}
+              {editable && onSpecCommit && row.color !== undefined && row.size !== undefined ? (
+                <>
+                  {/* 인쇄물/PDF 에는 입력란 대신 평소와 똑같은 규격 텍스트가
+                      찍혀야 한다(빈 옵션의 안내 문구나 "/" 구분자가 종이에
+                      남으면 안 된다) — 화면용 입력란과 인쇄용 텍스트를 둘 다
+                      그려두고 매체에 따라 한쪽만 보이게 한다. PDF 다운로드는
+                      화면을 그대로 캡처하므로 data-pdf 속성을 보고
+                      exportElementToPdf 가 캡처 직전에 같은 전환을 해준다. */}
+                  <span className="hidden print:inline" data-pdf="show">
+                    {row.spec}
+                  </span>
+                  <span className="flex items-center gap-0.5 print:hidden" data-pdf="hide">
+                    <EditableOptionInput
+                      className={editableOptionInput}
+                      value={row.color}
+                      label={`${row.name} 색상 수정`}
+                      placeholder="색상"
+                      options={row.colorOptions}
+                      onCommit={(color) =>
+                        onSpecCommit(row.key, { color, size: row.size ?? "" })
+                      }
+                    />
+                    <span className="text-gray-400">/</span>
+                    <EditableOptionInput
+                      className={editableOptionInput}
+                      value={row.size}
+                      label={`${row.name} 사이즈 수정`}
+                      placeholder="사이즈"
+                      options={row.sizeOptions}
+                      onCommit={(size) =>
+                        onSpecCommit(row.key, { color: row.color ?? "", size })
+                      }
+                    />
+                  </span>
+                </>
+              ) : (
+                row.spec
+              )}
             </td>
             <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.unit}</td>
-            <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>{row.quantity}</td>
+            <td className={`${BLACK_BORDER} ${cellNumeric} text-center`}>
+              {editable && onQuantityCommit ? (
+                <EditableQuantityInput
+                  className={editableQuantityInput}
+                  value={row.quantity}
+                  label={`${row.name} 수량 수정`}
+                  onCommit={(quantity) => onQuantityCommit(row.key, quantity)}
+                />
+              ) : (
+                row.quantity
+              )}
+            </td>
             {Array.from({ length: refCount }, (_, i) => row.referenceValues?.[i]).map(
               (value, i) => (
                 <td key={`ref-${i}`} className={`${BLACK_BORDER} ${cellPrice}`}>
@@ -570,6 +602,7 @@ export function EstimateDocumentTable({
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
                 <EditableMoneyInput
+                  className={editableInput}
                   value={row.unitPrice}
                   label={`${row.name} 단가 수정`}
                   onChange={(value) => onUnitPriceChange?.(row.key, value)}
@@ -587,6 +620,7 @@ export function EstimateDocumentTable({
             <td colSpan={2} className={`${BLACK_BORDER} ${cellPrice}`}>
               {editable ? (
                 <EditableMoneyInput
+                  className={editableInput}
                   value={row.amount}
                   label={`${row.name} 금액 수정`}
                   onChange={(value) => onAmountChange?.(row.key, value)}

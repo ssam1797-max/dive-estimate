@@ -507,6 +507,94 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
     setEstimates((prev) => prev.filter((e) => e.id !== id));
   };
 
+  /**
+   * 견적서 1건의 작업 버튼줄(발주 복사/복제/수정/인쇄/삭제). 데스크톱 표의
+   * "작업" 칸과 모바일 카드가 똑같은 버튼을 쓰도록 한 곳에서 그린다.
+   */
+  const renderRowActions = (estimate: SavedEstimateSummary) => {
+    const canModifyRow =
+      isAdmin || (estimate.hasEditPassword && !estimate.isPurchaseRequest);
+    const lockedRowReason = estimate.isPurchaseRequest
+      ? "장바구니 구매요청으로 접수된 주문은 관리자 모드에서만 수정/삭제할 수 있습니다."
+      : "비밀번호가 없는 견적서는 관리자 모드에서만 수정/삭제할 수 있습니다.";
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <CopyOrderTextButton
+          estimateIds={[estimate.id]}
+          variant="icon"
+          onCopied={() => askMarkOrdered([estimate.id])}
+        />
+        <Link
+          href={`/estimates/new?duplicateFrom=${estimate.id}`}
+          aria-label={`${estimate.estimateNumber} 복제`}
+          onClick={(event) => event.stopPropagation()}
+          className={buttonVariants({
+            variant: "ghost",
+            size: "icon",
+            className: "size-9 text-muted-foreground hover:text-foreground sm:size-7",
+          })}
+        >
+          <Copy className="size-3.5" />
+        </Link>
+        {canModifyRow ? (
+          <Link
+            href={`/estimates/${estimate.id}/edit`}
+            aria-label={`${estimate.estimateNumber} 이어서 수정`}
+            onClick={(event) => event.stopPropagation()}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "icon",
+              className: "size-9 text-muted-foreground hover:text-foreground sm:size-7",
+            })}
+          >
+            <Pencil className="size-3.5" />
+          </Link>
+        ) : (
+          <span
+            aria-disabled="true"
+            title={lockedRowReason}
+            onClick={(event) => event.stopPropagation()}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "icon",
+              className: "size-9 cursor-not-allowed text-muted-foreground/40 sm:size-7",
+            })}
+          >
+            <Pencil className="size-3.5" />
+          </span>
+        )}
+        <Link
+          href={`/estimates/${estimate.id}/print`}
+          target="_blank"
+          aria-label={`${estimate.estimateNumber} 인쇄`}
+          onClick={(event) => event.stopPropagation()}
+          className={buttonVariants({
+            variant: "ghost",
+            size: "icon",
+            className: "size-9 text-muted-foreground hover:text-foreground sm:size-7",
+          })}
+        >
+          <Printer className="size-3.5" />
+        </Link>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled={!canModifyRow}
+          className="size-9 text-muted-foreground hover:text-destructive sm:size-7"
+          onClick={(event) => {
+            event.stopPropagation();
+            setRowDeleteTarget(estimate.id);
+          }}
+          aria-label={`${estimate.estimateNumber} 삭제`}
+          title={canModifyRow ? undefined : lockedRowReason}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+    );
+  };
+
   if (estimates.length === 0) {
     return (
       <Card>
@@ -602,7 +690,68 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
           </CardContent>
         </Card>
       ) : (
-      <Card>
+      <>
+      {/* 모바일(sm 미만): 8칸짜리 표는 휴대폰 폭에 들어가지 않아 칸마다 글자가
+          세로로 꺾였다 — 같은 정보를 견적서 1건당 카드 하나로 보여준다. */}
+      <div className="flex flex-col gap-2 sm:hidden">
+        <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={allFilteredChecked}
+            onChange={toggleAllFiltered}
+            className="size-4 cursor-pointer accent-violet-600"
+          />
+          표시된 견적서 전체 선택
+        </label>
+        {filteredEstimates.map((estimate) => (
+          <Card
+            key={estimate.id}
+            onClick={() => setSelectedId(estimate.id)}
+            className={`cursor-pointer ${
+              checkedIds.has(estimate.id) ? "bg-violet-50/60 dark:bg-violet-950/30" : ""
+            }`}
+          >
+            <CardContent className="flex flex-col gap-2 p-3">
+              <div className="flex items-start gap-3">
+                <div
+                  className="-m-2 p-2"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checkedIds.has(estimate.id)}
+                    onChange={() => toggleChecked(estimate.id)}
+                    aria-label={`${estimate.estimateNumber} 선택`}
+                    className="mt-0.5 size-5 cursor-pointer accent-violet-600"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{estimate.receiverName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {estimate.estimateNumber} · {estimate.date} · {estimate.itemCount}건
+                  </p>
+                </div>
+                <p className="shrink-0 whitespace-nowrap font-semibold">
+                  {formatCurrency(estimate.totalsByTier[tier])}
+                </p>
+              </div>
+              <div
+                className="flex items-center justify-between gap-2"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <StatusSelect
+                  value={estimate.status}
+                  onChange={(status) => handleRowStatusChange(estimate.id, status)}
+                  className="w-24"
+                />
+                {renderRowActions(estimate)}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="hidden sm:block">
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
@@ -627,11 +776,6 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
             </thead>
             <tbody>
               {filteredEstimates.map((estimate) => {
-                const canModifyRow =
-                  isAdmin || (estimate.hasEditPassword && !estimate.isPurchaseRequest);
-                const lockedRowReason = estimate.isPurchaseRequest
-                  ? "장바구니 구매요청으로 접수된 주문은 관리자 모드에서만 수정/삭제할 수 있습니다."
-                  : "비밀번호가 없는 견적서는 관리자 모드에서만 수정/삭제할 수 있습니다.";
                 return (
                 <tr
                   key={estimate.id}
@@ -684,80 +828,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
                     // 비활성화인지와 무관하게 항상 동작).
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <div className="flex items-center justify-end gap-1">
-                      <CopyOrderTextButton
-                        estimateIds={[estimate.id]}
-                        variant="icon"
-                        onCopied={() => askMarkOrdered([estimate.id])}
-                      />
-                      <Link
-                        href={`/estimates/new?duplicateFrom=${estimate.id}`}
-                        aria-label={`${estimate.estimateNumber} 복제`}
-                        onClick={(event) => event.stopPropagation()}
-                        className={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                          className: "size-7 text-muted-foreground hover:text-foreground",
-                        })}
-                      >
-                        <Copy className="size-3.5" />
-                      </Link>
-                      {canModifyRow ? (
-                        <Link
-                          href={`/estimates/${estimate.id}/edit`}
-                          aria-label={`${estimate.estimateNumber} 이어서 수정`}
-                          onClick={(event) => event.stopPropagation()}
-                          className={buttonVariants({
-                            variant: "ghost",
-                            size: "icon",
-                            className: "size-7 text-muted-foreground hover:text-foreground",
-                          })}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Link>
-                      ) : (
-                        <span
-                          aria-disabled="true"
-                          title={lockedRowReason}
-                          onClick={(event) => event.stopPropagation()}
-                          className={buttonVariants({
-                            variant: "ghost",
-                            size: "icon",
-                            className: "size-7 cursor-not-allowed text-muted-foreground/40",
-                          })}
-                        >
-                          <Pencil className="size-3.5" />
-                        </span>
-                      )}
-                      <Link
-                        href={`/estimates/${estimate.id}/print`}
-                        target="_blank"
-                        aria-label={`${estimate.estimateNumber} 인쇄`}
-                        onClick={(event) => event.stopPropagation()}
-                        className={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                          className: "size-7 text-muted-foreground hover:text-foreground",
-                        })}
-                      >
-                        <Printer className="size-3.5" />
-                      </Link>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canModifyRow}
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setRowDeleteTarget(estimate.id);
-                        }}
-                        aria-label={`${estimate.estimateNumber} 삭제`}
-                        title={canModifyRow ? undefined : lockedRowReason}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
+                    {renderRowActions(estimate)}
                   </td>
                 </tr>
                 );
@@ -766,6 +837,7 @@ export function EstimateArchiveTable({ initialEstimates, isAdmin }: EstimateArch
           </table>
         </CardContent>
       </Card>
+      </>
       )}
 
       {selectedId && (
