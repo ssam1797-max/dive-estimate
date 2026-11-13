@@ -9,6 +9,7 @@ import type {
   SavedEstimateSummary,
   SavedEstimateDetail,
   EstimateStatus,
+  ShippingDestination,
 } from "@/lib/estimates/types";
 import type { SaveEstimateItemPayload } from "@/lib/estimates/types";
 import { isPurchaseRequestRemarks } from "@/lib/estimates/types";
@@ -623,6 +624,27 @@ export async function listSavedEstimates(): Promise<SavedEstimateSummary[]> {
 }
 
 /**
+ * estimates.ship_to_* 스냅샷 → 발주 배송지. 받는사람/주소가 없으면(=주소록에서
+ * 따로 고르지 않음) null 을 돌려줘 공급받는자 프로필 정보로 발주하게 한다.
+ */
+function toShippingDestination(row: {
+  ship_to_name?: string | null;
+  ship_to_contact?: string | null;
+  ship_to_address?: string | null;
+  ship_to_memo?: string | null;
+}): ShippingDestination | null {
+  const name = row.ship_to_name?.trim() ?? "";
+  const address = row.ship_to_address?.trim() ?? "";
+  if (!name || !address) return null;
+  return {
+    name,
+    contact: row.ship_to_contact?.trim() ?? "",
+    address,
+    memo: row.ship_to_memo?.trim() ?? "",
+  };
+}
+
+/**
  * 보관함에서 특정 견적서 1건의 상세(항목 + 인쇄용 전체 프로필 포함)를 조회한다.
  * 템플릿 행은 대상에서 제외한다.
  *
@@ -688,6 +710,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
       provider,
       receiver,
       priceTier: (estimate.price_tier as PriceTier | null) ?? null,
+      shipTo: toShippingDestination(estimate),
       hasEditPassword: estimate.edit_password_hash !== null,
       isPurchaseRequest: isPurchaseRequestRemarks(estimate.remarks),
     };
@@ -697,7 +720,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
   const supabase = await createAdminClient();
   const { data: estimate, error: estimateError } = await supabase
     .from("estimates")
-    .select("id, estimate_number, date, remarks, total_amount, status, created_at, provider_id, receiver_id, price_tier, edit_password_hash")
+    .select("id, estimate_number, date, remarks, total_amount, status, created_at, provider_id, receiver_id, price_tier, edit_password_hash, ship_to_name, ship_to_contact, ship_to_address, ship_to_memo")
     .eq("id", id)
     .is("template_name", null)
     .maybeSingle();
@@ -717,6 +740,10 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     receiver_id: string;
     price_tier: string | null;
     edit_password_hash: string | null;
+    ship_to_name: string | null;
+    ship_to_contact: string | null;
+    ship_to_address: string | null;
+    ship_to_memo: string | null;
   };
 
   const [provider, receiver, items] = await Promise.all([
@@ -796,6 +823,7 @@ export async function getSavedEstimateDetail(id: string): Promise<SavedEstimateD
     items: detailItems,
     provider,
     receiver,
+    shipTo: toShippingDestination(row),
     hasEditPassword: row.edit_password_hash !== null,
     isPurchaseRequest: isPurchaseRequestRemarks(row.remarks),
   };
@@ -854,6 +882,43 @@ export async function updateEstimateStatus(
     .eq("id", id)
     .is("template_name", null);
   if (error) throw new Error("견적서 상태 변경 중 오류가 발생했습니다.");
+
+  return (count ?? 0) > 0;
+}
+
+/**
+ * 저장된 견적서 1건의 발주 배송지를 바꾼다. shipTo 가 null 이면 스냅샷을
+ * 지워 공급받는자 기본 정보로 되돌린다. 템플릿 행은 대상에서 제외한다.
+ * 찾지 못하면 false.
+ */
+export async function updateEstimateShipping(
+  id: string,
+  shipTo: ShippingDestination | null
+): Promise<boolean> {
+  const orNull = (value: string | undefined) => (value?.trim() ? value.trim() : null);
+  const patch = {
+    ship_to_name: orNull(shipTo?.name),
+    ship_to_contact: orNull(shipTo?.contact),
+    ship_to_address: orNull(shipTo?.address),
+    ship_to_memo: orNull(shipTo?.memo),
+  };
+
+  if (isMockMode()) {
+    const row = mockStore.estimates.find((e) => e.id === id && !e.template_name);
+    if (!row) return false;
+    Object.assign(row, patch, { updated_at: new Date().toISOString() });
+    return true;
+  }
+
+  const { createAdminClient } = await import("@/lib/supabase/server");
+  const supabase = await createAdminClient();
+
+  const { error, count } = await supabase
+    .from("estimates")
+    .update(patch, { count: "exact" })
+    .eq("id", id)
+    .is("template_name", null);
+  if (error) throw new Error("발주 배송지 저장 중 오류가 발생했습니다.");
 
   return (count ?? 0) > 0;
 }

@@ -20,6 +20,7 @@ import { Select } from "@/components/ui/select";
 import { PriceTierSelect } from "@/components/estimates/price-tier-select";
 import { CopyOrderTextButton } from "@/components/estimates/copy-order-text-button";
 import { ShareOrderTextButton } from "@/components/estimates/share-order-text-button";
+import { ShippingAddressSelect } from "@/components/estimates/shipping-address-select";
 import { buildSupplierOrderText } from "@/lib/estimates/orderText";
 import { matchesKoreanSearch } from "@/lib/hangul";
 import type {
@@ -275,6 +276,15 @@ function EstimateDetailDialog({
                 </tfoot>
               </table>
             </div>
+
+            <ShippingAddressSelect
+              estimateId={detail.id}
+              receiver={detail.receiver}
+              shipTo={detail.shipTo}
+              onChange={(shipTo) =>
+                setDetail((prev) => (prev ? { ...prev, shipTo } : prev))
+              }
+            />
 
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">

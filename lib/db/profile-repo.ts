@@ -157,6 +157,10 @@ export async function deleteProfile(id: string): Promise<void> {
   if (isMockMode()) {
     const idx = mockStore.profiles.findIndex((p) => p.id === id);
     if (idx >= 0) mockStore.profiles.splice(idx, 1);
+    // DB 의 ON DELETE CASCADE 와 같게 주소록도 함께 정리한다.
+    mockStore.profileAddresses = mockStore.profileAddresses.filter(
+      (address) => address.profile_id !== id
+    );
     return;
   }
 

@@ -102,6 +102,18 @@ export interface MockProfile {
   fax?: string | null;
 }
 
+export interface MockProfileAddress {
+  id: string;
+  profile_id: string;
+  label: string | null;
+  recipient_name: string;
+  contact: string | null;
+  address: string;
+  memo: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MockEstimate {
   id: string;
   estimate_number: string;
@@ -117,6 +129,11 @@ export interface MockEstimate {
   status: string;
   /** 수정/삭제 보호 비밀번호 해시("salt:hash"). null이면 보호 없음(템플릿 포함). */
   edit_password_hash: string | null;
+  /** 발주 배송지 스냅샷. 이 필드가 추가되기 전 데이터를 위해 optional, 읽는 쪽에서 `?? null`. */
+  ship_to_name?: string | null;
+  ship_to_contact?: string | null;
+  ship_to_address?: string | null;
+  ship_to_memo?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,6 +171,7 @@ export interface MockStore {
   equipment: MockEquipment[];
   discountPolicies: MockDiscountPolicy[];
   profiles: MockProfile[];
+  profileAddresses: MockProfileAddress[];
   estimates: MockEstimate[];
   estimateItems: MockEstimateItem[];
   bankAccount: MockBankAccountSettings;
@@ -325,6 +343,7 @@ function createStore(): MockStore {
     equipment: structuredClone(SEED_EQUIPMENT),
     discountPolicies: structuredClone(SEED_DISCOUNT_POLICIES),
     profiles: structuredClone(SEED_PROFILES),
+    profileAddresses: [],
     estimates: [],
     estimateItems: [],
     bankAccount: { bankName: "", accountNumber: "", accountHolder: "" },
@@ -334,6 +353,10 @@ function createStore(): MockStore {
 
 if (!global.__mockStore) {
   global.__mockStore = createStore();
+}
+// 개발 서버 HMR 로 이전 형태의 스토어가 재사용될 때를 대비한 보강.
+if (!global.__mockStore.profileAddresses) {
+  global.__mockStore.profileAddresses = [];
 }
 
 export const mockStore: MockStore = global.__mockStore;

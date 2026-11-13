@@ -61,6 +61,31 @@ export interface ProfileOption {
   fax?: string | null; // 팩스 (거래명세서에 표시)
 }
 
+/**
+ * 공급받는자 주소록의 배송지 1건 (profile_addresses 테이블).
+ * 강사가 발주한 장비를 소비자에게 바로 보내는 경우처럼, 공급받는자 한 명이
+ * 여러 개의 받는사람/연락처/주소를 가질 수 있다.
+ */
+export interface ProfileAddress {
+  id: string;
+  profileId: string;
+  /** 구분 이름(예: "홍길동 고객", "본인 자택"). 없으면 받는사람 이름으로 표시한다. */
+  label: string | null;
+  recipientName: string;
+  contact: string | null;
+  address: string;
+  /** 배송 메모 — 발주 문구에 함께 표시된다. */
+  memo: string | null;
+}
+
+/** 견적서에 저장된 발주 배송지(주소록에서 고른 값을 복사해 둔 스냅샷). */
+export interface ShippingDestination {
+  name: string;
+  contact: string;
+  address: string;
+  memo: string;
+}
+
 /** 견적 테이블에 담긴 항목 1건 (클라이언트 상태) */
 export interface EstimateItemDraft {
   /** DB 저장 전 React key/삭제용 클라이언트 임시 id (DB의 estimate_items.id 아님) */
@@ -241,4 +266,9 @@ export interface SavedEstimateDetail extends SavedEstimateSummary {
   receiver: ProfileOption | null;
   /** 저장 시점 선택되어 있던 가격 등급 — 상세/인쇄 화면의 초기 탭. 이전 형식 견적서는 null. */
   priceTier: PriceTier | null;
+  /**
+   * 발주 배송지. 주소록에서 다른 받는사람을 골랐을 때만 채워지고, null 이면
+   * 공급받는자(receiver) 프로필의 이름/연락처/주소로 발주한다.
+   */
+  shipTo: ShippingDestination | null;
 }

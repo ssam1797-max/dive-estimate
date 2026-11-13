@@ -1,4 +1,8 @@
-import type { SavedEstimateDetail, SavedEstimateItemDetail } from "@/lib/estimates/types";
+import type {
+  SavedEstimateDetail,
+  SavedEstimateItemDetail,
+  ShippingDestination,
+} from "@/lib/estimates/types";
 
 /**
  * 보관함 견적서 → 카카오톡/문자 발주용 텍스트.
@@ -15,6 +19,10 @@ import type { SavedEstimateDetail, SavedEstimateItemDetail } from "@/lib/estimat
  *   받는사람: 홍길동
  *   연락처: 010-1234-5678
  *   주소: 광주광역시 서구 ...
+ *   배송메모: 부재 시 경비실 (메모가 있을 때만)
+ *
+ * 받는사람은 견적서에 저장된 발주 배송지(주소록에서 고른 값, shipTo)가
+ * 있으면 그것을, 없으면 공급받는자 프로필 정보를 쓴다.
  *
  * 가격은 일부러 넣지 않는다 — 발주처에 우리 판매가(등급별 단가)가 노출되지
  * 않도록. 브라우저/서버 어디서나 쓸 수 있는 순수 함수.
@@ -103,13 +111,32 @@ export function formatOrderItemLines(items: SavedEstimateItemDetail[]): string[]
   return blocks.flatMap((block, index) => (index === 0 ? block : ["", ...block]));
 }
 
+/**
+ * 발주 문구에 쓸 받는사람. 주소록에서 고른 발주 배송지(shipTo)가 있으면
+ * 그것을, 없으면 공급받는자 프로필의 이름/연락처/주소를 쓴다.
+ */
+export function resolveOrderRecipient(detail: SavedEstimateDetail): ShippingDestination {
+  if (detail.shipTo) {
+    return {
+      name: detail.shipTo.name.trim(),
+      contact: detail.shipTo.contact.trim(),
+      address: detail.shipTo.address.trim(),
+      memo: detail.shipTo.memo.trim(),
+    };
+  }
+  const receiver = detail.receiver;
+  return {
+    name: receiver?.name?.trim() || detail.receiverName?.trim() || "",
+    contact: receiver?.contact?.trim() ?? "",
+    address: receiver?.address?.trim() ?? "",
+    memo: "",
+  };
+}
+
 export function buildSupplierOrderText(detail: SavedEstimateDetail): SupplierOrderText {
   const itemLines = formatOrderItemLines(detail.items);
 
-  const receiver = detail.receiver;
-  const name = receiver?.name?.trim() || detail.receiverName?.trim() || "";
-  const contact = receiver?.contact?.trim() ?? "";
-  const address = receiver?.address?.trim() ?? "";
+  const { name, contact, address, memo } = resolveOrderRecipient(detail);
 
   const missingFields: string[] = [];
   if (!name || name === "-") missingFields.push("이름");
@@ -122,6 +149,7 @@ export function buildSupplierOrderText(detail: SavedEstimateDetail): SupplierOrd
     `연락처: ${contact}`,
     `주소: ${address}`,
   ];
+  if (memo) receiverLines.push(`배송메모: ${memo}`);
 
   return {
     text: [...itemLines, "", ...receiverLines].join("\n"),
@@ -151,11 +179,12 @@ export function buildBatchOrderText(details: SavedEstimateDetail[]): BatchOrderT
   >();
 
   for (const detail of details) {
-    const receiver = detail.receiver;
+    const recipient = resolveOrderRecipient(detail);
     const receiverKey = [
-      receiver?.name?.trim() || detail.receiverName?.trim() || "",
-      (receiver?.contact ?? "").replace(/\D/g, ""),
-      (receiver?.address ?? "").replace(/\s+/g, ""),
+      recipient.name,
+      recipient.contact.replace(/\D/g, ""),
+      recipient.address.replace(/\s+/g, ""),
+      recipient.memo,
     ].join("|");
 
     let group = groups.get(receiverKey);

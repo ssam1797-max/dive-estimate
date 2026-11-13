@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { BookUser, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { AddressBookDialog } from "@/components/profiles/address-book-dialog";
 import {
   ProfileFormDialog,
   type ProfileFormValues,
@@ -30,6 +31,8 @@ export function ProfileSection({
   const [editingProfile, setEditingProfile] = React.useState<ProfileOption | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ProfileOption | null>(null);
+  /** 주소록(배송지 목록)을 열어 둔 공급받는자. RECEIVER 섹션에서만 쓴다. */
+  const [addressBookProfile, setAddressBookProfile] = React.useState<ProfileOption | null>(null);
 
   const openCreateDialog = () => {
     setEditingProfile(null);
@@ -119,6 +122,19 @@ export function ProfileSection({
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  {type === "RECEIVER" && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`${profile.name} 주소록`}
+                      title="배송지 주소록 (발주 시 받는사람 선택)"
+                      onClick={() => setAddressBookProfile(profile)}
+                    >
+                      <BookUser className="size-4" />
+                      <span className="hidden sm:inline">주소록</span>
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -151,6 +167,15 @@ export function ProfileSection({
         editingProfile={editingProfile}
         onSubmit={handleSubmit}
       />
+
+      {type === "RECEIVER" && (
+        <AddressBookDialog
+          profile={addressBookProfile}
+          onOpenChange={(open) => {
+            if (!open) setAddressBookProfile(null);
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteTarget !== null}

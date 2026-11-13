@@ -22,6 +22,40 @@ export const profileSchema = z.object({
 
 export type ProfileInput = z.infer<typeof profileSchema>;
 
+/** 공급받는자 주소록 배송지 등록/수정 검증 스키마 */
+export const profileAddressSchema = z.object({
+  label: z.string().trim().max(50, "구분 이름은 50자 이내로 입력해주세요.").default(""),
+  recipientName: z
+    .string()
+    .trim()
+    .min(1, "받는사람 이름을 입력해주세요.")
+    .max(50, "받는사람 이름은 50자 이내로 입력해주세요."),
+  contact: z.string().trim().max(30, "연락처는 30자 이내로 입력해주세요.").default(""),
+  address: z
+    .string()
+    .trim()
+    .min(1, "배송 주소를 입력해주세요.")
+    .max(300, "주소는 300자 이내로 입력해주세요."),
+  memo: z.string().trim().max(200, "배송 메모는 200자 이내로 입력해주세요.").default(""),
+});
+
+export type ProfileAddressInput = z.infer<typeof profileAddressSchema>;
+
+/**
+ * 견적서 발주 배송지 변경 요청. shipTo 가 null 이면 공급받는자 기본 정보로
+ * 되돌린다.
+ */
+export const estimateShippingSchema = z.object({
+  shipTo: z
+    .object({
+      name: z.string().trim().min(1, "받는사람 이름이 비어 있습니다.").max(50),
+      contact: z.string().trim().max(30).default(""),
+      address: z.string().trim().min(1, "배송 주소가 비어 있습니다.").max(300),
+      memo: z.string().trim().max(200).default(""),
+    })
+    .nullable(),
+});
+
 export const saveEstimateItemSchema = z.object({
   equipmentId: z.string().uuid().nullable(),
   // equipment 마스터 조인이 아니라 항목 자체에 품명/브랜드/카테고리를 그대로
