@@ -3,11 +3,15 @@
  *  - c0002 ("스쿠버"): 마스크/핀/슈트/호흡기/컴퓨터 등 핵심 장비 전체.
  *  - c0003 ("스쿠버 acc"): 스냅링/오링/아답터/호스/장비걸이/세척제 등 부속품·
  *    소모품 계열.
+ *  - c00100006 ("프리다이빙 > 컴퓨터"): 퐁당은 가민 디센트·쉬어워터 테릭/턴·
+ *    순토 오션/노틱S 같은 다이빙 컴퓨터 상당수를 프리다이빙 쪽으로만 분류해
+ *    둬서, 스쿠버 카테고리만 돌면 이 상품들이 통째로 빠진다. 이 세부
+ *    카테고리 하나만 추가로 돈다(프리다이빙의 다른 상품은 계속 제외).
  *
  * 크롤러(server-only)와, 카테고리별로 나눠 순차 호출하는 클라이언트 쪽
  * 동기화 훅이 둘 다 이 목록을 알아야 해서 별도 파일로 뺐다 — 크롤러 파일은
  * "server-only"가 걸려 있어 클라이언트 컴포넌트에서 직접 import할 수 없다.
  */
-export const PONGDANG_CATEGORY_CODES = ["c0002", "c0003"] as const;
+export const PONGDANG_CATEGORY_CODES = ["c0002", "c0003", "c00100006"] as const;
 
 export type PongdangCategoryCode = (typeof PONGDANG_CATEGORY_CODES)[number];

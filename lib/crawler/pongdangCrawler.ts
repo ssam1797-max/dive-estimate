@@ -12,6 +12,7 @@ const LOGIN_PROCESS_PATH = "/login_process/login";
 const REFERER_BY_CATEGORY: Record<string, string> = {
   c0002: `${BASE_URL}/goods/catalog?code=0002`,
   c0003: `${BASE_URL}/goods/catalog?code=0003`,
+  c00100006: `${BASE_URL}/goods/catalog?code=00100006`,
 };
 const USER_AGENT =
   "Mozilla/5.0 (compatible; DiveEstimateCatalogSync/1.0; +internal equipment price sync)";
@@ -95,6 +96,22 @@ const DEFAULT_CATEGORY = "기타";
  * 수영/캠핑/프리다이빙 상품을 걸러내는 기존 스코프를 그대로 유지).
  */
 const INCLUDED_TOP_CATEGORIES = new Set(["스쿠버", "스쿠버 acc"]);
+
+/**
+ * 예외: 상위 태그가 "프리다이빙"이어도 세부 카테고리가 "컴퓨터"면 포함한다.
+ * 퐁당은 가민 디센트·쉬어워터 테릭/턴·순토 오션/노틱S 등 스쿠버에도 쓰는
+ * 다이빙 컴퓨터 상당수를 프리다이빙으로만 태그해 둬서, 이 예외가 없으면
+ * 견적에서 아예 검색되지 않는다(c00100006 카테고리 수집과 짝을 이룬다).
+ */
+const INCLUDED_FREEDIVING_SUBCATEGORIES = new Set(["컴퓨터"]);
+
+function isIncludedCategory(item: RawPongdangItem): boolean {
+  if (INCLUDED_TOP_CATEGORIES.has(item.item_category)) return true;
+  return (
+    item.item_category === "프리다이빙" &&
+    INCLUDED_FREEDIVING_SUBCATEGORIES.has((item.item_category2 ?? "").trim())
+  );
+}
 
 /**
  * 동기화 대상에서 제외할 키워드. 상품명/상위·세부 카테고리 중 하나라도
@@ -688,13 +705,13 @@ function mergeRawItemsIntoEquipment(
 ): { items: PongdangEquipmentItem[]; warnings: string[]; goodsIdByKey: Map<string, string> } {
   const warnings: string[] = [];
 
-  // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품만 남기고(수영/물놀이, 캠핑,
-  // 프리다이빙 등으로 교차 태그된 상품은 제외), 이벤트/초특가 등 프로모션
+  // "스쿠버"/"스쿠버 acc" 로 정확히 태깅된 상품(+ 프리다이빙 > 컴퓨터)만
+  // 남기고(수영/물놀이, 캠핑, 그 밖의 프리다이빙 상품은 제외), 이벤트/초특가 등 프로모션
   // 상품(EXCLUDED_KEYWORDS 주석 참고)과 재입고 미정 품절 옵션(위 주석 참고)도
   // 추가로 제외한다.
   const scubaOnly = rawItems.filter(
     (item) =>
-      INCLUDED_TOP_CATEGORIES.has(item.item_category) &&
+      isIncludedCategory(item) &&
       !isExcludedItem(item) &&
       !isOutOfStockIndefinitely(item)
   );
