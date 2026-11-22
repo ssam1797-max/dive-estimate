@@ -49,7 +49,7 @@ export default async function EditEstimatePage({
     const [estimate, catalogData, providersData, receiversData, templatesData, discountPoliciesData] =
       await Promise.all([
         getSavedEstimateDetail(id),
-        getEquipmentCatalog(),
+        getEquipmentCatalog(isAdmin),
         getProfilesByType("PROVIDER"),
         getProfilesByType("RECEIVER"),
         listTemplateSummaries(),

@@ -30,6 +30,7 @@ import {
   PRICE_TIER_LABELS,
   type PriceTier,
 } from "@/lib/estimates/pricing";
+import { stripStockNote } from "@/lib/equipment/stockNote";
 
 function formatSpec(color: string, size: string): string {
   return [color, size].filter(Boolean).join(" / ") || "-";
@@ -248,7 +249,8 @@ export function EstimatePrintView({
       key: index,
       // 거래명세서와 동일하게, 견적서 품목명도 브랜드 말머리 없이 순수
       // 품명만 표시한다.
-      name: item.name.trim(),
+      // 퐁당 재고 말머리("[9월 재입고 예정]" 등)는 고객용 출력물에 넣지 않는다.
+      name: stripStockNote(item.name),
       spec: formatSpec(item.color, item.size),
       color: item.color,
       size: item.size,
@@ -286,7 +288,8 @@ export function EstimatePrintView({
       seq: index + 1,
       key: index,
       // 견적서 표와 동일하게 브랜드/카테고리 말머리 없이 순수 품명만 표시한다.
-      name: item.name.trim(),
+      // 퐁당 재고 말머리("[9월 재입고 예정]" 등)는 고객용 출력물에 넣지 않는다.
+      name: stripStockNote(item.name),
       spec: formatSpec(item.color, item.size),
       quantity: item.quantity,
       unitPrice: item.quantity > 0 ? Math.round(supplyAmount / item.quantity) : supplyAmount,

@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { EquipmentAddConfirmDialog } from "@/components/estimates/equipment-add-confirm-dialog";
 import { EquipmentQuickSearch } from "@/components/estimates/equipment-quick-search";
+import { useAdminMode } from "@/components/layout/admin-mode-context";
+import { getPongdangStockStatus, splitStockNote, stripStockNote } from "@/lib/equipment/stockNote";
 import { ManualItemForm } from "@/components/estimates/manual-item-form";
 import { Input } from "@/components/ui/input";
 import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
@@ -53,6 +55,7 @@ export function EquipmentPicker({
   discountPolicies,
   disabled,
 }: EquipmentPickerProps) {
+  const isAdmin = useAdminMode();
   const [brand, setBrand] = React.useState("");
   const [category, setCategory] = React.useState("");
   const [equipmentId, setEquipmentId] = React.useState("");
@@ -125,13 +128,20 @@ export function EquipmentPicker({
     const options = catalog
       .filter((item) => item.brand === brand && item.category === category)
       .sort((a, b) => a.name.localeCompare(b.name, "ko"))
-      .map((item) => ({
-        value: item.id,
-        label: item.name,
-        description: `₩${item.price_retail.toLocaleString("ko-KR")}`,
-      }));
+      .map((item) => {
+        const price = `₩${item.price_retail.toLocaleString("ko-KR")}`;
+        // 관리자 모드에서만 퐁당 재고 표기를 붙인다(품명 말머리는 떼서 설명으로 옮김).
+        if (!isAdmin) return { value: item.id, label: item.name, description: price };
+        const status = getPongdangStockStatus(item);
+        const stockParts = [status.soldOut ? "퐁당 품절" : null, status.note].filter(Boolean);
+        return {
+          value: item.id,
+          label: splitStockNote(item.name).displayName,
+          description: [price, ...stockParts].join(" · "),
+        };
+      });
     return sortWithRecentFirst(options, recentEquipmentIds, (o) => o.value);
-  }, [catalog, brand, category, recentEquipmentIds]);
+  }, [catalog, brand, category, recentEquipmentIds, isAdmin]);
 
   const selectedEquipment = React.useMemo(
     () => catalog.find((item) => item.id === equipmentId) ?? null,
@@ -220,7 +230,8 @@ export function EquipmentPicker({
       equipmentId: equipment.id,
       brand: equipment.brand,
       category: equipment.category,
-      name: equipment.name,
+      // 견적서에 실리는 품명에는 퐁당 재고 말머리("[9월 재입고 예정]" 등)를 넣지 않는다.
+      name: stripStockNote(equipment.name),
       color: opts.color,
       size: opts.size,
       quantity: opts.quantity,

@@ -22,6 +22,9 @@ import {
   type DiscountPolicyMap,
   type PriceTier,
 } from "@/lib/estimates/pricing";
+import { PongdangStockBadge } from "@/components/equipment/pongdang-stock-badge";
+import { useAdminMode } from "@/components/layout/admin-mode-context";
+import { stripStockNote } from "@/lib/equipment/stockNote";
 
 interface EquipmentAddConfirmDialogProps {
   item: EquipmentCatalogItem;
@@ -55,6 +58,7 @@ export function EquipmentAddConfirmDialog({
   priceTier,
   discountPolicies,
 }: EquipmentAddConfirmDialogProps) {
+  const isAdmin = useAdminMode();
   const [quantity, setQuantity] = React.useState(1);
   const [color, setColor] = React.useState("");
   const [size, setSize] = React.useState("");
@@ -101,7 +105,10 @@ export function EquipmentAddConfirmDialog({
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <div>
               <p className="text-xs text-muted-foreground">{item.brand}</p>
-              <p className="text-base font-semibold leading-snug">{item.name}</p>
+              <p className="text-base font-semibold leading-snug">
+                {isAdmin ? stripStockNote(item.name) : item.name}
+              </p>
+              <PongdangStockBadge item={item} className="mt-1" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">

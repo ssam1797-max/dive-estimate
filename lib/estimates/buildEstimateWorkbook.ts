@@ -4,6 +4,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import type { ProfileOption } from "@/lib/estimates/types";
 import { formatDiscountRate, type PriceTier } from "@/lib/estimates/pricing";
+import { stripStockNote } from "@/lib/equipment/stockNote";
 
 // ── 관공서 납품용 견적서 컬럼 구조 (A=1 ~ 12+N열) ───────────────────────────
 // 실제 제공된 원본 견적서 스크린샷을 픽셀 단위로 측정해서 비율을 맞춘 원본
@@ -538,7 +539,8 @@ export async function buildEstimateWorkbook(
     const rateLabel = hasDiscount ? formatDiscountRate(item.discountRate) : null;
 
     writeItemCell(1, 1, item.seq, { align: "center" });
-    writeItemCell(2, 3, item.name, { align: "left" });
+    // 퐁당 재고 말머리는 고객용 엑셀에 넣지 않는다.
+    writeItemCell(2, 3, stripStockNote(item.name), { align: "left" });
     writeItemCell(4, 5, item.spec, { align: "center" });
     writeItemCell(6, 6, item.unit, { align: "center" });
     writeItemCell(7, 7, item.quantity, { align: "center" });

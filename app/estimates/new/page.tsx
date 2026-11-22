@@ -154,11 +154,11 @@ function describeLoadError(label: string, error: unknown): Error {
   return new Error(details ? `[${label}] ${message} (${details})` : `[${label}] ${message}`);
 }
 
-async function loadPageData(): Promise<PageData> {
+async function loadPageData(isAdmin: boolean): Promise<PageData> {
   try {
     const [catalog, providers, receivers, templates, discountPolicies] =
       await Promise.all([
-        loadNamed("장비 카탈로그", getEquipmentCatalog),
+        loadNamed("장비 카탈로그", () => getEquipmentCatalog(isAdmin)),
         loadNamed("공급자 목록", () => getProfilesByType("PROVIDER")),
         loadNamed("수신자 목록", () => getProfilesByType("RECEIVER")),
         loadNamed("템플릿 목록", listTemplateSummaries),
@@ -184,8 +184,10 @@ export default async function NewEstimatePage({
 }: {
   searchParams: Promise<{ duplicateFrom?: string }>;
 }) {
-  const [{ catalog, providers, receivers, templates, discountPolicies, loadError }, isAdmin] =
-    await Promise.all([loadPageData(), getIsAdmin()]);
+  // 관리자 여부에 따라 카탈로그 범위(퐁당 품절 포함 여부)가 달라져서 먼저 확인한다.
+  const isAdmin = await getIsAdmin();
+  const { catalog, providers, receivers, templates, discountPolicies, loadError } =
+    await loadPageData(isAdmin);
   const { duplicateFrom: duplicateFromId } = await searchParams;
   const duplicateFrom = duplicateFromId
     ? await loadDuplicateSource(duplicateFromId, catalog, isAdmin)

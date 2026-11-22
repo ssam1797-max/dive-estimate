@@ -4,6 +4,9 @@ import * as React from "react";
 import { Loader2, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { PongdangStockBadge } from "@/components/equipment/pongdang-stock-badge";
+import { useAdminMode } from "@/components/layout/admin-mode-context";
+import { stripStockNote } from "@/lib/equipment/stockNote";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 
 interface EquipmentQuickSearchProps {
@@ -26,6 +29,8 @@ const DEBOUNCE_MS = 180;
  * 이 컴포넌트 자체는 그 state 를 전혀 알지 못한다.
  */
 export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearchProps) {
+  // 관리자 모드에서는 재고 말머리를 배지로 따로 보여주므로 품명에서는 뗀다.
+  const isAdmin = useAdminMode();
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [results, setResults] = React.useState<EquipmentCatalogItem[]>([]);
@@ -73,7 +78,9 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
         // 가져온다) — 드롭다운 <ul> 은 max-h-72 overflow-y-auto 라 결과가
         // 많아도 스크롤로 전부 확인할 수 있다.
         const res = await fetch(
-          `/api/equipment/search?q=${encodeURIComponent(debouncedQuery)}&limit=0`,
+          // includeSoldOut=1 은 서버가 관리자 모드일 때만 적용한다(퐁당 품절
+          // 품목도 견적 가능). 고객 화면에서는 무시돼 품절 품목이 나오지 않는다.
+          `/api/equipment/search?q=${encodeURIComponent(debouncedQuery)}&limit=0&includeSoldOut=1`,
           { signal: controller.signal }
         );
         const body = await res.json();
@@ -186,11 +193,11 @@ export function EquipmentQuickSearch({ onSelect, disabled }: EquipmentQuickSearc
                         {item.brand}
                       </span>
                       {/* min-w-0 이 없으면 grid 아이템이 내용 너비만큼 늘어나 줄바꿈 대신 넘쳐버린다. */}
-                      <span
-                        className="min-w-0 break-words text-sm font-medium leading-snug"
-                        title={item.name}
-                      >
-                        {item.name}
+                      <span className="flex min-w-0 flex-col gap-1" title={item.name}>
+                        <span className="break-words text-sm font-medium leading-snug">
+                          {isAdmin ? stripStockNote(item.name) : item.name}
+                        </span>
+                        <PongdangStockBadge item={item} />
                       </span>
                       <span className="whitespace-nowrap pt-0.5 text-xs text-muted-foreground">
                         ₩{item.price_retail.toLocaleString("ko-KR")}

@@ -72,10 +72,14 @@ export async function getEquipmentBrands(): Promise<string[]> {
 
 // ── 전체 카탈로그 (견적서 작성용) ────────────────────────────────────────────
 
-export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
+export async function getAllEquipment(
+  /** true면 퐁당 품절(is_sold_out=true) 품목도 포함한다 — 관리자는 퐁당에서만
+   *  품절인 장비도 견적을 낼 수 있어야 하므로, 관리자 모드 화면에서만 켠다. */
+  includeSoldOut: boolean = false
+): Promise<EquipmentCatalogItem[]> {
   if (isMockMode()) {
     return mockStore.equipment
-      .filter((e) => !e.is_sold_out)
+      .filter((e) => includeSoldOut || !e.is_sold_out)
       .map((e) => ({
         id: e.id,
         brand: e.brand,
@@ -86,6 +90,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
         sizes: e.sizes,
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
+        is_sold_out: e.is_sold_out ?? false,
         price_instructor: e.price_instructor ?? null,
         price_center: e.price_center ?? null,
         price_center_overridden: e.price_center_overridden ?? false,
@@ -105,25 +110,24 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       sizes: string[] | null;
       override_discount_rate: number | string | null;
       image_url: string | null;
+      is_sold_out: boolean | null;
       price_instructor: number | string | null;
       price_center: number | string | null;
       price_center_overridden: boolean | null;
       price_cost: number | string | null;
-    }>((from, to) =>
-      supabase
+    }>((from, to) => {
+      let q = supabase
         .from("equipment")
         .select(
-          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, price_instructor, price_center, price_center_overridden, price_cost",
+          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
           { count: "exact" }
-        )
-        // 품절(is_sold_out=true) 품목은 삭제하지 않고 DB에 남겨두되, 견적서
-        // 작성 화면의 장비 선택 목록에서는 제외한다(다시 발견되면 자동 복원).
-        .eq("is_sold_out", false)
-        .order("brand")
-        .order("category")
-        .order("name")
-        .range(from, to)
-    );
+        );
+      // 품절(is_sold_out=true) 품목은 삭제하지 않고 DB에 남겨둔다. 관리자가
+      // 아니면 견적서 작성 화면의 장비 선택 목록에서 제외한다(다시 발견되면
+      // 자동 복원). 관리자는 퐁당에서만 품절인 장비도 견적을 낼 수 있게 포함한다.
+      if (!includeSoldOut) q = q.eq("is_sold_out", false);
+      return q.order("brand").order("category").order("name").range(from, to);
+    });
     return rows.map((row) => ({
       id: row.id,
       brand: row.brand,
@@ -135,6 +139,7 @@ export async function getAllEquipment(): Promise<EquipmentCatalogItem[]> {
       override_discount_rate:
         row.override_discount_rate == null ? null : Number(row.override_discount_rate),
       image_url: row.image_url ?? null,
+      is_sold_out: row.is_sold_out ?? false,
       price_instructor: row.price_instructor == null ? null : Number(row.price_instructor),
       price_center: row.price_center == null ? null : Number(row.price_center),
       price_center_overridden: Boolean(row.price_center_overridden),

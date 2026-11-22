@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchEquipment } from "@/lib/db/equipment-repo";
+import { getIsAdmin } from "@/lib/auth/admin-session";
 
 export const runtime = "nodejs";
 
@@ -14,9 +15,9 @@ export const runtime = "nodejs";
  * total 은 이 검색어에 실제로 매칭되는 전체 건수라, items.length 보다
  * 크면 화면에서 일부가 잘려 안 보인다는 뜻이다.
  *
- * includeSoldOut=1: "장비 목록(수정/삭제)" 관리자 화면처럼 품절 품목도
- * 그대로 보여줘야 하는 경우에만 넘긴다(견적서 작성 화면 검색에서는 품절
- * 품목을 고를 수 없어야 하므로 기본값은 false).
+ * includeSoldOut=1: 퐁당 품절 품목도 결과에 포함한다. 관리자 모드일 때만
+ * 적용된다 — 관리자는 퐁당에서만 품절인 장비도 견적을 낼 수 있어야 하고,
+ * 고객(비관리자)에게는 품절 품목을 계속 숨긴다.
  */
 export async function GET(request: Request) {
   try {
@@ -24,7 +25,8 @@ export async function GET(request: Request) {
     const q = searchParams.get("q") ?? "";
     const limitParam = searchParams.get("limit");
     const limit = limitParam ? Number(limitParam) : undefined;
-    const includeSoldOut = searchParams.get("includeSoldOut") === "1";
+    const includeSoldOut =
+      searchParams.get("includeSoldOut") === "1" && (await getIsAdmin());
 
     const { items, total } = await searchEquipment(q, limit, includeSoldOut);
     return NextResponse.json({ items, total });

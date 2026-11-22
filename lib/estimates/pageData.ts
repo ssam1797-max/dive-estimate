@@ -5,9 +5,12 @@ import { getProfilesByType, getProfileById } from "@/lib/db/profile-repo";
 import type { EquipmentCatalogItem, ProfileOption } from "@/lib/estimates/types";
 import type { DiscountPolicyMap } from "@/lib/estimates/pricing";
 
-export async function getEquipmentCatalog(): Promise<EquipmentCatalogItem[]> {
+/** includeSoldOut: 관리자 모드면 true — 퐁당 품절 품목도 견적에 넣을 수 있게 포함한다. */
+export async function getEquipmentCatalog(
+  includeSoldOut: boolean = false
+): Promise<EquipmentCatalogItem[]> {
   try {
-    return await getAllEquipment();
+    return await getAllEquipment(includeSoldOut);
   } catch (error) {
     console.error("장비 카탈로그 조회 실패:", error);
     throw new Error("장비 목록을 불러오지 못했습니다.", { cause: error });
