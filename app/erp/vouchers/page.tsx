@@ -1,0 +1,134 @@
+import Link from "next/link";
+import { loadErpData } from "@/lib/erp/repo";
+import { voucherTotals } from "@/lib/erp/compute";
+import { formatDate, formatWon, todayKST } from "@/lib/erp/format";
+import { VOUCHER_KINDS, VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
+import { KindBadge } from "@/components/erp/kind-badge";
+
+type Search = { kind?: string; from?: string; to?: string; partner?: string; q?: string };
+
+export default async function VoucherListPage({ searchParams }: { searchParams: Promise<Search> }) {
+  const sp = await searchParams;
+  const today = todayKST();
+  const from = sp.from || `${today.slice(0, 4)}-01-01`;
+  const to = sp.to || today;
+  const kind = VOUCHER_KINDS.includes(sp.kind as VoucherKind) ? (sp.kind as VoucherKind) : null;
+  const partnerId = sp.partner ? Number(sp.partner) : null;
+  const q = (sp.q ?? "").trim();
+
+  const data = await loadErpData();
+  const partnerName = new Map(data.partners.map((p) => [p.id, p.name]));
+  const itemName = new Map(data.items.map((i) => [i.id, i.name]));
+  const linesByVoucher = new Map<number, string[]>();
+  for (const l of data.lines) {
+    const arr = linesByVoucher.get(l.voucher_id) ?? [];
+    arr.push((l.item_id ? itemName.get(l.item_id) : null) ?? l.description ?? "");
+    linesByVoucher.set(l.voucher_id, arr);
+  }
+
+  const rows = [...voucherTotals(data).values()]
+    .filter((v) => v.voucher_date >= from && v.voucher_date <= to)
+    .filter((v) => !kind || v.kind === kind)
+    .filter((v) => !partnerId || v.partner_id === partnerId || v.card_partner_id === partnerId)
+    .filter((v) => {
+      if (!q) return true;
+      const hay = [partnerName.get(v.partner_id ?? -1), v.memo, ...(linesByVoucher.get(v.id) ?? [])].join(" ");
+      return hay.toLowerCase().includes(q.toLowerCase());
+    })
+    .sort((a, b) =>
+      a.voucher_date === b.voucher_date ? b.voucher_no - a.voucher_no : a.voucher_date < b.voucher_date ? 1 : -1
+    );
+  const total = rows.reduce((s, r) => s + r.total, 0);
+
+  return (
+    <main className="flex flex-col gap-4">
+      <h1 className="text-2xl font-semibold">전표</h1>
+      <form className="flex flex-wrap items-end gap-2 rounded-lg border p-3 text-sm" method="get">
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">시작일</span>
+          <input type="date" name="from" defaultValue={from} className="h-9 rounded-md border px-2 text-base sm:text-sm" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">종료일</span>
+          <input type="date" name="to" defaultValue={to} className="h-9 rounded-md border px-2 text-base sm:text-sm" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">종류</span>
+          <select name="kind" defaultValue={kind ?? ""} className="h-9 rounded-md border bg-background px-2 text-base sm:text-sm">
+            <option value="">전체</option>
+            {VOUCHER_KINDS.map((k) => (
+              <option key={k} value={k}>{VOUCHER_KIND_LABEL[k]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-muted-foreground">거래처</span>
+          <select name="partner" defaultValue={partnerId ?? ""} className="h-9 max-w-48 rounded-md border bg-background px-2 text-base sm:text-sm">
+            <option value="">전체</option>
+            {[...data.partners].sort((a, b) => a.name.localeCompare(b.name, "ko")).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-40 flex-1 flex-col gap-1">
+          <span className="text-muted-foreground">검색(품목·적요)</span>
+          <input name="q" defaultValue={q} className="h-9 rounded-md border px-2 text-base sm:text-sm" />
+        </label>
+        <button className="h-9 rounded-md bg-primary px-4 font-medium text-primary-foreground">조회</button>
+      </form>
+
+      <p className="text-sm text-muted-foreground">
+        {rows.length}건 · 합계 {formatWon(total)}원
+      </p>
+
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">날짜</th>
+              <th className="px-3 py-2 font-medium">번호</th>
+              <th className="px-3 py-2 font-medium">종류</th>
+              <th className="px-3 py-2 font-medium">거래처</th>
+              <th className="px-3 py-2 font-medium">내용</th>
+              <th className="px-3 py-2 text-right font-medium">공급가</th>
+              <th className="px-3 py-2 text-right font-medium">부가세</th>
+              <th className="px-3 py-2 text-right font-medium">합계</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((v) => {
+              const names = linesByVoucher.get(v.id) ?? [];
+              const summary = names.length > 1 ? `${names[0]} 외 ${names.length - 1}건` : (names[0] || v.memo || "");
+              return (
+                <tr key={v.id} className="hover:bg-accent/50">
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">
+                    <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">{formatDate(v.voucher_date)}</Link>
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-muted-foreground">{v.voucher_no}</td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <KindBadge kind={v.kind} />
+                  </td>
+                  <td className="max-w-40 truncate px-3 py-2">
+                    <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">
+                      {v.partner_id ? partnerName.get(v.partner_id) : ""}
+                      {v.card_partner_id ? ` → ${partnerName.get(v.card_partner_id)}` : ""}
+                    </Link>
+                  </td>
+                  <td className="max-w-64 truncate px-3 py-2 text-muted-foreground">{summary}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.supply)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.vat)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">{formatWon(v.total)}</td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 전표가 없어요.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}
