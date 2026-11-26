@@ -1,3 +1,5 @@
+import type * as React from "react";
+
 import type { ProfileOption } from "@/lib/estimates/types";
 
 /**
@@ -82,6 +84,16 @@ const THEME_COLOR: Record<DeliveryNoteTableProps["copyLabel"], string> = {
 const COL_WIDTHS = [4, 4, 4, 6, 18, 12, 3, 12, 12, 6, 6, 3, 10];
 const MIN_DATA_ROWS = 6;
 
+/**
+ * 표를 A4 가로 폭에 꽉 채우기 위한 확대 배율.
+ * 원래는 원본 엑셀처럼 표를 페이지 폭의 64%로만 그렸는데, 출력물이 너무
+ * 작았다 — 폭을 100%로 늘리면서 글자·행 높이·여백·도장 크기를 모두 같은
+ * 배율(100/64)로 키워 원래 가로세로 비율을 그대로 유지한다.
+ * (칸 폭은 전부 %라 따로 바꿀 필요가 없다.)
+ */
+const SCALE = 100 / 64;
+const px = (value: number) => Math.round(value * SCALE * 100) / 100;
+
 export function DeliveryNoteTable({
   copyLabel,
   date,
@@ -105,29 +117,36 @@ export function DeliveryNoteTable({
     </colgroup>
   );
 
-  const border = { borderColor: theme };
-  const cellBase = "border bg-white px-0.5 text-[8px] leading-tight";
+  // 모든 칸이 공통으로 쓰는 style — 글자 크기/좌우 여백도 여기서 배율을 적용한다.
+  const border: React.CSSProperties = {
+    borderColor: theme,
+    fontSize: px(8),
+    paddingLeft: px(2),
+    paddingRight: px(2),
+  };
+  const emphasis: React.CSSProperties = { ...border, fontSize: px(10) };
+  const cellBase = "border bg-white leading-tight";
   const label = `${cellBase} text-center font-bold`;
   const valueCenter = `${cellBase} text-center text-gray-900`;
   const valueLeft = `${cellBase} text-left text-gray-900`;
   const valueRight = `${cellBase} text-right text-gray-900`;
   // 등록번호는 사업자번호 같은 서식 코드값이라 가운데 정렬, 합계금액은 금액이라
   // 관례상 오른쪽 정렬 — 둘 다 강조를 위해 크고 굵게만 공통으로 준다.
-  const emphasisCenter = `${cellBase} text-center font-bold text-[10px] text-gray-900`;
-  const emphasisRight = `${cellBase} text-right font-bold text-[10px] text-gray-900`;
+  const emphasisCenter = `${cellBase} text-center font-bold text-gray-900`;
+  const emphasisRight = `${cellBase} text-right font-bold text-gray-900`;
 
   return (
-    <div className="delivery-note-copy" style={{ border: `2px solid ${theme}` }}>
+    <div className="delivery-note-copy" style={{ border: `${px(2)}px solid ${theme}` }}>
       <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
         {colgroup}
         <tbody>
           {/* ── 제목 ──────────────────────────────────────────────────── */}
-          <tr style={{ height: 22 }}>
+          <tr style={{ height: px(22) }}>
             <td colSpan={totalCols} className="border-0 bg-white text-center" style={border}>
-              <span className="text-[13px] font-bold" style={{ color: theme }}>
+              <span className="font-bold" style={{ color: theme, fontSize: px(13) }}>
                 거래명세서
               </span>
-              <span className="ml-1.5 text-[9px] font-normal" style={{ color: theme }}>
+              <span className="font-normal" style={{ color: theme, fontSize: px(9), marginLeft: px(6) }}>
                 ({copyLabel})
               </span>
             </td>
@@ -135,7 +154,7 @@ export function DeliveryNoteTable({
 
           {/* ── 공급받는자(좌) / 공급자(우) 정보, 4행 × 13칸 ─────────────── */}
           {/* R1: 공급받는자(1) 상호라벨(3) 상호값(2) | 공급자(1) 등록번호라벨(1) 등록번호값(5) */}
-          <tr style={{ height: 21 }}>
+          <tr style={{ height: px(21) }}>
             <td rowSpan={4} colSpan={1} className={label} style={{ ...border, color: theme }}>
               <VerticalLabel text="공급받는자" />
             </td>
@@ -151,12 +170,12 @@ export function DeliveryNoteTable({
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
               등록번호
             </td>
-            <td colSpan={5} className={emphasisCenter} style={border}>
+            <td colSpan={5} className={emphasisCenter} style={emphasis}>
               {provider?.businessNumber ?? "-"}
             </td>
           </tr>
           {/* R2: 사업장주소라벨(3) 사업장주소값(2) | 상호라벨(1) 상호값(2) 성명라벨(1) 성명값(2) */}
-          <tr style={{ height: 21 }}>
+          <tr style={{ height: px(21) }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               사업장주소
             </td>
@@ -177,7 +196,7 @@ export function DeliveryNoteTable({
             </td>
           </tr>
           {/* R3: 전화번호라벨(3) 전화번호값(2) | 사업장주소라벨(1) 사업장주소값(5) */}
-          <tr style={{ height: 21 }}>
+          <tr style={{ height: px(21) }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               전화번호
             </td>
@@ -192,11 +211,11 @@ export function DeliveryNoteTable({
             </td>
           </tr>
           {/* R4: 합계금액라벨(3) 합계금액값(2) | 전화라벨(1) 전화값(2) 팩스라벨(1) 팩스값(2) */}
-          <tr style={{ height: 21 }}>
+          <tr style={{ height: px(21) }}>
             <td colSpan={3} className={label} style={{ ...border, color: theme }}>
               합계금액(VAT포함)
             </td>
-            <td colSpan={2} className={emphasisRight} style={border}>
+            <td colSpan={2} className={emphasisRight} style={emphasis}>
               {fmtNum(grandTotal)}
             </td>
             <td colSpan={1} className={label} style={{ ...border, color: theme }}>
@@ -218,7 +237,7 @@ export function DeliveryNoteTable({
       <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
         {colgroup}
         <thead>
-          <tr style={{ height: 16 }}>
+          <tr style={{ height: px(16) }}>
             <td className={label} style={{ ...border, color: theme }}>년</td>
             <td className={label} style={{ ...border, color: theme }}>월</td>
             <td className={label} style={{ ...border, color: theme }}>일</td>
@@ -232,7 +251,7 @@ export function DeliveryNoteTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={row.key} style={{ height: 16 }}>
+            <tr key={row.key} style={{ height: px(16) }}>
               <td className={valueCenter} style={border}>{index === 0 ? yy : ""}</td>
               <td className={valueCenter} style={border}>{index === 0 ? mm : ""}</td>
               <td className={valueCenter} style={border}>{index === 0 ? dd : ""}</td>
@@ -247,14 +266,14 @@ export function DeliveryNoteTable({
             </tr>
           ))}
           {Array.from({ length: totalDataRows - rows.length }).map((_, i) => (
-            <tr key={`blank-${i}`} style={{ height: 16 }}>
+            <tr key={`blank-${i}`} style={{ height: px(16) }}>
               {Array.from({ length: totalCols }).map((_, c) => (
                 <td key={c} className={cellBase} style={border} />
               ))}
             </tr>
           ))}
           {/* ── 서명란: 인수자(4) 값(1) | 납품자(1) 값+도장(4) | 미수금 라벨+값 병합(3) ── */}
-          <tr style={{ height: 22 }}>
+          <tr style={{ height: px(22) }}>
             <td colSpan={4} className={label} style={{ ...border, color: theme }}>
               인수자
             </td>
@@ -267,7 +286,7 @@ export function DeliveryNoteTable({
             </td>
             <td
               colSpan={4}
-              className="overflow-visible border bg-white text-center text-[8px] font-medium text-gray-900"
+              className="overflow-visible border bg-white text-center font-medium text-gray-900"
               style={border}
             >
               {provider?.representative ?? "-"}
@@ -282,7 +301,7 @@ export function DeliveryNoteTable({
                     src={stampSrc}
                     alt="도장"
                     className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 overflow-visible mix-blend-multiply"
-                    style={{ width: 26, height: 26, maxWidth: "none" }}
+                    style={{ width: px(26), height: px(26), maxWidth: "none" }}
                   />
                 )}
               </span>
