@@ -83,6 +83,8 @@ const THEME_COLOR: Record<DeliveryNoteTableProps["copyLabel"], string> = {
 // [년,월,일, 품목×2, 규격×2, 수량, 단가, 공급가액×3, 세액]
 const COL_WIDTHS = [4, 4, 4, 6, 18, 12, 3, 12, 12, 6, 6, 3, 10];
 const MIN_DATA_ROWS = 6;
+/** 품목 줄의 칸 구조: 년, 월, 일, 품목(2), 규격(2), 수량, 단가, 공급가액(3), 세액. */
+const BLANK_ROW_SPANS = [1, 1, 1, 2, 2, 1, 1, 3, 1];
 
 /**
  * 표를 A4 가로 폭에 꽉 채우기 위한 확대 배율.
@@ -267,8 +269,10 @@ export function DeliveryNoteTable({
           ))}
           {Array.from({ length: totalDataRows - rows.length }).map((_, i) => (
             <tr key={`blank-${i}`} style={{ height: px(16) }}>
-              {Array.from({ length: totalCols }).map((_, c) => (
-                <td key={c} className={cellBase} style={border} />
+              {/* 품목 줄과 같은 칸 구조(colSpan)로 그려야 세로선이 위아래로 맞는다 —
+                  13칸을 전부 따로 그리면 품목/규격/공급가액 안에 선이 더 생긴다. */}
+              {BLANK_ROW_SPANS.map((span, c) => (
+                <td key={c} colSpan={span} className={cellBase} style={border} />
               ))}
             </tr>
           ))}
