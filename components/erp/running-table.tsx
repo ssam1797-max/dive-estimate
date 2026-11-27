@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { formatDate, formatQty, formatWon } from "@/lib/erp/format";
 import { VOUCHER_KIND_LABEL } from "@/lib/erp/types";
 import type { RunningRow } from "@/lib/erp/running";
+import { RowActions } from "@/components/erp/row-actions";
 
 /**
  * 경영박사 거래처원장과 같은 형식의 표:
@@ -60,6 +61,7 @@ export function RunningTable({
           <td className={cell}>{formatWon(g.reduce((s, r) => s + inn(r), 0))}</td>
           <td className={cell}>{formatWon(g.reduce((s, r) => s + r.vat, 0))}</td>
           <td className={cell}>{formatWon(last.balance)}</td>
+          {!paper && <td />}
         </tr>
       );
     }
@@ -93,6 +95,7 @@ export function RunningTable({
         <td className={cell}>{r.col === "in" ? formatWon(r.supply) : ""}</td>
         <td className={cell}>{isMoney && !r.vat ? "" : formatWon(r.vat)}</td>
         <td className={cn(cell, "font-medium")}>{formatWon(r.balance)}</td>
+        {!paper && <td className="whitespace-nowrap px-2 py-1 text-right">{r.first && <RowActions id={r.voucher_id} />}</td>}
       </tr>
     );
   });
@@ -101,7 +104,7 @@ export function RunningTable({
   const head = paper ? "bg-neutral-100 border-neutral-900" : "bg-muted/50 text-muted-foreground";
   return (
     <div className={paper ? "" : "overflow-x-auto rounded-lg border"}>
-      <table className={cn("w-full border-collapse", paper ? "text-[12px]" : "min-w-[880px] text-sm")}>
+      <table className={cn("w-full border-collapse", paper ? "text-[12px]" : "min-w-[1000px] text-sm")}>
         <thead>
           <tr className={cn("border-y text-left", head)}>
             <th className="px-2 py-1.5 font-medium">날짜</th>
@@ -114,6 +117,7 @@ export function RunningTable({
             <th className="px-2 py-1.5 text-right font-medium">매입/입금</th>
             <th className="px-2 py-1.5 text-right font-medium">부가세</th>
             <th className="px-2 py-1.5 text-right font-medium">{payable ? "잔액(줄 돈)" : "잔액"}</th>
+            {!paper && <th className="px-2 py-1.5"><span className="sr-only">보기·보내기</span></th>}
           </tr>
         </thead>
         <tbody>
@@ -122,11 +126,12 @@ export function RunningTable({
             <td className="px-2 py-1">&lt; 전 기 이 월 &gt;</td>
             <td colSpan={6} />
             <td className={cn(cell, "font-medium")}>{formatWon(carried)}</td>
+            {!paper && <td />}
           </tr>
           {body}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="px-2 py-6 text-center text-neutral-500">이 기간에 거래가 없어요.</td>
+              <td colSpan={paper ? 10 : 11} className="px-2 py-6 text-center text-neutral-500">이 기간에 거래가 없어요.</td>
             </tr>
           )}
         </tbody>
@@ -139,13 +144,14 @@ export function RunningTable({
             <td className={cell}>{formatWon(total.in)}</td>
             <td className={cell}>{formatWon(total.vat)}</td>
             <td className={cell}>{formatWon(closing)}</td>
+            {!paper && <td />}
           </tr>
           <tr className={cn("border-t font-semibold", line)}>
             <td className="px-2 py-1.5" colSpan={2}>현재 잔액</td>
             <td className="px-2 py-1.5" colSpan={4}>
               {formatWon(Math.abs(closing))}원 {owe(closing)}
             </td>
-            <td className="px-2 py-1.5 text-right font-normal" colSpan={4}>
+            <td className="px-2 py-1.5 text-right font-normal" colSpan={paper ? 4 : 5}>
               {footnote}
             </td>
           </tr>
