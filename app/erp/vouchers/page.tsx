@@ -38,7 +38,9 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
     .sort((a, b) =>
       a.voucher_date === b.voucher_date ? b.voucher_no - a.voucher_no : a.voucher_date < b.voucher_date ? 1 : -1
     );
-  const total = rows.reduce((s, r) => s + r.total, 0);
+  // 견적은 장부(매출·매입·잔액)에 반영되지 않으므로 합계에서 따로 보여준다
+  const total = rows.filter((r) => r.kind !== "estimate").reduce((s, r) => s + r.total, 0);
+  const estimateTotal = rows.filter((r) => r.kind === "estimate").reduce((s, r) => s + r.total, 0);
 
   return (
     <main className="flex flex-col gap-4">
@@ -79,6 +81,7 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
 
       <p className="text-sm text-muted-foreground">
         {rows.length}건 · 합계 {formatWon(total)}원
+        {estimateTotal > 0 && ` (견적 ${formatWon(estimateTotal)}원은 장부에 반영되지 않아 합계에서 제외)`}
       </p>
 
       <div className="overflow-x-auto rounded-lg border">
