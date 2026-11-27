@@ -1,5 +1,6 @@
 import { partnerMovements, voucherTotals } from "@/lib/erp/compute";
 import { VOUCHER_KIND_LABEL, type ErpData } from "@/lib/erp/types";
+import { formatWon } from "@/lib/erp/format";
 
 export type LedgerDetail = { name: string; qty: number; unit_price: number; amount: number };
 
@@ -24,12 +25,16 @@ export function partnerLedger(data: ErpData, partnerId: number, from: string, to
   const itemName = new Map(data.items.map((i) => [i.id, i.name]));
   const partnerName = new Map(data.partners.map((p) => [p.id, p.name]));
   const linesBy = new Map<number, string[]>();
+  const amountsBy = new Map<number, number[]>();
   const detailsBy = new Map<number, LedgerDetail[]>();
   for (const l of [...data.lines].sort((a, b) => a.line_no - b.line_no)) {
     const name = (l.item_id ? itemName.get(l.item_id) : null) ?? l.description ?? "";
     const arr = linesBy.get(l.voucher_id) ?? [];
     arr.push(name);
     linesBy.set(l.voucher_id, arr);
+    const am = amountsBy.get(l.voucher_id) ?? [];
+    am.push(l.amount + l.vat);
+    amountsBy.set(l.voucher_id, am);
     if (l.item_id != null || l.qty) {
       const d = detailsBy.get(l.voucher_id) ?? [];
       d.push({
@@ -58,7 +63,11 @@ export function partnerLedger(data: ErpData, partnerId: number, from: string, to
       summary = `카드결제${other ? ` (${other})` : ""}`;
     }
     if (m.memo && !summary.includes(m.memo)) summary = summary ? `${summary} · ${m.memo}` : m.memo;
-    if (!summary) summary = m.kind === "receipt" ? "입금받음" : m.kind === "payment" ? "지급함" : VOUCHER_KIND_LABEL[m.kind];
+    if (!summary) {
+      summary = m.kind === "receipt" ? "입금받음" : m.kind === "payment" ? "지급함" : VOUCHER_KIND_LABEL[m.kind];
+      const am = amountsBy.get(m.voucher_id) ?? [];
+      if (am.length > 1) summary += ` ${am.length}회 (${am.map((a) => formatWon(a)).join(" + ")})`;
+    }
     rows.push({
       voucher_id: m.voucher_id,
       voucher_date: m.voucher_date,
