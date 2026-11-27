@@ -2,11 +2,12 @@ const won = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 const qtyFmt = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 4 });
 
 export function formatWon(value: number | null | undefined): string {
-  return won.format(Math.round(Number(value ?? 0)));
+  // || 0 : 반올림 결과가 -0 이면 "-0" 으로 보이지 않게 0 으로
+  return won.format(Math.round(Number(value ?? 0)) || 0);
 }
 
 export function formatQty(value: number | null | undefined): string {
-  return qtyFmt.format(Number(value ?? 0));
+  return qtyFmt.format(Number(value ?? 0) || 0);
 }
 
 /** 서버(UTC)에서도 한국 날짜 기준으로 오늘을 YYYY-MM-DD 로 */
