@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { Share2 } from "lucide-react";
 import { loadErpData } from "@/lib/erp/repo";
 import { voucherTotals } from "@/lib/erp/compute";
 import { formatDate, formatQty, formatWon, todayKST } from "@/lib/erp/format";
 import { VOUCHER_KINDS, VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
 import { KindBadge } from "@/components/erp/kind-badge";
 import { RunningTable } from "@/components/erp/running-table";
+import { RowActions } from "@/components/erp/row-actions";
 import { partnerRunning } from "@/lib/erp/running";
 
 type Search = { kind?: string; from?: string; to?: string; partner?: string; q?: string };
@@ -92,8 +94,19 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
 
       {running ? (
         <>
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
+            <div className="min-w-0 flex-1 text-sm">
+              <b>{partnerName.get(partnerId!)}</b> 거래처원장 · {formatDate(from)} ~ {formatDate(to)}
+            </div>
+            <Link
+              href={`/erp/partners/${partnerId}/print?from=${from}&to=${to}`}
+              className="inline-flex h-10 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              <Share2 className="size-4" /> 이 원장 출력·보내기
+            </Link>
+          </div>
           <p className="text-sm text-muted-foreground">
-            {partnerName.get(partnerId!)} · 위에서부터 날짜순 · 매출·매입은 잔액에 더하고, 입금·출금은 빼요.
+            위에서부터 날짜순 · 매출·매입은 잔액에 더하고, 입금·출금은 빼요.
             {(kind || q) && " (종류·검색 조건은 잔액 계산에는 적용되지 않아요)"}
           </p>
           <RunningTable
@@ -127,6 +140,7 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
                 <th className="px-3 py-2 text-right font-medium">공급가</th>
                 <th className="px-3 py-2 text-right font-medium">부가세</th>
                 <th className="px-3 py-2 text-right font-medium">합계</th>
+                <th className="px-3 py-2 text-right font-medium"><span className="sr-only">보기·보내기</span></th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -158,12 +172,15 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.supply)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.vat)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">{formatWon(v.total)}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right">
+                      <RowActions id={v.id} />
+                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 전표가 없어요.</td>
+                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 전표가 없어요.</td>
                 </tr>
               )}
             </tbody>
