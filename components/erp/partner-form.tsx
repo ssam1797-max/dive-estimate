@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { savePartnerAction } from "@/lib/erp/actions";
-import { PARTNER_KINDS, PARTNER_KIND_LABEL, type Partner, type PartnerInput } from "@/lib/erp/types";
+import { PARTNER_KINDS, PARTNER_KIND_LABEL, PRICE_GRADES, type Partner, type PartnerInput } from "@/lib/erp/types";
 
 const EMPTY: PartnerInput = {
   name: "",
@@ -28,6 +28,7 @@ const EMPTY: PartnerInput = {
   memo: null,
   opening_balance: 0,
   active: true,
+  price_grade: "A",
 };
 
 const FIELDS: { key: keyof PartnerInput; label: string; wide?: boolean }[] = [
@@ -87,6 +88,15 @@ export function PartnerForm({ partner, onDone }: { partner?: Partner; onDone?: (
             <option key={k} value={k}>{PARTNER_KIND_LABEL[k]}</option>
           ))}
         </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">단가 등급</span>
+        <Select value={form.price_grade} onChange={(e) => set("price_grade", e.target.value)} className="text-base sm:text-sm">
+          {PRICE_GRADES.map((g) => (
+            <option key={g} value={g}>{g}등급 — 판매가 {g}</option>
+          ))}
+        </Select>
+        <span className="text-xs text-muted-foreground">매출·견적에서 품목을 고르면 이 등급의 판매가가 들어가요.</span>
       </label>
       {FIELDS.map((f) => (
         <label key={f.key} className={`flex flex-col gap-1 text-sm ${f.wide ? "sm:col-span-2" : ""}`}>

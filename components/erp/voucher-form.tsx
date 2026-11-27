@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
-import { vatFor } from "@/lib/erp/compute";
+import { salePriceFor, vatFor } from "@/lib/erp/compute";
 import { formatQty, formatWon } from "@/lib/erp/format";
 import {
   ITEMIZED_KINDS,
@@ -28,7 +28,8 @@ import {
 } from "@/lib/erp/types";
 import type { ItemWithStock, PartnerWithBalance } from "@/lib/erp/compute";
 
-type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean };
+/** priceManual: 단가를 직접 고쳤으면 true — 거래처를 바꿔도 단가를 다시 매기지 않는다 */
+type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean; priceManual: boolean };
 
 export type VoucherFormProps = {
   partners: PartnerWithBalance[];
@@ -52,6 +53,7 @@ const emptyLine = (): Line => ({
   amount: 0,
   vat: 0,
   vatManual: false,
+  priceManual: false,
 });
 
 export function VoucherForm({
@@ -72,7 +74,7 @@ export function VoucherForm({
   const [memo, setMemo] = React.useState(initial?.memo ?? "");
   const [lines, setLines] = React.useState<Line[]>(() =>
     initial?.lines.length
-      ? initial.lines.map((l) => ({ ...l, key: keySeq++, vatManual: true }))
+      ? initial.lines.map((l) => ({ ...l, key: keySeq++, vatManual: true, priceManual: true }))
       : [emptyLine()]
   );
   const [amountOnly, setAmountOnly] = React.useState<number>(() =>
@@ -143,7 +145,7 @@ export function VoucherForm({
   };
 
   const applyItem = (key: number, item: ItemWithStock) => {
-    const price = kind === "purchase" ? item.purchase_price : item.sale_price;
+    const price = unitPriceFor(item, kind, partner);
     setLines((prev) => {
       const next = prev.map((l) => {
         if (l.key !== key) return l;
@@ -157,11 +159,28 @@ export function VoucherForm({
           amount,
           vat: vatFor(item.vat_type, amount),
           vatManual: false,
+          priceManual: false,
         };
       });
       // 마지막 줄에서 품목을 고르면 빈 줄을 하나 더 붙여 입력 동선을 줄인다
       return next[next.length - 1].key === key ? [...next, emptyLine()] : next;
     });
+  };
+
+  /** 거래처를 바꾸면 직접 고치지 않은 줄의 단가를 새 거래처 등급에 맞춰 다시 매긴다 */
+  const changePartner = (id: number | null) => {
+    setPartnerId(id);
+    const next = partners.find((p) => p.id === id) ?? null;
+    setLines((prev) => prev.map((l) => repriceLine(l, kind, next)));
+  };
+
+  const repriceLine = (l: Line, k: VoucherKind, p: PartnerWithBalance | null): Line => {
+    if (l.priceManual || !l.item_id) return l;
+    const item = itemById.get(l.item_id);
+    if (!item) return l;
+    const unit_price = unitPriceFor(item, k, p);
+    const amount = Math.round(l.qty * unit_price);
+    return { ...l, unit_price, amount, vat: l.vatManual ? l.vat : vatFor(item.vat_type, amount) };
   };
 
   /** 종류를 바꿀 때 금액이 사라지지 않도록 품목 줄 합계 ↔ 금액 칸을 서로 옮겨 준다 */
@@ -177,6 +196,8 @@ export function VoucherForm({
         setLines([{ ...emptyLine(), description: memo || VOUCHER_KIND_LABEL[kind], qty: 1, unit_price: amountOnly, amount: amountOnly, vat: 0, vatManual: true }]);
       }
     }
+    // 매출↔매입처럼 가격 기준이 바뀌면 직접 고치지 않은 줄의 단가를 다시 매긴다
+    if (willItemize) setLines((prev) => prev.map((l) => repriceLine(l, next, partner)));
     setKind(next);
   };
 
@@ -340,12 +361,13 @@ export function VoucherForm({
           <Combobox
             options={partnerOptions}
             value={partnerId ? String(partnerId) : ""}
-            onChange={(v) => setPartnerId(v ? Number(v) : null)}
+            onChange={(v) => changePartner(v ? Number(v) : null)}
             placeholder="거래처 선택"
             searchPlaceholder="이름 검색 (초성 가능)"
           />
           {partner && (
             <span className="text-xs text-muted-foreground">
+              {kind !== "purchase" && kind !== "payment" && `단가 ${partner.price_grade}등급 · `}
               현재 잔액 {formatWon(Math.abs(partner.balance))}원 {partner.balance > 0 ? "받을 돈" : partner.balance < 0 ? "줄 돈" : ""}
             </span>
           )}
@@ -404,6 +426,9 @@ export function VoucherForm({
                       {item && (
                         <div className="mt-1 text-xs text-muted-foreground">
                           {VAT_TYPE_LABEL[item.vat_type] ?? "면세"}
+                          {kind !== "purchase" && ` · 판매가 A ${formatWon(item.sale_price)}`}
+                          {kind !== "purchase" && item.sale_price_b != null && ` / B ${formatWon(item.sale_price_b)}`}
+                          {kind !== "purchase" && item.sale_price_c != null && ` / C ${formatWon(item.sale_price_c)}`}
                           {item.track_stock && ` · 현재고 ${formatQty(item.stock)}`}
                         </div>
                       )}
@@ -412,7 +437,7 @@ export function VoucherForm({
                       <NumInput value={l.qty} onChange={(v) => updateLine(l.key, { qty: v })} className="w-20" />
                     </td>
                     <td className="px-2 py-2">
-                      <NumInput value={l.unit_price} onChange={(v) => updateLine(l.key, { unit_price: v })} className="w-28" />
+                      <NumInput value={l.unit_price} onChange={(v) => updateLine(l.key, { unit_price: v, priceManual: true })} className="w-28" />
                     </td>
                     <td className="px-2 py-2">
                       <NumInput value={l.amount} onChange={(v) => updateLine(l.key, { amount: v })} className="w-32" />
@@ -506,6 +531,11 @@ export function VoucherForm({
       />
     </div>
   );
+}
+
+/** 매입은 매입가, 매출·견적은 거래처 단가 등급의 판매가 */
+function unitPriceFor(item: ItemWithStock, kind: VoucherKind, partner: PartnerWithBalance | null): number {
+  return kind === "purchase" ? item.purchase_price : salePriceFor(item, partner?.price_grade);
 }
 
 function NumInput({

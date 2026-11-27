@@ -69,6 +69,7 @@ export async function GET() {
   wp.columns = [
     { header: "거래처", key: "name", width: 24 },
     { header: "구분", key: "kind", width: 8 },
+    { header: "단가등급", key: "grade", width: 8 },
     { header: "잔액(받을+/줄−)", key: "balance", width: 16 },
     { header: "사업자번호", key: "biz_no", width: 14 },
     { header: "대표자", key: "rep", width: 10 },
@@ -85,6 +86,7 @@ export async function GET() {
     wp.addRow({
       name: p.name,
       kind: PARTNER_KIND_LABEL[p.kind],
+      grade: p.price_grade,
       balance: p.balance,
       biz_no: p.biz_no,
       rep: p.rep_name,
@@ -106,7 +108,9 @@ export async function GET() {
     { header: "분류", key: "group", width: 12 },
     { header: "과세", key: "vat", width: 6 },
     { header: "매입가", key: "buy", width: 12 },
-    { header: "판매가", key: "sell", width: 12 },
+    { header: "판매가A", key: "sell", width: 12 },
+    { header: "판매가B", key: "sell_b", width: 12 },
+    { header: "판매가C", key: "sell_c", width: 12 },
     { header: "재고관리", key: "track", width: 8 },
     { header: "현재고", key: "stock", width: 8 },
   ];
@@ -118,6 +122,8 @@ export async function GET() {
       vat: VAT_TYPE_LABEL[i.vat_type] ?? "",
       buy: i.purchase_price,
       sell: i.sale_price,
+      sell_b: i.sale_price_b ?? "",
+      sell_c: i.sale_price_c ?? "",
       track: i.track_stock ? "예" : "",
       stock: i.stock ?? "",
     });
@@ -127,7 +133,7 @@ export async function GET() {
     sheet.getRow(1).font = { bold: true };
     sheet.views = [{ state: "frozen", ySplit: 1 }];
     sheet.columns.forEach((c) => {
-      if (["price", "amount", "vat", "total", "balance", "buy", "sell"].includes(String(c.key))) c.numFmt = "#,##0";
+      if (["price", "amount", "vat", "total", "balance", "buy", "sell", "sell_b", "sell_c"].includes(String(c.key))) c.numFmt = "#,##0";
     });
   }
 

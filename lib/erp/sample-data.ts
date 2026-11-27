@@ -28,6 +28,7 @@ export function buildSampleData(): ErpData {
     memo: null,
     opening_balance: 0,
     active: true,
+    price_grade: "A",
   });
   const item = (id: number, name: string, group: number, buy: number, sell: number, track = false): Item => ({
     id,
@@ -39,6 +40,8 @@ export function buildSampleData(): ErpData {
     unit: "EA",
     purchase_price: buy,
     sale_price: sell,
+    sale_price_b: null,
+    sale_price_c: null,
     vat_type: 1,
     memo: null,
     active: true,

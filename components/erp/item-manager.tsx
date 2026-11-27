@@ -21,6 +21,8 @@ export const EMPTY_ITEM: ItemInput = {
   unit: "EA",
   purchase_price: 0,
   sale_price: 0,
+  sale_price_b: null,
+  sale_price_c: null,
   vat_type: 1,
   memo: null,
   active: true,
@@ -73,7 +75,9 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
               <th className="px-3 py-2 font-medium">분류</th>
               <th className="px-3 py-2 font-medium">과세</th>
               <th className="px-3 py-2 text-right font-medium">매입가</th>
-              <th className="px-3 py-2 text-right font-medium">판매가</th>
+              <th className="px-3 py-2 text-right font-medium">판매가 A</th>
+              <th className="px-3 py-2 text-right font-medium">B</th>
+              <th className="px-3 py-2 text-right font-medium">C</th>
               <th className="px-3 py-2 text-right font-medium">현재고</th>
             </tr>
           </thead>
@@ -89,6 +93,12 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
                 <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{VAT_TYPE_LABEL[i.vat_type] ?? ""}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(i.purchase_price)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(i.sale_price)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {i.sale_price_b != null ? formatWon(i.sale_price_b) : "-"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {i.sale_price_c != null ? formatWon(i.sale_price_c) : "-"}
+                </td>
                 <td className={cn("whitespace-nowrap px-3 py-2 text-right tabular-nums", (i.stock ?? 0) < 0 && "text-rose-700 dark:text-rose-400")}>
                   {i.track_stock ? `${formatQty(i.stock)} ${i.unit ?? ""}` : <span className="text-muted-foreground">관리 안 함</span>}
                 </td>
@@ -96,7 +106,7 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 품목이 없어요.</td>
+                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 품목이 없어요.</td>
               </tr>
             )}
           </tbody>
@@ -179,10 +189,28 @@ export function ItemForm({
         <span className="text-muted-foreground">매입가</span>
         <Input inputMode="decimal" value={String(f.purchase_price)} onChange={(e) => set("purchase_price", num(e.target.value))} className="text-right text-base tabular-nums sm:text-sm" />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-muted-foreground">판매가</span>
-        <Input inputMode="decimal" value={String(f.sale_price)} onChange={(e) => set("sale_price", num(e.target.value))} className="text-right text-base tabular-nums sm:text-sm" />
-      </label>
+      <fieldset className="grid grid-cols-3 gap-2 rounded-md border p-3 sm:col-span-2">
+        <legend className="px-1 text-sm font-medium">판매가 (거래처 단가 등급별)</legend>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">A (기본)</span>
+          <Input inputMode="decimal" value={String(f.sale_price)} onChange={(e) => set("sale_price", num(e.target.value))} className="text-right text-base tabular-nums sm:text-sm" />
+        </label>
+        {(["sale_price_b", "sale_price_c"] as const).map((k) => (
+          <label key={k} className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">{k === "sale_price_b" ? "B" : "C"}</span>
+            <Input
+              inputMode="decimal"
+              placeholder="비우면 A"
+              value={f[k] == null ? "" : String(f[k])}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/,/g, "").trim();
+                set(k, raw === "" ? null : num(raw));
+              }}
+              className="text-right text-base tabular-nums sm:text-sm"
+            />
+          </label>
+        ))}
+      </fieldset>
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-muted-foreground">과세 구분</span>
         <Select value={String(f.vat_type)} onChange={(e) => set("vat_type", Number(e.target.value))} className="text-base sm:text-sm">
