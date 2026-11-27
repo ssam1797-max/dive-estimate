@@ -1,5 +1,6 @@
+import * as React from "react";
 import Link from "next/link";
-import { formatDate, formatWon } from "@/lib/erp/format";
+import { formatDate, formatQty, formatWon } from "@/lib/erp/format";
 import { VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
 import type { LedgerRow } from "@/lib/erp/ledger";
 
@@ -11,6 +12,7 @@ export function LedgerTable({
   closing,
   linkRows = true,
   paper = false,
+  detailed = false,
 }: {
   carried: number;
   rows: LedgerRow[];
@@ -20,6 +22,8 @@ export function LedgerTable({
   linkRows?: boolean;
   /** 흰 종이(출력물) 위에 그릴 때 true — 다크 모드 색을 쓰지 않는다 */
   paper?: boolean;
+  /** 매출·매입 줄 아래에 품목(수량×단가)을 펼쳐 보여준다 */
+  detailed?: boolean;
 }) {
   const line = paper ? "border-neutral-200" : "border-border";
   return (
@@ -40,7 +44,8 @@ export function LedgerTable({
           <td className="px-2 py-1.5 text-right tabular-nums">{formatWon(carried)}</td>
         </tr>
         {rows.map((r) => (
-          <tr key={`${r.voucher_id}-${r.kind}-${r.balance}`} className={`border-b ${line}`}>
+          <React.Fragment key={`${r.voucher_id}-${r.kind}-${r.balance}`}>
+          <tr className={`border-b ${line}`}>
             <td className="whitespace-nowrap px-2 py-1.5 tabular-nums">
               {linkRows ? (
                 <Link className="hover:underline" href={`/erp/vouchers/${r.voucher_id}`}>{formatDate(r.voucher_date)}</Link>
@@ -54,6 +59,26 @@ export function LedgerTable({
             <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">{r.decrease ? formatWon(r.decrease) : ""}</td>
             <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">{formatWon(r.balance)}</td>
           </tr>
+          {detailed && r.details.length > 0 && (
+            <tr className={`border-b ${line}`}>
+              <td />
+              <td />
+              <td colSpan={4} className="px-2 pb-2 pt-0">
+                <ul className={`text-[12px] ${paper ? "text-neutral-600" : "text-muted-foreground"}`}>
+                  {r.details.map((d, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="min-w-0 flex-1">· {d.name}</span>
+                      <span className="whitespace-nowrap tabular-nums">
+                        {formatQty(d.qty)} × {formatWon(d.unit_price)}
+                      </span>
+                      <span className="w-24 whitespace-nowrap text-right tabular-nums">{formatWon(d.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </td>
+            </tr>
+          )}
+          </React.Fragment>
         ))}
       </tbody>
       <tfoot>

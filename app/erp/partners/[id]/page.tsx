@@ -5,6 +5,7 @@ import { partnerLedger } from "@/lib/erp/ledger";
 import { formatWon, todayKST } from "@/lib/erp/format";
 import { PARTNER_KIND_LABEL } from "@/lib/erp/types";
 import { LedgerTable } from "@/components/erp/ledger-table";
+import { LedgerSummary } from "@/components/erp/ledger-summary";
 import { PartnerForm } from "@/components/erp/partner-form";
 
 export default async function PartnerDetailPage({
@@ -57,8 +58,9 @@ export default async function PartnerDetailPage({
             원장 출력
           </Link>
         </div>
+        <LedgerSummary carried={ledger.carried} byKind={ledger.byKind} closing={ledger.closing} />
         <div className="overflow-x-auto rounded-lg border">
-          <LedgerTable {...ledger} />
+          <LedgerTable {...ledger} detailed />
         </div>
       </section>
 

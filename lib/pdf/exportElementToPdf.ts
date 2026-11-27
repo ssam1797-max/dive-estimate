@@ -8,8 +8,10 @@
  */
 export async function exportElementToPdf(
   element: HTMLElement,
-  fileName: string
-): Promise<void> {
+  fileName: string,
+  /** "blob" 이면 파일로 저장하지 않고 PDF Blob 을 돌려준다(공유창으로 보낼 때). 기본 "save". */
+  options: { output?: "save" | "blob" } = {}
+): Promise<Blob | void> {
   // html2canvas(원본)는 Tailwind v4 기본 팔레트가 쓰는 최신 CSS 색상 함수
   // (lab()/oklch())를 파싱하지 못해 캡처가 그대로 실패한다 — 이를 지원하는
   // 유지보수 중인 포크(html2canvas-pro)를 대신 사용한다.
@@ -130,5 +132,6 @@ export async function exportElementToPdf(
     }
   }
 
+  if (options.output === "blob") return pdf.output("blob");
   pdf.save(fileName);
 }

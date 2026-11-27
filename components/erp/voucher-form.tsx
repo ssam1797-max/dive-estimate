@@ -292,14 +292,12 @@ export function VoucherForm({
         )}
         {initial && (
           <div className="ml-auto flex flex-wrap gap-2 print:hidden">
-            {(initial.kind === "estimate" || initial.kind === "sale") && (
-              <Link
-                href={`/erp/vouchers/${initial.id}/print`}
-                className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent"
-              >
-                {initial.kind === "estimate" ? "견적서 출력" : "거래명세서 출력"}
-              </Link>
-            )}
+            <Link
+              href={`/erp/vouchers/${initial.id}/print`}
+              className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent"
+            >
+              {initial.kind === "estimate" ? "견적서 출력·공유" : initial.kind === "sale" ? "거래명세서 출력·공유" : "출력·공유"}
+            </Link>
             {initial.kind === "estimate" && (
               <>
                 <Button variant="secondary" disabled={saving} onClick={() => convert("sale")}>매출로 전환</Button>

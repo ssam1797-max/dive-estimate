@@ -100,8 +100,11 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
           </thead>
           <tbody className="divide-y">
             {rows.map((v) => {
-              const names = linesByVoucher.get(v.id) ?? [];
-              const summary = names.length > 1 ? `${names[0]} 외 ${names.length - 1}건` : (names[0] || v.memo || "");
+              const names = (linesByVoucher.get(v.id) ?? []).filter((n) => n.trim() !== "");
+              const summary =
+                names.length > 1
+                  ? `${names[0]} 외 ${names.length - 1}건`
+                  : names[0] || v.memo || VOUCHER_KIND_LABEL[v.kind];
               return (
                 <tr key={v.id} className="hover:bg-accent/50">
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums">
