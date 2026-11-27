@@ -47,9 +47,20 @@ const FIELDS: { key: keyof PartnerInput; label: string; wide?: boolean }[] = [
   { key: "memo", label: "메모", wide: true },
 ];
 
-export function PartnerForm({ partner, onDone }: { partner?: Partner; onDone?: (id: number) => void }) {
+export function PartnerForm({
+  partner,
+  initial,
+  onDone,
+}: {
+  partner?: Partner;
+  /** 새로 등록할 때 미리 채울 값(예: 전표에서 입력한 이름) */
+  initial?: Partial<PartnerInput>;
+  onDone?: (id: number, saved: PartnerInput) => void;
+}) {
   const router = useRouter();
-  const [form, setForm] = React.useState<PartnerInput>(() => (partner ? { ...partner } : { ...EMPTY }));
+  const [form, setForm] = React.useState<PartnerInput>(() =>
+    partner ? { ...partner } : { ...EMPTY, ...initial }
+  );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
@@ -67,7 +78,7 @@ export function PartnerForm({ partner, onDone }: { partner?: Partner; onDone?: (
       if (!res.ok) return setError(res.error);
       setSaved(true);
       router.refresh();
-      onDone?.(res.id);
+      onDone?.(res.id, form);
     } catch {
       setError("저장 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
     } finally {

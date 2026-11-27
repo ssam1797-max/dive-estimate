@@ -11,6 +11,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
+import { PartnerForm } from "@/components/erp/partner-form";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
 import { salePriceFor, vatFor } from "@/lib/erp/compute";
@@ -57,7 +58,7 @@ const emptyLine = (): Line => ({
 });
 
 export function VoucherForm({
-  partners,
+  partners: partnersProp,
   items: itemsProp,
   groups,
   initial,
@@ -85,6 +86,17 @@ export function VoucherForm({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  // 매출·견적에서 단가를 매입가보다 낮게 고쳤을 때 확인 창
+  const [lowPrice, setLowPrice] = React.useState<{ key: number; prev: number; price: number; cost: number } | null>(null);
+  const lowPriceOkRef = React.useRef(false);
+
+  // 전표 입력 중 새로 등록한 거래처(서버 새로고침 전에도 바로 고를 수 있게)
+  const [extraPartners, setExtraPartners] = React.useState<PartnerWithBalance[]>([]);
+  const partners = React.useMemo(() => {
+    const ids = new Set(partnersProp.map((p) => p.id));
+    return [...partnersProp, ...extraPartners.filter((p) => !ids.has(p.id))];
+  }, [partnersProp, extraPartners]);
+  const [newPartner, setNewPartner] = React.useState<{ name: string; card: boolean } | null>(null);
 
   // 전표 입력 중 새로 등록한 품목(서버 새로고침 전에도 바로 고를 수 있게)
   const [extraItems, setExtraItems] = React.useState<ItemWithStock[]>([]);
@@ -168,9 +180,9 @@ export function VoucherForm({
   };
 
   /** 거래처를 바꾸면 직접 고치지 않은 줄의 단가를 새 거래처 등급에 맞춰 다시 매긴다 */
-  const changePartner = (id: number | null) => {
-    setPartnerId(id);
-    const next = partners.find((p) => p.id === id) ?? null;
+  const changePartner = (id: number | null) => changePartnerTo(partners.find((p) => p.id === id) ?? null);
+  const changePartnerTo = (next: PartnerWithBalance | null) => {
+    setPartnerId(next?.id ?? null);
     setLines((prev) => prev.map((l) => repriceLine(l, kind, next)));
   };
 
@@ -362,6 +374,8 @@ export function VoucherForm({
             onChange={(v) => changePartner(v ? Number(v) : null)}
             placeholder="거래처 선택"
             searchPlaceholder="이름 검색 (초성 가능)"
+            onCreateNew={(name) => setNewPartner({ name, card: false })}
+            createPrompt="새로운 거래처입니다. 거래처를 등록할까요?"
           />
           {partner && (
             <span className="text-xs text-muted-foreground">
@@ -380,6 +394,8 @@ export function VoucherForm({
             value={cardPartnerId ? String(cardPartnerId) : ""}
             onChange={(v) => setCardPartnerId(v ? Number(v) : null)}
             placeholder="카드사 선택"
+            onCreateNew={(name) => setNewPartner({ name, card: true })}
+            createPrompt="새로운 카드사입니다. 등록할까요?"
           />
           <span className="text-xs text-muted-foreground">거래처의 외상이 줄고, 같은 금액을 카드사에서 받을 돈으로 잡아요.</span>
         </div>
@@ -435,7 +451,17 @@ export function VoucherForm({
                       <NumInput value={l.qty} onChange={(v) => updateLine(l.key, { qty: v })} className="w-20" />
                     </td>
                     <td className="px-2 py-2">
-                      <NumInput value={l.unit_price} onChange={(v) => updateLine(l.key, { unit_price: v, priceManual: true })} className="w-28" />
+                      <NumInput
+                        value={l.unit_price}
+                        onChange={(v) => updateLine(l.key, { unit_price: v, priceManual: true })}
+                        onCommit={(prev, next) => {
+                          const cost = item?.purchase_price ?? 0;
+                          if (kind !== "purchase" && item && cost > 0 && next < cost && next !== prev) {
+                            setLowPrice({ key: l.key, prev, price: next, cost });
+                          }
+                        }}
+                        className="w-28"
+                      />
                     </td>
                     <td className="px-2 py-2">
                       <NumInput value={l.amount} onChange={(v) => updateLine(l.key, { amount: v })} className="w-32" />
@@ -492,6 +518,35 @@ export function VoucherForm({
         </Button>
       </div>
 
+      <Dialog open={newPartner != null} onOpenChange={(o) => !o && setNewPartner(null)} widthClassName="max-w-2xl">
+        {newPartner && (
+          <DialogContent onClose={() => setNewPartner(null)}>
+            <DialogHeader>
+              <DialogTitle>{newPartner.card ? "새 카드사 등록" : "새 거래처 등록"}</DialogTitle>
+            </DialogHeader>
+            <PartnerForm
+              initial={{
+                name: newPartner.name,
+                kind: newPartner.card ? "card" : kind === "purchase" || kind === "payment" ? "supplier" : "customer",
+              }}
+              onDone={(id, saved) => {
+                const created: PartnerWithBalance = {
+                  ...saved,
+                  id,
+                  legacy_code: null,
+                  balance: Number(saved.opening_balance) || 0,
+                  last_date: null,
+                };
+                setExtraPartners((prev) => [...prev, created]);
+                if (newPartner.card) setCardPartnerId(id);
+                else changePartnerTo(created);
+                setNewPartner(null);
+              }}
+            />
+          </DialogContent>
+        )}
+      </Dialog>
+
       <Dialog open={newItem != null} onOpenChange={(o) => !o && setNewItem(null)} widthClassName="max-w-xl">
         {newItem && (
           <DialogContent onClose={() => setNewItem(null)}>
@@ -520,6 +575,28 @@ export function VoucherForm({
       </Dialog>
 
       <ConfirmDialog
+        open={lowPrice != null}
+        onOpenChange={(o) => {
+          if (o) return;
+          // [계속]이 아니라 취소·닫기로 닫으면 원래 단가로 되돌린다
+          if (!lowPriceOkRef.current && lowPrice) updateLine(lowPrice.key, { unit_price: lowPrice.prev });
+          lowPriceOkRef.current = false;
+          setLowPrice(null);
+        }}
+        title="매입가보다 낮은 금액입니다. 계속하시겠습니까?"
+        description={
+          lowPrice
+            ? `입력한 단가 ${formatWon(lowPrice.price)}원이 매입가 ${formatWon(lowPrice.cost)}원보다 ${formatWon(lowPrice.cost - lowPrice.price)}원 낮아요. 취소하면 원래 단가(${formatWon(lowPrice.prev)}원)로 돌아가요.`
+            : ""
+        }
+        confirmLabel="계속"
+        variant="default"
+        onConfirm={() => {
+          lowPriceOkRef.current = true;
+        }}
+      />
+
+      <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="전표를 삭제할까요?"
@@ -539,14 +616,18 @@ function unitPriceFor(item: ItemWithStock, kind: VoucherKind, partner: PartnerWi
 function NumInput({
   value,
   onChange,
+  onCommit,
   className,
 }: {
   value: number;
   onChange: (v: number) => void;
+  /** 입력을 마쳤을 때(포커스가 빠질 때) 고치기 전 값과 새 값 */
+  onCommit?: (prev: number, next: number) => void;
   className?: string;
 }) {
   const [text, setText] = React.useState(formatQty(value));
   const [focused, setFocused] = React.useState(false);
+  const startRef = React.useRef(value);
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!focused) setText(formatQty(value));
@@ -556,8 +637,14 @@ function NumInput({
       inputMode="decimal"
       className={cn("text-right tabular-nums text-base sm:text-sm", className)}
       value={text}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        startRef.current = value;
+        setFocused(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onCommit?.(startRef.current, value);
+      }}
       onChange={(e) => {
         setText(e.target.value);
         const n = Number(e.target.value.replace(/,/g, ""));
