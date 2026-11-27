@@ -1,5 +1,5 @@
 import { partnerMovements, voucherTotals } from "@/lib/erp/compute";
-import type { ErpData, VoucherKind } from "@/lib/erp/types";
+import type { ErpData, PartnerKind, VoucherKind } from "@/lib/erp/types";
 
 /**
  * 보고서 계산(경영박사 일계표·판매현황·미수/미지급·매출장/매입장·재고보고서·품목수불 대응).
@@ -100,6 +100,62 @@ export function balanceReport(data: ErpData, from: string, to: string) {
   const receivable = rows.filter((r) => r.balance > 0).sort((a, b) => b.balance - a.balance);
   const payable = rows.filter((r) => r.balance < 0).sort((a, b) => a.balance - b.balance);
   return { receivable, payable };
+}
+
+/**
+ * 거래처별 잔액 명세(경영박사 미수/미지급현황 양식):
+ * 전기이월 · 매출액 · 수금액 · 매입액 · 지급액 · 잔액을 거래처 구분별로 묶어 소계·총계를 낸다.
+ * 잔액은 받을 돈(+) / 줄 돈(−) 부호 그대로.
+ */
+export function partnerBalanceSheet(data: ErpData, from: string, to: string) {
+  const moves = partnerMovements(data, voucherTotals(data));
+  const rows = data.partners.map((p) => {
+    let carried = Number(p.opening_balance || 0);
+    const s = { sale: 0, received: 0, purchase: 0, paid: 0 };
+    for (const m of moves.get(p.id) ?? []) {
+      if (m.voucher_date > to) continue;
+      if (m.voucher_date < from) {
+        carried += m.delta;
+        continue;
+      }
+      if (m.kind === "sale") s.sale += m.total;
+      else if (m.kind === "purchase") s.purchase += m.total;
+      else if (m.kind === "payment") s.paid += m.total;
+      else if (m.kind === "receipt") s.received += m.total;
+      else if (m.kind === "card_receipt") {
+        // 결제한 거래처에게는 수금, 카드사에게는 받을 돈이 생긴 것(매출 칸)
+        if (m.delta < 0) s.received -= m.delta;
+        else s.sale += m.delta;
+      }
+    }
+    const balance = carried + s.sale - s.received - s.purchase + s.paid;
+    return { id: p.id, name: p.name, kind: p.kind, tel: p.mobile || p.tel, carried, ...s, balance };
+  });
+  const active = rows.filter(
+    (r) => r.carried !== 0 || r.sale !== 0 || r.received !== 0 || r.purchase !== 0 || r.paid !== 0 || r.balance !== 0
+  );
+  const order: PartnerKind[] = ["customer", "consumer", "supplier", "card", "other"];
+  const groups = order
+    .map((kind) => {
+      const list = active.filter((r) => r.kind === kind).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      return { kind, rows: list, sum: sumSheet(list) };
+    })
+    .filter((g) => g.rows.length > 0);
+  return { groups, total: sumSheet(active), count: active.length };
+}
+
+function sumSheet(rows: { carried: number; sale: number; received: number; purchase: number; paid: number; balance: number }[]) {
+  return rows.reduce(
+    (s, r) => ({
+      carried: s.carried + r.carried,
+      sale: s.sale + r.sale,
+      received: s.received + r.received,
+      purchase: s.purchase + r.purchase,
+      paid: s.paid + r.paid,
+      balance: s.balance + r.balance,
+    }),
+    { carried: 0, sale: 0, received: 0, purchase: 0, paid: 0, balance: 0 }
+  );
 }
 
 /** 매출장·매입장: 기간 안의 매출(매입) 전표 줄 */
