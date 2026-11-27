@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { loadErpData } from "@/lib/erp/repo";
 import { partnerLedger } from "@/lib/erp/ledger";
-import { formatDate, formatWon, todayKST } from "@/lib/erp/format";
+import { formatDate, todayKST } from "@/lib/erp/format";
 import { LedgerSummary } from "@/components/erp/ledger-summary";
 import { loadSuppliers } from "@/lib/erp/supplier";
-import { LedgerTable } from "@/components/erp/ledger-table";
+import { RunningTable } from "@/components/erp/running-table";
+import { partnerRunning } from "@/lib/erp/running";
+import { getBankAccountSettings } from "@/lib/db/settings-repo";
 import { PrintToolbar } from "@/components/erp/print-toolbar";
 
 export default async function PartnerLedgerPrintPage({
@@ -23,7 +25,14 @@ export default async function PartnerLedgerPrintPage({
   const ledger = partnerLedger(data, id, from, to);
   if (!ledger.partner) notFound();
   const { suppliers, supplier } = await loadSuppliers(sp.supplier);
-  const bal = ledger.closing;
+  const running = partnerRunning(data, id, from, to);
+  let bankLine = "";
+  try {
+    const b = await getBankAccountSettings();
+    bankLine = [b.accountNumber, b.bankName, b.accountHolder && `(${b.accountHolder})`].filter(Boolean).join(" ");
+  } catch (e) {
+    console.error("입금 계좌 조회 실패:", e);
+  }
 
   return (
     <main>
@@ -42,10 +51,14 @@ export default async function PartnerLedgerPrintPage({
           </div>
         </header>
         <LedgerSummary carried={ledger.carried} byKind={ledger.byKind} closing={ledger.closing} />
-        <LedgerTable {...ledger} linkRows={false} paper detailed />
-        <p className="mt-4 text-right text-[15px] font-semibold">
-          {bal === 0 ? "잔액 없음" : `${bal > 0 ? "받을 금액" : "지급할 금액"} ${formatWon(Math.abs(bal))}원`}
-        </p>
+        <RunningTable
+          carried={running.carried}
+          rows={running.rows}
+          closing={running.closing}
+          payable={ledger.partner.kind === "supplier"}
+          paper
+          footnote={bankLine}
+        />
       </div>
     </main>
   );

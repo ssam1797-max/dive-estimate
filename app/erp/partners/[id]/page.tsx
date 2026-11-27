@@ -4,7 +4,8 @@ import { loadErpData } from "@/lib/erp/repo";
 import { partnerLedger } from "@/lib/erp/ledger";
 import { formatWon, todayKST } from "@/lib/erp/format";
 import { PARTNER_KIND_LABEL } from "@/lib/erp/types";
-import { LedgerTable } from "@/components/erp/ledger-table";
+import { RunningTable } from "@/components/erp/running-table";
+import { partnerRunning } from "@/lib/erp/running";
 import { LedgerSummary } from "@/components/erp/ledger-summary";
 import { PartnerForm } from "@/components/erp/partner-form";
 
@@ -26,6 +27,7 @@ export default async function PartnerDetailPage({
   const p = ledger.partner;
   const qs = new URLSearchParams({ from, to }).toString();
   const bal = ledger.closing;
+  const running = partnerRunning(data, id, from, to);
 
   return (
     <main className="flex flex-col gap-6">
@@ -59,9 +61,12 @@ export default async function PartnerDetailPage({
           </Link>
         </div>
         <LedgerSummary carried={ledger.carried} byKind={ledger.byKind} closing={ledger.closing} />
-        <div className="overflow-x-auto rounded-lg border">
-          <LedgerTable {...ledger} detailed />
-        </div>
+        <RunningTable
+          carried={running.carried}
+          rows={running.rows}
+          closing={running.closing}
+          payable={p.kind === "supplier"}
+        />
       </section>
 
       <section>

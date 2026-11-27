@@ -78,10 +78,12 @@ export function partnerMovements(data: ErpData, totals = voucherTotals(data)): M
       });
     }
   }
+  // 같은 날짜에서는 매출·매입을 먼저, 입금·출금을 나중에 — 그날 거래를 쌓은 뒤 결제가 빠지도록
+  const rank = (k: VoucherKind) => (k === "sale" || k === "purchase" ? 0 : 1);
   for (const arr of map.values()) {
     arr.sort((a, b) =>
       a.voucher_date === b.voucher_date
-        ? a.voucher_no - b.voucher_no || a.voucher_id - b.voucher_id
+        ? rank(a.kind) - rank(b.kind) || a.voucher_no - b.voucher_no || a.voucher_id - b.voucher_id
         : a.voucher_date < b.voucher_date
           ? -1
           : 1

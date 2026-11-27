@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { loadErpData } from "@/lib/erp/repo";
 import { voucherTotals } from "@/lib/erp/compute";
-import { formatDate, formatWon, todayKST } from "@/lib/erp/format";
+import { formatDate, formatQty, formatWon, todayKST } from "@/lib/erp/format";
 import { VOUCHER_KINDS, VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
 import { KindBadge } from "@/components/erp/kind-badge";
+import { RunningTable } from "@/components/erp/running-table";
+import { partnerRunning } from "@/lib/erp/running";
 
 type Search = { kind?: string; from?: string; to?: string; partner?: string; q?: string };
 
@@ -21,10 +23,12 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
   const itemName = new Map(data.items.map((i) => [i.id, i.name]));
   const linesByVoucher = new Map<number, string[]>();
   const amountsByVoucher = new Map<number, number[]>();
+  const qtyByVoucher = new Map<number, number>();
   for (const l of [...data.lines].sort((a, b) => a.line_no - b.line_no)) {
     const am = amountsByVoucher.get(l.voucher_id) ?? [];
     am.push(l.amount + l.vat);
     amountsByVoucher.set(l.voucher_id, am);
+    if (l.item_id != null) qtyByVoucher.set(l.voucher_id, (qtyByVoucher.get(l.voucher_id) ?? 0) + l.qty);
     const arr = linesByVoucher.get(l.voucher_id) ?? [];
     arr.push((l.item_id ? itemName.get(l.item_id) : null) ?? l.description ?? "");
     linesByVoucher.set(l.voucher_id, arr);
@@ -42,6 +46,9 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
     .sort((a, b) =>
       a.voucher_date === b.voucher_date ? b.voucher_no - a.voucher_no : a.voucher_date < b.voucher_date ? 1 : -1
     );
+  // 거래처를 고르면 경영박사처럼 품목 줄마다 누적 잔액을 보여준다(견적 제외)
+  const running = partnerId && kind !== "estimate" ? partnerRunning(data, partnerId, from, to) : null;
+
   // 견적은 장부(매출·매입·잔액)에 반영되지 않으므로 합계에서 따로 보여준다
   const total = rows.filter((r) => r.kind !== "estimate").reduce((s, r) => s + r.total, 0);
   const estimateTotal = rows.filter((r) => r.kind === "estimate").reduce((s, r) => s + r.total, 0);
@@ -83,62 +90,87 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
         <button className="h-9 rounded-md bg-primary px-4 font-medium text-primary-foreground">조회</button>
       </form>
 
-      <p className="text-sm text-muted-foreground">
-        {rows.length}건 · 합계 {formatWon(total)}원
-        {estimateTotal > 0 && ` (견적 ${formatWon(estimateTotal)}원은 장부에 반영되지 않아 합계에서 제외)`}
-      </p>
-
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">날짜</th>
-              <th className="px-3 py-2 font-medium">번호</th>
-              <th className="px-3 py-2 font-medium">종류</th>
-              <th className="px-3 py-2 font-medium">거래처</th>
-              <th className="px-3 py-2 font-medium">내용</th>
-              <th className="px-3 py-2 text-right font-medium">공급가</th>
-              <th className="px-3 py-2 text-right font-medium">부가세</th>
-              <th className="px-3 py-2 text-right font-medium">합계</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((v) => {
-              const names = (linesByVoucher.get(v.id) ?? []).filter((n) => n.trim() !== "");
-              const summary =
-                names.length > 1
-                  ? `${names[0]} 외 ${names.length - 1}건`
-                  : names[0] || v.memo || moneySummary(VOUCHER_KIND_LABEL[v.kind], amountsByVoucher.get(v.id) ?? []);
-              return (
-                <tr key={v.id} className="hover:bg-accent/50">
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">
-                    <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">{formatDate(v.voucher_date)}</Link>
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-muted-foreground">{v.voucher_no}</td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <KindBadge kind={v.kind} />
-                  </td>
-                  <td className="max-w-40 truncate px-3 py-2">
-                    <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">
-                      {v.partner_id ? partnerName.get(v.partner_id) : ""}
-                      {v.card_partner_id ? ` → ${partnerName.get(v.card_partner_id)}` : ""}
-                    </Link>
-                  </td>
-                  <td className="max-w-64 truncate px-3 py-2 text-muted-foreground">{summary}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.supply)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.vat)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">{formatWon(v.total)}</td>
-                </tr>
-              );
+      {running ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {partnerName.get(partnerId!)} · 위에서부터 날짜순 · 매출·매입은 잔액에 더하고, 입금·출금은 빼요.
+            {(kind || q) && " (종류·검색 조건은 잔액 계산에는 적용되지 않아요)"}
+          </p>
+          <RunningTable
+            carried={running.carried}
+            closing={running.closing}
+            payable={running.partner?.kind === "supplier"}
+            rows={running.rows.filter((r) => {
+              if (kind && r.kind !== kind) return false;
+              if (q && !`${r.name}`.toLowerCase().includes(q.toLowerCase())) return false;
+              return true;
             })}
-            {rows.length === 0 && (
+          />
+        </>
+      ) : (
+        <>
+      <p className="text-sm text-muted-foreground">
+          {rows.length}건 · 합계 {formatWon(total)}원
+          {estimateTotal > 0 && ` (견적 ${formatWon(estimateTotal)}원은 장부에 반영되지 않아 합계에서 제외)`}
+        </p>
+  
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-muted-foreground">
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 전표가 없어요.</td>
+                <th className="px-3 py-2 font-medium">날짜</th>
+                <th className="px-3 py-2 font-medium">번호</th>
+                <th className="px-3 py-2 font-medium">종류</th>
+                <th className="px-3 py-2 font-medium">거래처</th>
+                <th className="px-3 py-2 font-medium">내용</th>
+                <th className="px-3 py-2 text-right font-medium">수량</th>
+                <th className="px-3 py-2 text-right font-medium">공급가</th>
+                <th className="px-3 py-2 text-right font-medium">부가세</th>
+                <th className="px-3 py-2 text-right font-medium">합계</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((v) => {
+                const names = (linesByVoucher.get(v.id) ?? []).filter((n) => n.trim() !== "");
+                const summary =
+                  names.length > 1
+                    ? `${names[0]} 외 ${names.length - 1}건`
+                    : names[0] || v.memo || moneySummary(VOUCHER_KIND_LABEL[v.kind], amountsByVoucher.get(v.id) ?? []);
+                return (
+                  <tr key={v.id} className="hover:bg-accent/50">
+                    <td className="whitespace-nowrap px-3 py-2 tabular-nums">
+                      <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">{formatDate(v.voucher_date)}</Link>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">{v.voucher_no}</td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <KindBadge kind={v.kind} />
+                    </td>
+                    <td className="max-w-40 truncate px-3 py-2">
+                      <Link href={`/erp/vouchers/${v.id}`} className="hover:underline">
+                        {v.partner_id ? partnerName.get(v.partner_id) : ""}
+                        {v.card_partner_id ? ` → ${partnerName.get(v.card_partner_id)}` : ""}
+                      </Link>
+                    </td>
+                    <td className="max-w-64 truncate px-3 py-2 text-muted-foreground">{summary}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                    {qtyByVoucher.has(v.id) ? formatQty(qtyByVoucher.get(v.id)) : ""}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.supply)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(v.vat)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums">{formatWon(v.total)}</td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 전표가 없어요.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        </>
+      )}
     </main>
   );
 }
