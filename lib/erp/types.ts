@@ -90,6 +90,10 @@ export type Item = {
   active: boolean;
   track_stock: boolean;
   opening_stock: number;
+  /** 소비가(권장소비자가) — 없으면 null */
+  consumer_price: number | null;
+  /** 적정재고 — 현재고가 이보다 적으면 부족재고 */
+  min_stock: number | null;
 };
 
 export type Voucher = {

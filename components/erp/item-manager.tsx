@@ -28,12 +28,15 @@ export const EMPTY_ITEM: ItemInput = {
   active: true,
   track_stock: false,
   opening_stock: 0,
+  consumer_price: null,
+  min_stock: null,
 };
 
 export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups: ItemGroup[] }) {
   const [q, setQ] = React.useState("");
   const [group, setGroup] = React.useState<string>("");
   const [onlyStock, setOnlyStock] = React.useState(false);
+  const [onlyLow, setOnlyLow] = React.useState(false);
   const [showInactive, setShowInactive] = React.useState(false);
   const [editing, setEditing] = React.useState<ItemInput | null>(null);
 
@@ -41,6 +44,7 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
     .filter((i) => showInactive || i.active)
     .filter((i) => !group || String(i.group_id) === group)
     .filter((i) => !onlyStock || i.track_stock)
+    .filter((i) => !onlyLow || isLow(i))
     .filter((i) => !q.trim() || matchesKoreanSearch(`${i.name} ${i.spec ?? ""}`, q))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
@@ -63,6 +67,10 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
           재고관리 품목만
         </label>
         <label className="flex items-center gap-2">
+          <input type="checkbox" className="size-4" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} />
+          부족재고만 ({items.filter((i) => i.active && isLow(i)).length})
+        </label>
+        <label className="flex items-center gap-2">
           <input type="checkbox" className="size-4" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           사용 안 함 포함
         </label>
@@ -75,6 +83,7 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
               <th className="px-3 py-2 font-medium">분류</th>
               <th className="px-3 py-2 font-medium">과세</th>
               <th className="px-3 py-2 text-right font-medium">매입가</th>
+              <th className="px-3 py-2 text-right font-medium">소비가</th>
               <th className="px-3 py-2 text-right font-medium">판매가 A</th>
               <th className="px-3 py-2 text-right font-medium">B</th>
               <th className="px-3 py-2 text-right font-medium">C</th>
@@ -92,6 +101,9 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
                 <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{i.group_name}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{VAT_TYPE_LABEL[i.vat_type] ?? ""}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(i.purchase_price)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {i.consumer_price != null ? formatWon(i.consumer_price) : "-"}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatWon(i.sale_price)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
                   {i.sale_price_b != null ? formatWon(i.sale_price_b) : "-"}
@@ -99,14 +111,22 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
                   {i.sale_price_c != null ? formatWon(i.sale_price_c) : "-"}
                 </td>
-                <td className={cn("whitespace-nowrap px-3 py-2 text-right tabular-nums", (i.stock ?? 0) < 0 && "text-rose-700 dark:text-rose-400")}>
+                <td className={cn(
+                    "whitespace-nowrap px-3 py-2 text-right tabular-nums",
+                    (i.stock ?? 0) < 0 && "bg-rose-50 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+                  )}>
                   {i.track_stock ? `${formatQty(i.stock)} ${i.unit ?? ""}` : <span className="text-muted-foreground">관리 안 함</span>}
+                  {isLow(i) && (
+                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                      부족
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 품목이 없어요.</td>
+                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">조건에 맞는 품목이 없어요.</td>
               </tr>
             )}
           </tbody>
@@ -189,15 +209,32 @@ export function ItemForm({
         <span className="text-muted-foreground">매입가</span>
         <Input inputMode="decimal" value={String(f.purchase_price)} onChange={(e) => set("purchase_price", num(e.target.value))} className="text-right text-base tabular-nums sm:text-sm" />
       </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted-foreground">
+          소비가(권장소비자가) <Margin cost={f.purchase_price} price={f.consumer_price} />
+        </span>
+        <Input
+          inputMode="decimal"
+          placeholder="없으면 비워 두세요"
+          value={f.consumer_price == null ? "" : String(f.consumer_price)}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/,/g, "").trim();
+            set("consumer_price", raw === "" ? null : num(raw));
+          }}
+          className="text-right text-base tabular-nums sm:text-sm"
+        />
+      </label>
       <fieldset className="grid grid-cols-3 gap-2 rounded-md border p-3 sm:col-span-2">
         <legend className="px-1 text-sm font-medium">판매가 (거래처 단가 등급별)</legend>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">A (기본)</span>
+          <span className="text-muted-foreground">A (기본) <Margin cost={f.purchase_price} price={f.sale_price} /></span>
           <Input inputMode="decimal" value={String(f.sale_price)} onChange={(e) => set("sale_price", num(e.target.value))} className="text-right text-base tabular-nums sm:text-sm" />
         </label>
         {(["sale_price_b", "sale_price_c"] as const).map((k) => (
           <label key={k} className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">{k === "sale_price_b" ? "B" : "C"}</span>
+            <span className="text-muted-foreground">
+              {k === "sale_price_b" ? "B" : "C"} <Margin cost={f.purchase_price} price={f[k]} />
+            </span>
             <Input
               inputMode="decimal"
               placeholder="비우면 A"
@@ -236,6 +273,19 @@ export function ItemForm({
               <span className="text-muted-foreground">기초재고</span>
               <Input inputMode="decimal" value={String(f.opening_stock)} onChange={(e) => set("opening_stock", num(e.target.value))} className="w-32 text-right text-base tabular-nums sm:text-sm" />
             </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">적정재고</span>
+              <Input
+                inputMode="decimal"
+                placeholder="없음"
+                value={f.min_stock == null ? "" : String(f.min_stock)}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, "").trim();
+                  set("min_stock", raw === "" ? null : num(raw));
+                }}
+                className="w-28 text-right text-base tabular-nums sm:text-sm"
+              />
+            </label>
             {currentStock != null && (
               <span className="pb-2 text-sm text-muted-foreground">저장 전 현재고 {formatQty(currentStock)}</span>
             )}
@@ -256,5 +306,21 @@ export function ItemForm({
         <Button type="submit" disabled={saving}>{saving ? "저장 중…" : "저장"}</Button>
       </div>
     </form>
+  );
+}
+
+/** 적정재고를 정했고 현재고가 그보다 적으면 부족 */
+export function isLow(i: ItemWithStock): boolean {
+  return i.track_stock && i.min_stock != null && (i.stock ?? 0) < i.min_stock;
+}
+
+/** 경영박사처럼 매입가 대비 이익률(%)을 가격 옆에 보여준다 */
+function Margin({ cost, price }: { cost: number; price: number | null }) {
+  if (!cost || price == null || price <= 0) return null;
+  const pct = ((price - cost) / price) * 100;
+  return (
+    <span className={cn("ml-1 text-xs tabular-nums", pct < 0 ? "text-rose-600" : "text-emerald-700 dark:text-emerald-400")}>
+      {pct.toFixed(1)}%
+    </span>
   );
 }

@@ -47,6 +47,8 @@ export function buildSampleData(): ErpData {
     active: true,
     track_stock: track,
     opening_stock: 0,
+    consumer_price: null,
+    min_stock: null,
   });
   return {
     partners: [

@@ -98,6 +98,8 @@ export async function saveItemAction(input: ItemInput): Promise<ActionResult> {
       sale_price_b: optionalPrice(input.sale_price_b),
       sale_price_c: optionalPrice(input.sale_price_c),
       opening_stock: Number(input.opening_stock) || 0,
+      consumer_price: optionalPrice(input.consumer_price),
+      min_stock: optionalPrice(input.min_stock),
       vat_type: [0, 1, 3].includes(Number(input.vat_type)) ? Number(input.vat_type) : 1,
     });
     revalidatePath("/erp", "layout");

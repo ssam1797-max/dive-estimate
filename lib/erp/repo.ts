@@ -40,6 +40,8 @@ function normalize(raw: ErpData): ErpData {
       sale_price_c: i.sale_price_c == null ? null : num(i.sale_price_c),
       opening_stock: num(i.opening_stock),
       track_stock: Boolean(i.track_stock),
+      consumer_price: i.consumer_price == null ? null : num(i.consumer_price),
+      min_stock: i.min_stock == null ? null : num(i.min_stock),
     })),
     vouchers: raw.vouchers.map((v) => ({ ...v, card_fee: num(v.card_fee) })),
     lines: raw.lines.map((l) => ({
