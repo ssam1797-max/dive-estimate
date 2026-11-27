@@ -1,12 +1,19 @@
 import { notFound } from "next/navigation";
 import { loadErpData } from "@/lib/erp/repo";
 import { formatDate, formatQty, formatWon } from "@/lib/erp/format";
-import { getProfilesByType } from "@/lib/db/profile-repo";
+import { loadSuppliers } from "@/lib/erp/supplier";
 import { PrintToolbar } from "@/components/erp/print-toolbar";
 import { PartiesBlock } from "@/components/erp/supplier-block";
 
-export default async function VoucherPrintPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function VoucherPrintPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ supplier?: string }>;
+}) {
   const id = Number((await params).id);
+  const sp = await searchParams;
   const data = await loadErpData();
   const v = data.vouchers.find((x) => x.id === id);
   if (!v || (v.kind !== "estimate" && v.kind !== "sale")) notFound();
@@ -15,18 +22,16 @@ export default async function VoucherPrintPage({ params }: { params: Promise<{ i
   const lines = data.lines.filter((l) => l.voucher_id === id).sort((a, b) => a.line_no - b.line_no);
   const supply = lines.reduce((s, l) => s + l.amount, 0);
   const vat = lines.reduce((s, l) => s + l.vat, 0);
-  let supplier = null;
-  try {
-    supplier = (await getProfilesByType("PROVIDER"))[0] ?? null;
-  } catch (e) {
-    console.error("공급자 정보 조회 실패:", e);
-  }
+  const { suppliers, supplier } = await loadSuppliers(sp.supplier);
   const title = v.kind === "estimate" ? "견 적 서" : "거 래 명 세 서";
   const docNo = `${v.voucher_date.replaceAll("-", "").slice(2)}-${String(v.voucher_no).padStart(3, "0")}`;
 
   return (
     <main>
-      <PrintToolbar backHref={`/erp/vouchers/${id}`} fileName={`${title.replaceAll(" ", "")}_${partner?.name ?? ""}_${docNo}`} />
+      <PrintToolbar backHref={`/erp/vouchers/${id}`} fileName={`${title.replaceAll(" ", "")}_${partner?.name ?? ""}_${docNo}`}
+        suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
+        supplierId={supplier?.id}
+      />
       <div className="erp-print-page mx-auto w-full max-w-[210mm] bg-white p-[12mm] text-neutral-900 shadow-sm print:p-0 print:shadow-none">
         <header className="mb-6 flex items-end justify-between border-b-2 border-neutral-900 pb-3">
           <h1 className="text-3xl font-bold tracking-[0.3em]">{title}</h1>

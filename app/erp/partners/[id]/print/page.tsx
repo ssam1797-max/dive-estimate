@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { loadErpData } from "@/lib/erp/repo";
 import { partnerLedger } from "@/lib/erp/ledger";
 import { formatDate, formatWon, todayKST } from "@/lib/erp/format";
-import { getProfilesByType } from "@/lib/db/profile-repo";
+import { loadSuppliers } from "@/lib/erp/supplier";
 import { LedgerTable } from "@/components/erp/ledger-table";
 import { PrintToolbar } from "@/components/erp/print-toolbar";
 
@@ -11,7 +11,7 @@ export default async function PartnerLedgerPrintPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; supplier?: string }>;
 }) {
   const id = Number((await params).id);
   const sp = await searchParams;
@@ -21,17 +21,15 @@ export default async function PartnerLedgerPrintPage({
   const data = await loadErpData();
   const ledger = partnerLedger(data, id, from, to);
   if (!ledger.partner) notFound();
-  let supplier = null;
-  try {
-    supplier = (await getProfilesByType("PROVIDER"))[0] ?? null;
-  } catch (e) {
-    console.error("공급자 정보 조회 실패:", e);
-  }
+  const { suppliers, supplier } = await loadSuppliers(sp.supplier);
   const bal = ledger.closing;
 
   return (
     <main>
-      <PrintToolbar backHref={`/erp/partners/${id}?from=${from}&to=${to}`} fileName={`거래처원장_${ledger.partner.name}_${from}_${to}`} />
+      <PrintToolbar backHref={`/erp/partners/${id}?from=${from}&to=${to}`} fileName={`거래처원장_${ledger.partner.name}_${from}_${to}`}
+        suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
+        supplierId={supplier?.id}
+      />
       <div className="erp-print-page mx-auto w-full max-w-[210mm] bg-white p-[12mm] text-neutral-900 shadow-sm print:p-0 print:shadow-none">
         <header className="mb-4 border-b-2 border-neutral-900 pb-3">
           <h1 className="text-2xl font-bold tracking-[0.2em]">거래처원장</h1>
