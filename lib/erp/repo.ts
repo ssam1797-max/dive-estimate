@@ -271,3 +271,58 @@ export async function saveItem(input: ItemInput): Promise<number> {
   if (error) throw new Error(`품목 저장 실패: ${error.message}`);
   return data.id as number;
 }
+
+/** 같은 묶음 안에서만 종류를 바꿀 수 있다: 품목 전표끼리, 금액 전표끼리 */
+const KIND_GROUP: Record<VoucherKind, "items" | "money" | "card"> = {
+  sale: "items",
+  purchase: "items",
+  estimate: "items",
+  receipt: "money",
+  payment: "money",
+  card_receipt: "card",
+};
+
+/**
+ * 여러 전표의 날짜나 종류를 한꺼번에 바꾼다(잘못 입력한 매출↔매입, 입금↔출금, 날짜).
+ * 전표마다 기존 줄을 그대로 둔 채 머리만 바꿔 다시 저장한다(전표별 트랜잭션).
+ * 날짜가 바뀌면 그 날짜의 다음 전표번호가 새로 매겨진다.
+ */
+export async function changeVouchers(
+  ids: number[],
+  change: { date?: string; kind?: VoucherKind }
+): Promise<number> {
+  const data = await loadErpData();
+  const targets = ids.map((id) => {
+    const v = data.vouchers.find((x) => x.id === id);
+    if (!v) throw new Error("전표를 찾을 수 없습니다.");
+    return v;
+  });
+  if (change.kind) {
+    const to = KIND_GROUP[change.kind];
+    const bad = targets.find((v) => KIND_GROUP[v.kind] !== to);
+    if (bad || to === "card") {
+      throw new Error("매출·매입·견적끼리, 입금·출금끼리만 종류를 바꿀 수 있어요.");
+    }
+  }
+  for (const v of targets) {
+    const lines = data.lines.filter((l) => l.voucher_id === v.id).sort((a, b) => a.line_no - b.line_no);
+    await saveVoucher({
+      id: v.id,
+      voucher_date: change.date ?? v.voucher_date,
+      kind: change.kind ?? v.kind,
+      partner_id: v.partner_id,
+      card_partner_id: v.card_partner_id,
+      memo: v.memo ?? "",
+      source_voucher_id: v.source_voucher_id,
+      lines: lines.map((l) => ({
+        item_id: l.item_id,
+        description: l.description ?? "",
+        qty: l.qty,
+        unit_price: l.unit_price,
+        amount: l.amount,
+        vat: l.vat,
+      })),
+    });
+  }
+  return targets.length;
+}

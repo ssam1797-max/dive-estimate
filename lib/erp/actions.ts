@@ -106,3 +106,21 @@ export async function saveItemAction(input: ItemInput): Promise<ActionResult> {
     return fail(e);
   }
 }
+
+export async function changeVouchersAction(
+  ids: number[],
+  change: { date?: string; kind?: (typeof VOUCHER_KINDS)[number] }
+): Promise<ActionResult> {
+  try {
+    await guard();
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("바꿀 전표를 골라주세요.");
+    if (!change.date && !change.kind) throw new Error("바꿀 날짜나 종류를 정해주세요.");
+    if (change.date && !DATE_RE.test(change.date)) throw new Error("날짜를 확인해주세요.");
+    if (change.kind && !VOUCHER_KINDS.includes(change.kind)) throw new Error("전표 종류가 올바르지 않습니다.");
+    const n = await repo.changeVouchers(ids.map(Number), change);
+    revalidatePath("/erp", "layout");
+    return { ok: true, id: n };
+  } catch (e) {
+    return fail(e);
+  }
+}
