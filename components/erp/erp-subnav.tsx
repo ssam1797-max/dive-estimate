@@ -9,6 +9,7 @@ const TABS = [
   { href: "/erp/vouchers", label: "전표" },
   { href: "/erp/partners", label: "거래처" },
   { href: "/erp/items", label: "품목·재고" },
+  { href: "/erp/reports", label: "보고서" },
 ];
 
 export function ErpSubnav() {
