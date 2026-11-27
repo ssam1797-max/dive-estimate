@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
 import { vatFor } from "@/lib/erp/compute";
@@ -19,6 +21,7 @@ import {
   VOUCHER_KINDS,
   VOUCHER_KIND_LABEL,
   VAT_TYPE_LABEL,
+  type ItemGroup,
   type Partner,
   type VoucherInput,
   type VoucherKind,
@@ -30,6 +33,7 @@ type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean };
 export type VoucherFormProps = {
   partners: PartnerWithBalance[];
   items: ItemWithStock[];
+  groups: ItemGroup[];
   initial?: VoucherInput & { id: number; voucher_no: number; source_voucher_id: number | null };
   /** 이 견적에서 전환된 전표들(견적 화면에서 링크로 보여준다) */
   derived?: { id: number; kind: VoucherKind; voucher_date: string }[];
@@ -52,7 +56,8 @@ const emptyLine = (): Line => ({
 
 export function VoucherForm({
   partners,
-  items,
+  items: itemsProp,
+  groups,
   initial,
   derived = [],
   defaultDate,
@@ -78,6 +83,14 @@ export function VoucherForm({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // 전표 입력 중 새로 등록한 품목(서버 새로고침 전에도 바로 고를 수 있게)
+  const [extraItems, setExtraItems] = React.useState<ItemWithStock[]>([]);
+  const items = React.useMemo(() => {
+    const ids = new Set(itemsProp.map((i) => i.id));
+    return [...itemsProp, ...extraItems.filter((i) => !ids.has(i.id))];
+  }, [itemsProp, extraItems]);
+  const [newItem, setNewItem] = React.useState<{ lineKey: number; name: string } | null>(null);
 
   const itemized = ITEMIZED_KINDS.includes(kind);
   const itemById = React.useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -126,7 +139,10 @@ export function VoucherForm({
 
   const pickItem = (key: number, idStr: string) => {
     const item = itemById.get(Number(idStr));
-    if (!item) return;
+    if (item) applyItem(key, item);
+  };
+
+  const applyItem = (key: number, item: ItemWithStock) => {
     const price = kind === "purchase" ? item.purchase_price : item.sale_price;
     setLines((prev) => {
       const next = prev.map((l) => {
@@ -350,7 +366,9 @@ export function VoucherForm({
       )}
 
       {itemized ? (
-        <div className="overflow-x-auto rounded-lg border">
+        // 넓은 화면에서는 드롭다운이 표 밖으로 펼쳐지도록 overflow 를 풀고,
+        // 좁은 화면(가로 스크롤 필요)에서는 드롭다운이 잘리지 않게 아래 여백을 둔다.
+        <div className="overflow-x-auto rounded-lg border max-lg:pb-56 lg:overflow-visible">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-muted/50 text-left text-muted-foreground">
               <tr>
@@ -374,6 +392,8 @@ export function VoucherForm({
                         onChange={(v) => pickItem(l.key, v)}
                         placeholder="품목 선택"
                         searchPlaceholder="품목 검색 (초성 가능)"
+                        onCreateNew={(name) => setNewItem({ lineKey: l.key, name })}
+                        createPrompt="새로운 품목입니다. 품목을 등록할까요?"
                       />
                       <Input
                         className="mt-1 h-8 text-xs"
@@ -448,6 +468,33 @@ export function VoucherForm({
           {saving ? "저장 중…" : initial ? "수정 저장" : "저장"}
         </Button>
       </div>
+
+      <Dialog open={newItem != null} onOpenChange={(o) => !o && setNewItem(null)} widthClassName="max-w-xl">
+        {newItem && (
+          <DialogContent onClose={() => setNewItem(null)}>
+            <DialogHeader>
+              <DialogTitle>새 품목 등록</DialogTitle>
+            </DialogHeader>
+            <ItemForm
+              initial={{ ...EMPTY_ITEM, name: newItem.name }}
+              groups={groups}
+              currentStock={null}
+              onDone={(id, saved) => {
+                const created: ItemWithStock = {
+                  ...saved,
+                  id,
+                  legacy_code: null,
+                  stock: saved.track_stock ? saved.opening_stock : null,
+                  group_name: groups.find((g) => g.id === saved.group_id)?.name ?? null,
+                };
+                setExtraItems((prev) => [...prev, created]);
+                applyItem(newItem.lineKey, created);
+                setNewItem(null);
+              }}
+            />
+          </DialogContent>
+        )}
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDelete}

@@ -33,6 +33,7 @@ export default async function VoucherDetailPage({
         key={`${id}-${lines.length}-${v.voucher_date}`}
         partners={partnersWithBalance(data)}
         items={itemsWithStock(data)}
+        groups={data.groups}
         defaultDate={todayKST()}
         derived={derived}
         initial={{

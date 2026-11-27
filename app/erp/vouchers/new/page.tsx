@@ -16,6 +16,7 @@ export default async function NewVoucherPage({
     <VoucherForm
       partners={partnersWithBalance(data)}
       items={itemsWithStock(data)}
+        groups={data.groups}
       defaultDate={todayKST()}
       defaultKind={kind}
       defaultPartnerId={sp.partner ? Number(sp.partner) : null}

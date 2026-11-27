@@ -13,7 +13,7 @@ import { VAT_TYPE_LABEL, type ItemGroup, type ItemInput } from "@/lib/erp/types"
 import type { ItemWithStock } from "@/lib/erp/compute";
 import { cn } from "@/lib/utils";
 
-const EMPTY: ItemInput = {
+export const EMPTY_ITEM: ItemInput = {
   sku: null,
   group_id: null,
   name: "",
@@ -46,7 +46,7 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-2xl font-semibold">품목·재고</h1>
-        <Button onClick={() => setEditing({ ...EMPTY })}>+ 품목 추가</Button>
+        <Button onClick={() => setEditing({ ...EMPTY_ITEM })}>+ 품목 추가</Button>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Input placeholder="품목 검색 (초성 가능)" value={q} onChange={(e) => setQ(e.target.value)} className="w-56 text-base sm:text-sm" />
@@ -122,7 +122,7 @@ export function ItemManager({ items, groups }: { items: ItemWithStock[]; groups:
   );
 }
 
-function ItemForm({
+export function ItemForm({
   initial,
   groups,
   currentStock,
@@ -131,7 +131,7 @@ function ItemForm({
   initial: ItemInput;
   groups: ItemGroup[];
   currentStock: number | null;
-  onDone: () => void;
+  onDone: (id: number, saved: ItemInput) => void;
 }) {
   const router = useRouter();
   const [f, setF] = React.useState<ItemInput>(initial);
@@ -148,7 +148,7 @@ function ItemForm({
       const res = await saveItemAction(f);
       if (!res.ok) return setError(res.error);
       router.refresh();
-      onDone();
+      onDone(res.id, f);
     } catch {
       setError("저장 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
     } finally {
