@@ -14,7 +14,7 @@ import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
 import { PartnerForm } from "@/components/erp/partner-form";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
-import { salePriceFor, vatFor } from "@/lib/erp/compute";
+import { partnerDelta, salePriceFor, vatFor } from "@/lib/erp/compute";
 import { formatQty, formatWon } from "@/lib/erp/format";
 import {
   ITEMIZED_KINDS,
@@ -83,6 +83,10 @@ export function VoucherForm({
       ? initial.lines.reduce((s, l) => s + l.amount + l.vat, 0)
       : 0
   );
+  // 경영박사처럼 매출(매입) 전표를 쓰면서 그 자리에서 받은 돈(준 돈)도 함께 기록
+  const [payAmount, setPayAmount] = React.useState(0);
+  const [payMethod, setPayMethod] = React.useState<"현금" | "계좌이체" | "카드">("계좌이체");
+  const [payCardId, setPayCardId] = React.useState<number | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -220,6 +224,16 @@ export function VoucherForm({
       )
     : { supply: amountOnly, vat: 0 };
 
+  // 오른쪽 요약: 전잔액 → 이번 전표 → 함께 받은/준 돈 → 잔액 (받을 돈 +, 줄 돈 −)
+  const withPayment = !initial && (kind === "sale" || kind === "purchase");
+  const initialTotal = initial ? initial.lines.reduce((s, l) => s + l.amount + l.vat, 0) : 0;
+  const prevBalance = partner
+    ? partner.balance - (initial && initial.partner_id === partner.id ? partnerDelta(initial.kind, initialTotal) : 0)
+    : 0;
+  const thisDelta = partnerDelta(kind, totals.supply + totals.vat);
+  const payDelta = withPayment && payAmount ? (kind === "sale" ? -payAmount : payAmount) : 0;
+  const afterBalance = prevBalance + thisDelta + payDelta;
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -251,9 +265,32 @@ export function VoucherForm({
             },
           ],
     };
+    const pay = withPayment && payAmount !== 0;
+    if (pay && payMethod === "카드" && !payCardId) {
+      setSaving(false);
+      return setError("카드로 받은 돈은 카드사를 골라주세요.");
+    }
     try {
       const res = await saveVoucherAction(input);
       if (!res.ok) return setError(res.error);
+      if (pay) {
+        const payKind: VoucherKind = kind === "purchase" ? "payment" : payMethod === "카드" ? "card_receipt" : "receipt";
+        const payMemo = [payMethod, memo].filter(Boolean).join(" · ");
+        const r2 = await saveVoucherAction({
+          voucher_date: date,
+          kind: payKind,
+          partner_id: partnerId,
+          card_partner_id: payKind === "card_receipt" ? payCardId : null,
+          memo: payMemo,
+          source_voucher_id: null,
+          lines: [{ item_id: null, description: payMemo, qty: 0, unit_price: 0, amount: payAmount, vat: 0 }],
+        });
+        if (!r2.ok) {
+          router.push(`/erp/vouchers/${res.id}?saved=1`);
+          router.refresh();
+          return setError(`전표는 저장됐지만 ${kind === "purchase" ? "출금" : "입금"} 기록은 실패했어요: ${r2.error}`);
+        }
+      }
       router.push(`/erp/vouchers/${res.id}?saved=1`);
       router.refresh();
     } catch {
@@ -501,6 +538,59 @@ export function VoucherForm({
         </label>
       )}
 
+      {withPayment && (
+        <fieldset className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed p-3 text-sm">
+          <legend className="px-1 font-medium">
+            {kind === "sale" ? "이번에 함께 받은 돈(입금)" : "이번에 함께 준 돈(출금)"}{" "}
+            <span className="font-normal text-muted-foreground">— 없으면 비워 두세요</span>
+          </legend>
+          <label className="flex flex-col gap-1">
+            <span className="text-muted-foreground">금액</span>
+            <NumInput value={payAmount} onChange={setPayAmount} className="w-40" />
+          </label>
+          <button
+            type="button"
+            className="h-9 rounded-md border px-3 hover:bg-accent"
+            onClick={() => setPayAmount(totals.supply + totals.vat)}
+          >
+            전액
+          </button>
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground">방법</span>
+            <div className="flex gap-1">
+              {(kind === "sale" ? (["현금", "계좌이체", "카드"] as const) : (["현금", "계좌이체"] as const)).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={payMethod === m}
+                  onClick={() => setPayMethod(m)}
+                  className={cn(
+                    "h-9 rounded-md border px-3",
+                    payMethod === m ? "border-primary bg-primary text-primary-foreground" : "hover:bg-accent"
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          {kind === "sale" && payMethod === "카드" && (
+            <div className="flex min-w-48 flex-col gap-1">
+              <span className="text-muted-foreground">카드사</span>
+              <Combobox
+                options={cardOptions}
+                value={payCardId ? String(payCardId) : ""}
+                onChange={(v) => setPayCardId(v ? Number(v) : null)}
+                placeholder="카드사 선택"
+              />
+            </div>
+          )}
+          <p className="basis-full text-xs text-muted-foreground">
+            저장하면 같은 날짜로 {kind === "sale" ? "입금" : "출금"} 전표가 따로 하나 더 생기고, 거래처원장에 함께 나와요.
+          </p>
+        </fieldset>
+      )}
+
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">적요(메모)</span>
         <Input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 계좌이체, 현금" className="text-base sm:text-sm" />
@@ -512,6 +602,14 @@ export function VoucherForm({
           <b className="tabular-nums">{formatWon(totals.vat)}</b> · 합계{" "}
           <b className="text-base tabular-nums">{formatWon(totals.supply + totals.vat)}원</b>
         </div>
+        {partner && kind !== "estimate" && (
+          <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="잔액 계산">
+            <BalanceCell label="전잔액" v={prevBalance} />
+            <BalanceCell label={VOUCHER_KIND_LABEL[kind]} v={thisDelta} signed />
+            {payDelta !== 0 && <BalanceCell label={kind === "sale" ? "입금" : "출금"} v={payDelta} signed />}
+            <BalanceCell label="잔액" v={afterBalance} strong />
+          </dl>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button className="ml-auto h-10 px-6" disabled={saving} onClick={save}>
           {saving ? "저장 중…" : initial ? "수정 저장" : "저장"}
@@ -604,6 +702,18 @@ export function VoucherForm({
         confirmLabel="삭제"
         onConfirm={remove}
       />
+    </div>
+  );
+}
+
+function BalanceCell({ label, v, signed, strong }: { label: string; v: number; signed?: boolean; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn("tabular-nums", strong && "font-semibold", v < 0 && "text-red-600")}>
+        {signed && v > 0 ? "+" : ""}
+        {formatWon(v)}
+      </dd>
     </div>
   );
 }

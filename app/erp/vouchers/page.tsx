@@ -55,9 +55,40 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
   const total = rows.filter((r) => r.kind !== "estimate").reduce((s, r) => s + r.total, 0);
   const estimateTotal = rows.filter((r) => r.kind === "estimate").reduce((s, r) => s + r.total, 0);
 
+  // 경영박사 전표찾기 상단처럼 기간 안의 종류별 합계(견적 제외)
+  const sumBy = (k: VoucherKind) => rows.filter((r) => r.kind === k).reduce((s, r) => s + r.total, 0);
+  const bar: [string, number][] = [
+    ["매출", sumBy("sale")],
+    ["매입", sumBy("purchase")],
+    ["입금", sumBy("receipt")],
+    ["카드입금", sumBy("card_receipt")],
+    ["출금", sumBy("payment")],
+  ];
+  const keep = new URLSearchParams();
+  if (kind) keep.set("kind", kind);
+  if (partnerId) keep.set("partner", String(partnerId));
+  if (q) keep.set("q", q);
+  const rangeHref = (f: string, t: string) => {
+    const u = new URLSearchParams(keep);
+    u.set("from", f);
+    u.set("to", t);
+    return `/erp/vouchers?${u.toString()}`;
+  };
+
   return (
     <main className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">전표</h1>
+      <nav aria-label="빠른 기간" className="flex flex-wrap gap-1 text-sm">
+        {quickRanges(today).map(([label, f, t]) => (
+          <Link
+            key={label}
+            href={rangeHref(f, t)}
+            className={`rounded-md border px-3 py-1.5 ${f === from && t === to ? "border-primary bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
       <form className="flex flex-wrap items-end gap-2 rounded-lg border p-3 text-sm" method="get">
         <label className="flex flex-col gap-1">
           <span className="text-muted-foreground">시작일</span>
@@ -122,6 +153,14 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
         </>
       ) : (
         <>
+      <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg bg-muted/60 px-3 py-2 text-sm">
+          {bar.map(([label, v]) => (
+            <span key={label}>
+              <span className="text-muted-foreground">{label}</span>{" "}
+              <b className="tabular-nums">{formatWon(v)}</b>
+            </span>
+          ))}
+        </div>
       <p className="text-sm text-muted-foreground">
           {rows.length}건 · 합계 {formatWon(total)}원
           {estimateTotal > 0 && ` (견적 ${formatWon(estimateTotal)}원은 장부에 반영되지 않아 합계에서 제외)`}
@@ -196,4 +235,26 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
 function moneySummary(label: string, amounts: number[]): string {
   if (amounts.length <= 1) return label;
   return `${label} ${amounts.length}회 (${amounts.map((a) => formatWon(a)).join(" + ")})`;
+}
+
+/** 경영박사 전표찾기의 기간 단추(오늘·전일·금주·전주·금월·전월·금년·전년) */
+function quickRanges(today: string): [string, string, string][] {
+  const d = new Date(`${today}T00:00:00Z`);
+  const iso = (x: Date) => x.toISOString().slice(0, 10);
+  const add = (x: Date, days: number) => new Date(x.getTime() + days * 86400000);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const monday = add(d, -((d.getUTCDay() + 6) % 7));
+  const monthStart = (yy: number, mm: number) => new Date(Date.UTC(yy, mm, 1));
+  const monthEnd = (yy: number, mm: number) => new Date(Date.UTC(yy, mm + 1, 0));
+  return [
+    ["오늘", today, today],
+    ["전일", iso(add(d, -1)), iso(add(d, -1))],
+    ["금주", iso(monday), iso(add(monday, 6))],
+    ["전주", iso(add(monday, -7)), iso(add(monday, -1))],
+    ["금월", iso(monthStart(y, m)), iso(monthEnd(y, m))],
+    ["전월", iso(monthStart(y, m - 1)), iso(monthEnd(y, m - 1))],
+    ["금년", `${y}-01-01`, `${y}-12-31`],
+    ["전년", `${y - 1}-01-01`, `${y - 1}-12-31`],
+  ];
 }
