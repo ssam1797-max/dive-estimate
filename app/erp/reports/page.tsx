@@ -6,6 +6,7 @@ const REPORTS = [
   { href: "/erp/reports/balances", title: "미수/미지급현황", desc: "거래처별 받을 돈·줄 돈 한눈에" },
   { href: "/erp/reports/journal", title: "매출장 · 매입장", desc: "기간 안의 매출(매입) 전표 줄 전체" },
   { href: "/erp/reports/stock", title: "재고보고서", desc: "재고관리 품목의 입고·출고·현재고·재고금액" },
+  { href: "/erp/reports/stock?low=1", title: "부족재고 리스트", desc: "현재고가 적정재고보다 적은 품목" },
   { href: "/erp/reports/item-ledger", title: "품목별 원장(수불)", desc: "한 품목의 입고·출고 내역과 재고 흐름" },
 ];
 

@@ -230,6 +230,8 @@ export function stockReport(data: ErpData, from: string, to: string) {
         stock,
         cost: i.purchase_price,
         value: stock * i.purchase_price,
+        min: i.min_stock,
+        low: i.min_stock != null && stock < i.min_stock,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));

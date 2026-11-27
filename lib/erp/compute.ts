@@ -176,3 +176,20 @@ export function salePriceFor(item: Pick<Item, "sale_price" | "sale_price_b" | "s
 export function vatFor(vatType: number, amount: number): number {
   return vatType === 0 ? Math.round(amount * 0.1) : 0;
 }
+
+/** 최근 거래 단가: `${종류}:${거래처}:${품목}` → 가장 최근 단가·날짜 (경영박사 '품목 최근거래') */
+export type RecentPrices = Record<string, { price: number; date: string }>;
+
+export function recentPrices(data: ErpData, excludeVoucherId?: number): RecentPrices {
+  const vById = new Map(data.vouchers.map((v) => [v.id, v]));
+  const out: RecentPrices = {};
+  for (const l of data.lines) {
+    if (l.item_id == null || l.voucher_id === excludeVoucherId) continue;
+    const v = vById.get(l.voucher_id);
+    if (!v || v.partner_id == null || (v.kind !== "sale" && v.kind !== "purchase")) continue;
+    const key = `${v.kind}:${v.partner_id}:${l.item_id}`;
+    const prev = out[key];
+    if (!prev || v.voucher_date >= prev.date) out[key] = { price: l.unit_price, date: v.voucher_date };
+  }
+  return out;
+}

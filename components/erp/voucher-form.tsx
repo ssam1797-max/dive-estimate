@@ -27,7 +27,7 @@ import {
   type VoucherInput,
   type VoucherKind,
 } from "@/lib/erp/types";
-import type { ItemWithStock, PartnerWithBalance } from "@/lib/erp/compute";
+import type { ItemWithStock, PartnerWithBalance, RecentPrices } from "@/lib/erp/compute";
 
 /** priceManual: 단가를 직접 고쳤으면 true — 거래처를 바꿔도 단가를 다시 매기지 않는다 */
 type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean; priceManual: boolean };
@@ -36,6 +36,8 @@ export type VoucherFormProps = {
   partners: PartnerWithBalance[];
   items: ItemWithStock[];
   groups: ItemGroup[];
+  /** 거래처·품목별 최근 단가 */
+  recent?: RecentPrices;
   initial?: VoucherInput & { id: number; voucher_no: number; source_voucher_id: number | null };
   /** 이 견적에서 전환된 전표들(견적 화면에서 링크로 보여준다) */
   derived?: { id: number; kind: VoucherKind; voucher_date: string }[];
@@ -61,6 +63,7 @@ export function VoucherForm({
   partners: partnersProp,
   items: itemsProp,
   groups,
+  recent = {},
   initial,
   derived = [],
   defaultDate,
@@ -483,6 +486,20 @@ export function VoucherForm({
                           {item.track_stock && ` · 현재고 ${formatQty(item.stock)}`}
                         </div>
                       )}
+                      {item && partnerId && (kind === "sale" || kind === "purchase" || kind === "estimate") && (() => {
+                        const r = recent[`${kind === "purchase" ? "purchase" : "sale"}:${partnerId}:${item.id}`];
+                        if (!r) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="mt-1 block text-left text-xs text-sky-700 hover:underline dark:text-sky-400"
+                            title="누르면 이 단가로 바꿔요"
+                            onClick={() => updateLine(l.key, { unit_price: r.price, priceManual: true })}
+                          >
+                            최근 {kind === "purchase" ? "매입" : "판매"} {formatWon(r.price)}원 ({r.date.slice(2).replace(/-/g, ".")})
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td className="px-2 py-2">
                       <NumInput value={l.qty} onChange={(v) => updateLine(l.key, { qty: v })} className="w-20" />

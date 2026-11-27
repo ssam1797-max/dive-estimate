@@ -111,7 +111,9 @@ export async function GET() {
     { header: "판매가A", key: "sell", width: 12 },
     { header: "판매가B", key: "sell_b", width: 12 },
     { header: "판매가C", key: "sell_c", width: 12 },
+    { header: "소비가", key: "consumer", width: 12 },
     { header: "재고관리", key: "track", width: 8 },
+    { header: "적정재고", key: "min", width: 8 },
     { header: "현재고", key: "stock", width: 8 },
   ];
   for (const i of itemsWithStock(data)) {
@@ -124,7 +126,9 @@ export async function GET() {
       sell: i.sale_price,
       sell_b: i.sale_price_b ?? "",
       sell_c: i.sale_price_c ?? "",
+      consumer: i.consumer_price ?? "",
       track: i.track_stock ? "예" : "",
+      min: i.min_stock ?? "",
       stock: i.stock ?? "",
     });
   }
@@ -133,7 +137,7 @@ export async function GET() {
     sheet.getRow(1).font = { bold: true };
     sheet.views = [{ state: "frozen", ySplit: 1 }];
     sheet.columns.forEach((c) => {
-      if (["price", "amount", "vat", "total", "balance", "buy", "sell", "sell_b", "sell_c"].includes(String(c.key))) c.numFmt = "#,##0";
+      if (["price", "amount", "vat", "total", "balance", "buy", "sell", "sell_b", "sell_c", "consumer"].includes(String(c.key))) c.numFmt = "#,##0";
     });
   }
 
