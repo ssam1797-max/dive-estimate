@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { emoji: "📉", label: "브랜드 할인율 설정", href: "/discount-policies", adminOnly: true },
   { emoji: "📥", label: "장비 동기화/등록", href: "/equipment/import", adminOnly: true },
   { emoji: "🏦", label: "입금 계좌 설정", href: "/settings/bank-account", adminOnly: true },
+  { emoji: "📒", label: "장부(ERP)", href: "/erp", adminOnly: true },
 ] as const;
 
 /**
