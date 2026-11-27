@@ -20,7 +20,11 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
   const partnerName = new Map(data.partners.map((p) => [p.id, p.name]));
   const itemName = new Map(data.items.map((i) => [i.id, i.name]));
   const linesByVoucher = new Map<number, string[]>();
-  for (const l of data.lines) {
+  const amountsByVoucher = new Map<number, number[]>();
+  for (const l of [...data.lines].sort((a, b) => a.line_no - b.line_no)) {
+    const am = amountsByVoucher.get(l.voucher_id) ?? [];
+    am.push(l.amount + l.vat);
+    amountsByVoucher.set(l.voucher_id, am);
     const arr = linesByVoucher.get(l.voucher_id) ?? [];
     arr.push((l.item_id ? itemName.get(l.item_id) : null) ?? l.description ?? "");
     linesByVoucher.set(l.voucher_id, arr);
@@ -104,7 +108,7 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
               const summary =
                 names.length > 1
                   ? `${names[0]} 외 ${names.length - 1}건`
-                  : names[0] || v.memo || VOUCHER_KIND_LABEL[v.kind];
+                  : names[0] || v.memo || moneySummary(VOUCHER_KIND_LABEL[v.kind], amountsByVoucher.get(v.id) ?? []);
               return (
                 <tr key={v.id} className="hover:bg-accent/50">
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums">
@@ -137,4 +141,10 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
       </div>
     </main>
   );
+}
+
+/** 품목·적요 없는 입금·출금: 여러 번 나눠 주고받았으면 금액을 이어서 보여준다 */
+function moneySummary(label: string, amounts: number[]): string {
+  if (amounts.length <= 1) return label;
+  return `${label} ${amounts.length}회 (${amounts.map((a) => formatWon(a)).join(" + ")})`;
 }
