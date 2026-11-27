@@ -148,6 +148,22 @@ export function VoucherForm({
     });
   };
 
+  /** 종류를 바꿀 때 금액이 사라지지 않도록 품목 줄 합계 ↔ 금액 칸을 서로 옮겨 준다 */
+  const changeKind = (next: VoucherKind) => {
+    const wasItemized = ITEMIZED_KINDS.includes(kind);
+    const willItemize = ITEMIZED_KINDS.includes(next);
+    if (wasItemized && !willItemize) {
+      const sum = lines.reduce((s, l) => s + l.amount + l.vat, 0);
+      if (sum !== 0) setAmountOnly(sum);
+    } else if (!wasItemized && willItemize && amountOnly !== 0) {
+      const hasContent = lines.some((l) => l.item_id != null || l.amount !== 0 || l.description.trim() !== "");
+      if (!hasContent) {
+        setLines([{ ...emptyLine(), description: memo || VOUCHER_KIND_LABEL[kind], qty: 1, unit_price: amountOnly, amount: amountOnly, vat: 0, vatManual: true }]);
+      }
+    }
+    setKind(next);
+  };
+
   const totals = itemized
     ? lines.reduce(
         (s, l) => ({ supply: s.supply + l.amount, vat: s.vat + l.vat }),
@@ -186,30 +202,44 @@ export function VoucherForm({
             },
           ],
     };
-    const res = await saveVoucherAction(input);
-    setSaving(false);
-    if (!res.ok) return setError(res.error);
-    router.push(`/erp/vouchers/${res.id}?saved=1`);
-    router.refresh();
+    try {
+      const res = await saveVoucherAction(input);
+      if (!res.ok) return setError(res.error);
+      router.push(`/erp/vouchers/${res.id}?saved=1`);
+      router.refresh();
+    } catch {
+      setError("저장 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const convert = async (to: "sale" | "purchase") => {
     if (!initial) return;
     setSaving(true);
     setError(null);
-    const res = await convertEstimateAction(initial.id, to);
-    setSaving(false);
-    if (!res.ok) return setError(res.error);
-    router.push(`/erp/vouchers/${res.id}?converted=1`);
-    router.refresh();
+    try {
+      const res = await convertEstimateAction(initial.id, to);
+      if (!res.ok) return setError(res.error);
+      router.push(`/erp/vouchers/${res.id}?converted=1`);
+      router.refresh();
+    } catch {
+      setError("전환 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async () => {
     if (!initial) return;
-    const res = await deleteVoucherAction(initial.id);
-    if (!res.ok) return setError(res.error);
-    router.push("/erp/vouchers");
-    router.refresh();
+    try {
+      const res = await deleteVoucherAction(initial.id);
+      if (!res.ok) return setError(res.error);
+      router.push("/erp/vouchers");
+      router.refresh();
+    } catch {
+      setError("삭제 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
+    }
   };
 
   return (
@@ -273,7 +303,7 @@ export function VoucherForm({
             type="button"
             role="tab"
             aria-selected={kind === k}
-            onClick={() => setKind(k)}
+            onClick={() => changeKind(k)}
             className={cn(
               "min-h-9 rounded-md px-3 text-sm font-medium",
               kind === k ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"

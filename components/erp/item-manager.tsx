@@ -144,11 +144,16 @@ function ItemForm({
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const res = await saveItemAction(f);
-    setSaving(false);
-    if (!res.ok) return setError(res.error);
-    router.refresh();
-    onDone();
+    try {
+      const res = await saveItemAction(f);
+      if (!res.ok) return setError(res.error);
+      router.refresh();
+      onDone();
+    } catch {
+      setError("저장 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

@@ -152,56 +152,14 @@ export async function saveVoucher(input: VoucherInput): Promise<number> {
     return id;
   }
 
+  // 머리 저장 + 줄 교체를 DB 함수 하나(한 트랜잭션)로 처리한다.
+  // 중간에 실패하면 전부 취소되어 기존 전표가 그대로 남는다.
   const supabase = await createAdminClient();
-  let id = input.id;
-  if (id) {
-    const { data: current, error: e0 } = await supabase
-      .from("acct_vouchers")
-      .select("voucher_date")
-      .eq("id", id)
-      .single();
-    if (e0) throw new Error(`전표 조회 실패: ${e0.message}`);
-    const patch: Record<string, unknown> = { ...header, updated_at: new Date().toISOString() };
-    if (current.voucher_date !== header.voucher_date) {
-      patch.voucher_no = await nextNoFromDb(header.voucher_date);
-    }
-    const { error: e1 } = await supabase.from("acct_vouchers").update(patch).eq("id", id);
-    if (e1) throw new Error(`전표 수정 실패: ${e1.message}`);
-    const { error: e2 } = await supabase.from("acct_voucher_lines").delete().eq("voucher_id", id);
-    if (e2) throw new Error(`전표 줄 정리 실패: ${e2.message}`);
-  } else {
-    const { data, error } = await supabase
-      .from("acct_vouchers")
-      .insert({
-        ...header,
-        voucher_no: await nextNoFromDb(header.voucher_date),
-        card_fee: 0,
-        source_voucher_id: input.source_voucher_id ?? null,
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(`전표 저장 실패: ${error.message}`);
-    id = data.id as number;
-  }
-  if (lines.length) {
-    const { error } = await supabase
-      .from("acct_voucher_lines")
-      .insert(lines.map((l) => ({ ...l, voucher_id: id })));
-    if (error) throw new Error(`전표 줄 저장 실패: ${error.message}`);
-  }
-  return id!;
-}
-
-async function nextNoFromDb(date: string): Promise<number> {
-  const supabase = await createAdminClient();
-  const { data, error } = await supabase
-    .from("acct_vouchers")
-    .select("voucher_no")
-    .eq("voucher_date", date)
-    .order("voucher_no", { ascending: false })
-    .limit(1);
-  if (error) throw new Error(`전표번호 조회 실패: ${error.message}`);
-  return (data?.[0]?.voucher_no ?? 0) + 1;
+  const { data, error } = await supabase.rpc("acct_save_voucher", {
+    p: { ...header, id: input.id ?? null, source_voucher_id: input.source_voucher_id ?? null, lines },
+  });
+  if (error) throw new Error(`전표 저장 실패: ${error.message}`);
+  return Number(data);
 }
 
 export async function deleteVoucher(id: number): Promise<void> {
@@ -212,11 +170,10 @@ export async function deleteVoucher(id: number): Promise<void> {
     for (const v of d.vouchers) if (v.source_voucher_id === id) v.source_voucher_id = null;
     return;
   }
+  // 줄은 FK(ON DELETE CASCADE)로 함께 지워지므로 한 문장으로 끝난다.
   const supabase = await createAdminClient();
-  const { error: e1 } = await supabase.from("acct_voucher_lines").delete().eq("voucher_id", id);
-  if (e1) throw new Error(`전표 줄 삭제 실패: ${e1.message}`);
-  const { error: e2 } = await supabase.from("acct_vouchers").delete().eq("id", id);
-  if (e2) throw new Error(`전표 삭제 실패: ${e2.message}`);
+  const { error } = await supabase.from("acct_vouchers").delete().eq("id", id);
+  if (error) throw new Error(`전표 삭제 실패: ${error.message}`);
 }
 
 /** 견적을 같은 내용의 매출/매입 전표로 복사한다(원본 견적은 그대로 남는다). */

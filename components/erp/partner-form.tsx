@@ -61,12 +61,17 @@ export function PartnerForm({ partner, onDone }: { partner?: Partner; onDone?: (
     e.preventDefault();
     setSaving(true);
     setError(null);
-    const res = await savePartnerAction(form);
-    setSaving(false);
-    if (!res.ok) return setError(res.error);
-    setSaved(true);
-    router.refresh();
-    onDone?.(res.id);
+    try {
+      const res = await savePartnerAction(form);
+      if (!res.ok) return setError(res.error);
+      setSaved(true);
+      router.refresh();
+      onDone?.(res.id);
+    } catch {
+      setError("저장 중 연결이 끊겼어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
