@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
-import { vatFor } from "@/lib/erp/compute";
+import { salePriceFor, vatFor } from "@/lib/erp/compute";
 import { formatQty, formatWon } from "@/lib/erp/format";
 import {
   ITEMIZED_KINDS,
@@ -19,17 +21,20 @@ import {
   VOUCHER_KINDS,
   VOUCHER_KIND_LABEL,
   VAT_TYPE_LABEL,
+  type ItemGroup,
   type Partner,
   type VoucherInput,
   type VoucherKind,
 } from "@/lib/erp/types";
 import type { ItemWithStock, PartnerWithBalance } from "@/lib/erp/compute";
 
-type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean };
+/** priceManual: 단가를 직접 고쳤으면 true — 거래처를 바꿔도 단가를 다시 매기지 않는다 */
+type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean; priceManual: boolean };
 
 export type VoucherFormProps = {
   partners: PartnerWithBalance[];
   items: ItemWithStock[];
+  groups: ItemGroup[];
   initial?: VoucherInput & { id: number; voucher_no: number; source_voucher_id: number | null };
   /** 이 견적에서 전환된 전표들(견적 화면에서 링크로 보여준다) */
   derived?: { id: number; kind: VoucherKind; voucher_date: string }[];
@@ -48,11 +53,13 @@ const emptyLine = (): Line => ({
   amount: 0,
   vat: 0,
   vatManual: false,
+  priceManual: false,
 });
 
 export function VoucherForm({
   partners,
-  items,
+  items: itemsProp,
+  groups,
   initial,
   derived = [],
   defaultDate,
@@ -67,7 +74,7 @@ export function VoucherForm({
   const [memo, setMemo] = React.useState(initial?.memo ?? "");
   const [lines, setLines] = React.useState<Line[]>(() =>
     initial?.lines.length
-      ? initial.lines.map((l) => ({ ...l, key: keySeq++, vatManual: true }))
+      ? initial.lines.map((l) => ({ ...l, key: keySeq++, vatManual: true, priceManual: true }))
       : [emptyLine()]
   );
   const [amountOnly, setAmountOnly] = React.useState<number>(() =>
@@ -78,6 +85,14 @@ export function VoucherForm({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // 전표 입력 중 새로 등록한 품목(서버 새로고침 전에도 바로 고를 수 있게)
+  const [extraItems, setExtraItems] = React.useState<ItemWithStock[]>([]);
+  const items = React.useMemo(() => {
+    const ids = new Set(itemsProp.map((i) => i.id));
+    return [...itemsProp, ...extraItems.filter((i) => !ids.has(i.id))];
+  }, [itemsProp, extraItems]);
+  const [newItem, setNewItem] = React.useState<{ lineKey: number; name: string } | null>(null);
 
   const itemized = ITEMIZED_KINDS.includes(kind);
   const itemById = React.useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -126,8 +141,11 @@ export function VoucherForm({
 
   const pickItem = (key: number, idStr: string) => {
     const item = itemById.get(Number(idStr));
-    if (!item) return;
-    const price = kind === "purchase" ? item.purchase_price : item.sale_price;
+    if (item) applyItem(key, item);
+  };
+
+  const applyItem = (key: number, item: ItemWithStock) => {
+    const price = unitPriceFor(item, kind, partner);
     setLines((prev) => {
       const next = prev.map((l) => {
         if (l.key !== key) return l;
@@ -141,11 +159,28 @@ export function VoucherForm({
           amount,
           vat: vatFor(item.vat_type, amount),
           vatManual: false,
+          priceManual: false,
         };
       });
       // 마지막 줄에서 품목을 고르면 빈 줄을 하나 더 붙여 입력 동선을 줄인다
       return next[next.length - 1].key === key ? [...next, emptyLine()] : next;
     });
+  };
+
+  /** 거래처를 바꾸면 직접 고치지 않은 줄의 단가를 새 거래처 등급에 맞춰 다시 매긴다 */
+  const changePartner = (id: number | null) => {
+    setPartnerId(id);
+    const next = partners.find((p) => p.id === id) ?? null;
+    setLines((prev) => prev.map((l) => repriceLine(l, kind, next)));
+  };
+
+  const repriceLine = (l: Line, k: VoucherKind, p: PartnerWithBalance | null): Line => {
+    if (l.priceManual || !l.item_id) return l;
+    const item = itemById.get(l.item_id);
+    if (!item) return l;
+    const unit_price = unitPriceFor(item, k, p);
+    const amount = Math.round(l.qty * unit_price);
+    return { ...l, unit_price, amount, vat: l.vatManual ? l.vat : vatFor(item.vat_type, amount) };
   };
 
   /** 종류를 바꿀 때 금액이 사라지지 않도록 품목 줄 합계 ↔ 금액 칸을 서로 옮겨 준다 */
@@ -161,6 +196,8 @@ export function VoucherForm({
         setLines([{ ...emptyLine(), description: memo || VOUCHER_KIND_LABEL[kind], qty: 1, unit_price: amountOnly, amount: amountOnly, vat: 0, vatManual: true }]);
       }
     }
+    // 매출↔매입처럼 가격 기준이 바뀌면 직접 고치지 않은 줄의 단가를 다시 매긴다
+    if (willItemize) setLines((prev) => prev.map((l) => repriceLine(l, next, partner)));
     setKind(next);
   };
 
@@ -255,14 +292,12 @@ export function VoucherForm({
         )}
         {initial && (
           <div className="ml-auto flex flex-wrap gap-2 print:hidden">
-            {(initial.kind === "estimate" || initial.kind === "sale") && (
-              <Link
-                href={`/erp/vouchers/${initial.id}/print`}
-                className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent"
-              >
-                {initial.kind === "estimate" ? "견적서 출력" : "거래명세서 출력"}
-              </Link>
-            )}
+            <Link
+              href={`/erp/vouchers/${initial.id}/print`}
+              className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent"
+            >
+              {initial.kind === "estimate" ? "견적서 출력·공유" : initial.kind === "sale" ? "거래명세서 출력·공유" : "출력·공유"}
+            </Link>
             {initial.kind === "estimate" && (
               <>
                 <Button variant="secondary" disabled={saving} onClick={() => convert("sale")}>매출로 전환</Button>
@@ -324,12 +359,13 @@ export function VoucherForm({
           <Combobox
             options={partnerOptions}
             value={partnerId ? String(partnerId) : ""}
-            onChange={(v) => setPartnerId(v ? Number(v) : null)}
+            onChange={(v) => changePartner(v ? Number(v) : null)}
             placeholder="거래처 선택"
             searchPlaceholder="이름 검색 (초성 가능)"
           />
           {partner && (
             <span className="text-xs text-muted-foreground">
+              {kind !== "purchase" && kind !== "payment" && `단가 ${partner.price_grade}등급 · `}
               현재 잔액 {formatWon(Math.abs(partner.balance))}원 {partner.balance > 0 ? "받을 돈" : partner.balance < 0 ? "줄 돈" : ""}
             </span>
           )}
@@ -350,7 +386,9 @@ export function VoucherForm({
       )}
 
       {itemized ? (
-        <div className="overflow-x-auto rounded-lg border">
+        // 넓은 화면에서는 드롭다운이 표 밖으로 펼쳐지도록 overflow 를 풀고,
+        // 좁은 화면(가로 스크롤 필요)에서는 드롭다운이 잘리지 않게 아래 여백을 둔다.
+        <div className="overflow-x-auto rounded-lg border max-lg:pb-56 lg:overflow-visible">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-muted/50 text-left text-muted-foreground">
               <tr>
@@ -374,6 +412,8 @@ export function VoucherForm({
                         onChange={(v) => pickItem(l.key, v)}
                         placeholder="품목 선택"
                         searchPlaceholder="품목 검색 (초성 가능)"
+                        onCreateNew={(name) => setNewItem({ lineKey: l.key, name })}
+                        createPrompt="새로운 품목입니다. 품목을 등록할까요?"
                       />
                       <Input
                         className="mt-1 h-8 text-xs"
@@ -384,6 +424,9 @@ export function VoucherForm({
                       {item && (
                         <div className="mt-1 text-xs text-muted-foreground">
                           {VAT_TYPE_LABEL[item.vat_type] ?? "면세"}
+                          {kind !== "purchase" && ` · 판매가 A ${formatWon(item.sale_price)}`}
+                          {kind !== "purchase" && item.sale_price_b != null && ` / B ${formatWon(item.sale_price_b)}`}
+                          {kind !== "purchase" && item.sale_price_c != null && ` / C ${formatWon(item.sale_price_c)}`}
                           {item.track_stock && ` · 현재고 ${formatQty(item.stock)}`}
                         </div>
                       )}
@@ -392,7 +435,7 @@ export function VoucherForm({
                       <NumInput value={l.qty} onChange={(v) => updateLine(l.key, { qty: v })} className="w-20" />
                     </td>
                     <td className="px-2 py-2">
-                      <NumInput value={l.unit_price} onChange={(v) => updateLine(l.key, { unit_price: v })} className="w-28" />
+                      <NumInput value={l.unit_price} onChange={(v) => updateLine(l.key, { unit_price: v, priceManual: true })} className="w-28" />
                     </td>
                     <td className="px-2 py-2">
                       <NumInput value={l.amount} onChange={(v) => updateLine(l.key, { amount: v })} className="w-32" />
@@ -449,6 +492,33 @@ export function VoucherForm({
         </Button>
       </div>
 
+      <Dialog open={newItem != null} onOpenChange={(o) => !o && setNewItem(null)} widthClassName="max-w-xl">
+        {newItem && (
+          <DialogContent onClose={() => setNewItem(null)}>
+            <DialogHeader>
+              <DialogTitle>새 품목 등록</DialogTitle>
+            </DialogHeader>
+            <ItemForm
+              initial={{ ...EMPTY_ITEM, name: newItem.name }}
+              groups={groups}
+              currentStock={null}
+              onDone={(id, saved) => {
+                const created: ItemWithStock = {
+                  ...saved,
+                  id,
+                  legacy_code: null,
+                  stock: saved.track_stock ? saved.opening_stock : null,
+                  group_name: groups.find((g) => g.id === saved.group_id)?.name ?? null,
+                };
+                setExtraItems((prev) => [...prev, created]);
+                applyItem(newItem.lineKey, created);
+                setNewItem(null);
+              }}
+            />
+          </DialogContent>
+        )}
+      </Dialog>
+
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
@@ -459,6 +529,11 @@ export function VoucherForm({
       />
     </div>
   );
+}
+
+/** 매입은 매입가, 매출·견적은 거래처 단가 등급의 판매가 */
+function unitPriceFor(item: ItemWithStock, kind: VoucherKind, partner: PartnerWithBalance | null): number {
+  return kind === "purchase" ? item.purchase_price : salePriceFor(item, partner?.price_grade);
 }
 
 function NumInput({

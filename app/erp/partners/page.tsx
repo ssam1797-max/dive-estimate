@@ -74,7 +74,10 @@ export default async function PartnersPage({
                   <Link href={`/erp/partners/${p.id}`} className="font-medium hover:underline">{p.name}</Link>
                   {!p.active && <span className="ml-2 text-xs text-muted-foreground">(사용 안 함)</span>}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">{PARTNER_KIND_LABEL[p.kind]}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                  {PARTNER_KIND_LABEL[p.kind]}
+                  {(p.kind === "customer" || p.kind === "consumer") && ` · ${p.price_grade}등급`}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{p.mobile || p.tel}</td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
                   {p.last_date ? formatDate(p.last_date) : ""}

@@ -1,4 +1,4 @@
-import type { ErpData, Item, Partner, Voucher, VoucherKind } from "@/lib/erp/types";
+import type { ErpData, Item, Partner, PriceGrade, Voucher, VoucherKind } from "@/lib/erp/types";
 
 /**
  * 파생 값 계산. DB 뷰(acct_voucher_totals / acct_partner_movements /
@@ -161,6 +161,13 @@ export function nextVoucherNo(data: ErpData, date: string): number {
   let max = 0;
   for (const v of data.vouchers) if (v.voucher_date === date && v.voucher_no > max) max = v.voucher_no;
   return max + 1;
+}
+
+/** 등급별 판매가. B·C 가격이 비어 있으면 A 가격을 쓴다. */
+export function salePriceFor(item: Pick<Item, "sale_price" | "sale_price_b" | "sale_price_c">, grade: PriceGrade | null | undefined): number {
+  if (grade === "B" && item.sale_price_b != null) return Number(item.sale_price_b);
+  if (grade === "C" && item.sale_price_c != null) return Number(item.sale_price_c);
+  return Number(item.sale_price);
 }
 
 /** 과세 품목이면 공급가의 10%(원 단위 반올림), 면세·영세는 0 */

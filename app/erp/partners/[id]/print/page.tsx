@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { loadErpData } from "@/lib/erp/repo";
 import { partnerLedger } from "@/lib/erp/ledger";
 import { formatDate, formatWon, todayKST } from "@/lib/erp/format";
+import { LedgerSummary } from "@/components/erp/ledger-summary";
 import { loadSuppliers } from "@/lib/erp/supplier";
 import { LedgerTable } from "@/components/erp/ledger-table";
 import { PrintToolbar } from "@/components/erp/print-toolbar";
@@ -40,7 +41,8 @@ export default async function PartnerLedgerPrintPage({
             <span>{supplier?.name}{supplier?.contact ? ` · ${supplier.contact}` : ""}</span>
           </div>
         </header>
-        <LedgerTable {...ledger} linkRows={false} paper />
+        <LedgerSummary carried={ledger.carried} byKind={ledger.byKind} closing={ledger.closing} />
+        <LedgerTable {...ledger} linkRows={false} paper detailed />
         <p className="mt-4 text-right text-[15px] font-semibold">
           {bal === 0 ? "잔액 없음" : `${bal > 0 ? "받을 금액" : "지급할 금액"} ${formatWon(Math.abs(bal))}원`}
         </p>

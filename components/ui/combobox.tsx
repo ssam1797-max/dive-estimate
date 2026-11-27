@@ -28,6 +28,13 @@ interface ComboboxProps {
    * Combobox 호출부(장비 브랜드/카테고리/장비명 선택 등)는 전혀 영향 없다.
    */
   allowCustomValue?: boolean;
+  /**
+   * 검색 결과가 하나도 없을 때 "새로 등록할까요?" 안내와 [등록하기] 버튼을 보여준다.
+   * 누르면(또는 Enter) 검색어를 넘겨준다. 지정하지 않으면 기존 동작 그대로.
+   */
+  onCreateNew?: (query: string) => void;
+  /** onCreateNew 안내 문구 (기본: "목록에 없어요. 새로 등록할까요?") */
+  createPrompt?: string;
 }
 
 /**
@@ -45,6 +52,8 @@ export function Combobox({
   disabled,
   className,
   allowCustomValue = false,
+  onCreateNew,
+  createPrompt = "목록에 없어요. 새로 등록할까요?",
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -72,6 +81,8 @@ export function Combobox({
     allowCustomValue &&
     trimmedQuery.length > 0 &&
     !options.some((option) => option.value.toLowerCase() === trimmedQuery.toLowerCase());
+
+  const showCreateNew = !!onCreateNew && trimmedQuery.length > 0 && filteredOptions.length === 0;
 
   // 드롭다운을 닫을 때는 항상 이 함수를 통해서 닫아, 검색어도 함께 초기화합니다.
   // (useEffect 안에서 open 변화에 반응해 setQuery 를 호출하는 대신, 닫는 동작이
@@ -138,12 +149,36 @@ export function Combobox({
               ref={searchInputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing && showCreateNew) {
+                  event.preventDefault();
+                  onCreateNew?.(trimmedQuery);
+                  closeDropdown();
+                }
+              }}
               placeholder={searchPlaceholder}
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
           <ul className="max-h-56 overflow-y-auto p-1" role="listbox">
-            {filteredOptions.length === 0 && !showCreateOption && (
+            {showCreateNew && (
+              <li className="flex flex-col items-center gap-2 px-2 py-3 text-center text-sm">
+                <span>
+                  <b>&quot;{trimmedQuery}&quot;</b> — {createPrompt}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreateNew?.(trimmedQuery);
+                    closeDropdown();
+                  }}
+                  className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="size-4" /> 등록하기
+                </button>
+              </li>
+            )}
+            {filteredOptions.length === 0 && !showCreateOption && !showCreateNew && (
               <li className="px-2 py-3 text-center text-sm text-muted-foreground">
                 {emptyMessage}
               </li>

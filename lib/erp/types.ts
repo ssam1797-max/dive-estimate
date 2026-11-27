@@ -39,6 +39,9 @@ export const PARTNER_KIND_LABEL: Record<PartnerKind, string> = {
 /** 경영박사 ITEM.VAT 값 그대로: 0 과세(10%), 1 면세, 3 영세 */
 export const VAT_TYPE_LABEL: Record<number, string> = { 0: "과세", 1: "면세", 3: "영세" };
 
+export const PRICE_GRADES = ["A", "B", "C"] as const;
+export type PriceGrade = (typeof PRICE_GRADES)[number];
+
 export type Partner = {
   id: number;
   legacy_code: number | null;
@@ -61,6 +64,8 @@ export type Partner = {
   memo: string | null;
   opening_balance: number;
   active: boolean;
+  /** 단가 등급 — 매출·견적에서 품목 판매가 A/B/C 중 무엇을 쓸지 */
+  price_grade: PriceGrade;
 };
 
 export type ItemGroup = { id: number; legacy_code: number | null; name: string };
@@ -74,7 +79,12 @@ export type Item = {
   spec: string | null;
   unit: string | null;
   purchase_price: number;
+  /** 판매가 A(기본) */
   sale_price: number;
+  /** 판매가 B — null 이면 A 가격 사용 */
+  sale_price_b: number | null;
+  /** 판매가 C — null 이면 A 가격 사용 */
+  sale_price_c: number | null;
   vat_type: number;
   memo: string | null;
   active: boolean;

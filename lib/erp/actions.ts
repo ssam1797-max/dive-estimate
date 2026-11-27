@@ -22,6 +22,13 @@ function fail(e: unknown): ActionResult {
   return { ok: false, error: e instanceof Error ? e.message : String(e) };
 }
 
+/** 빈칸·잘못된 값이면 null(= A 가격 사용) */
+function optionalPrice(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function saveVoucherAction(input: VoucherInput): Promise<ActionResult> {
@@ -69,7 +76,11 @@ export async function savePartnerAction(input: PartnerInput): Promise<ActionResu
   try {
     await guard();
     if (!PARTNER_KINDS.includes(input.kind)) throw new Error("거래처 구분이 올바르지 않습니다.");
-    const id = await repo.savePartner({ ...input, opening_balance: Number(input.opening_balance) || 0 });
+    const id = await repo.savePartner({
+      ...input,
+      opening_balance: Number(input.opening_balance) || 0,
+      price_grade: input.price_grade === "B" || input.price_grade === "C" ? input.price_grade : "A",
+    });
     revalidatePath("/erp", "layout");
     return { ok: true, id };
   } catch (e) {
@@ -84,6 +95,8 @@ export async function saveItemAction(input: ItemInput): Promise<ActionResult> {
       ...input,
       purchase_price: Number(input.purchase_price) || 0,
       sale_price: Number(input.sale_price) || 0,
+      sale_price_b: optionalPrice(input.sale_price_b),
+      sale_price_c: optionalPrice(input.sale_price_c),
       opening_stock: Number(input.opening_stock) || 0,
       vat_type: [0, 1, 3].includes(Number(input.vat_type)) ? Number(input.vat_type) : 1,
     });

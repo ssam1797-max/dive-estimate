@@ -26,12 +26,18 @@ const num = (v: unknown) => (v == null ? 0 : Number(v));
 
 function normalize(raw: ErpData): ErpData {
   return {
-    partners: raw.partners.map((p) => ({ ...p, opening_balance: num(p.opening_balance) })),
+    partners: raw.partners.map((p) => ({
+      ...p,
+      opening_balance: num(p.opening_balance),
+      price_grade: p.price_grade === "B" || p.price_grade === "C" ? p.price_grade : "A",
+    })),
     groups: raw.groups,
     items: raw.items.map((i) => ({
       ...i,
       purchase_price: num(i.purchase_price),
       sale_price: num(i.sale_price),
+      sale_price_b: i.sale_price_b == null ? null : num(i.sale_price_b),
+      sale_price_c: i.sale_price_c == null ? null : num(i.sale_price_c),
       opening_stock: num(i.opening_stock),
       track_stock: Boolean(i.track_stock),
     })),
