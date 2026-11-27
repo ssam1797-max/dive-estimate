@@ -3,10 +3,27 @@ import { loadErpData } from "@/lib/erp/repo";
 import { kindTotals, monthlySeries, partnersWithBalance, voucherTotals } from "@/lib/erp/compute";
 import { formatDate, formatWon, monthRange, todayKST } from "@/lib/erp/format";
 import { VOUCHER_KIND_LABEL } from "@/lib/erp/types";
+import { CalendarBoard, type DayVoucher } from "@/components/erp/calendar-board";
 
-export default async function ErpHomePage() {
+export default async function ErpHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string; day?: string }>;
+}) {
+  const sp = await searchParams;
   const data = await loadErpData();
   const today = todayKST();
+  const calMonth = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : today.slice(0, 7);
+  const selectedDay = /^\d{4}-\d{2}-\d{2}$/.test(sp.day ?? "") ? sp.day! : sp.month ? null : today;
+  const itemNameById = new Map(data.items.map((i) => [i.id, i.name]));
+  const linesBy = new Map<number, string[]>();
+  for (const l of [...data.lines].sort((a, b) => a.line_no - b.line_no)) {
+    const n = (l.item_id ? itemNameById.get(l.item_id) : null) ?? l.description ?? "";
+    if (!n.trim()) continue;
+    const arr = linesBy.get(l.voucher_id) ?? [];
+    arr.push(n);
+    linesBy.set(l.voucher_id, arr);
+  }
   const { from, to } = monthRange(today);
   const month = kindTotals(data, from, to);
   const series = monthlySeries(data, 12, today);
@@ -20,6 +37,22 @@ export default async function ErpHomePage() {
   const recent = [...voucherTotals(data).values()]
     .sort((a, b) => (a.voucher_date === b.voucher_date ? b.id - a.id : a.voucher_date < b.voucher_date ? 1 : -1))
     .slice(0, 8);
+
+  const calVouchers: DayVoucher[] = [...voucherTotals(data).values()]
+    .filter((v) => v.voucher_date.startsWith(calMonth))
+    .sort((a, b) => a.voucher_no - b.voucher_no || a.id - b.id)
+    .map((v) => {
+      const names = linesBy.get(v.id) ?? [];
+      return {
+        id: v.id,
+        date: v.voucher_date,
+        no: v.voucher_no,
+        kind: v.kind,
+        partner: v.partner_id ? (partnerName.get(v.partner_id) ?? "") : "",
+        summary: names.length > 1 ? `${names[0]} 외 ${names.length - 1}건` : (names[0] ?? v.memo ?? ""),
+        total: v.total,
+      };
+    });
 
   const kpis = [
     { label: "이번 달 매출", value: month.sale },
@@ -45,6 +78,8 @@ export default async function ErpHomePage() {
           ))}
         </div>
       </section>
+
+      <CalendarBoard month={calMonth} today={today} selectedDay={selectedDay} vouchers={calVouchers} />
 
       <section>
         <h2 className="text-lg font-semibold">최근 12개월 매출·매입</h2>
