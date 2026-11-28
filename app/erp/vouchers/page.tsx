@@ -3,11 +3,13 @@ import { Share2 } from "lucide-react";
 import { loadErpData } from "@/lib/erp/repo";
 import { voucherTotals } from "@/lib/erp/compute";
 import { formatDate, formatQty, formatWon, todayKST } from "@/lib/erp/format";
-import { VOUCHER_KINDS, VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
+import { PARTNER_KIND_LABEL, VOUCHER_KINDS, VOUCHER_KIND_LABEL, type VoucherKind } from "@/lib/erp/types";
 import { KindBadge } from "@/components/erp/kind-badge";
 import { RunningTable } from "@/components/erp/running-table";
 import { RowActions } from "@/components/erp/row-actions";
 import { partnerRunning } from "@/lib/erp/running";
+import { PartnerFilter } from "@/components/erp/partner-filter";
+import { matchesKoreanSearch } from "@/lib/hangul";
 
 type Search = { kind?: string; from?: string; to?: string; partner?: string; q?: string };
 
@@ -42,8 +44,14 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
     .filter((v) => !partnerId || v.partner_id === partnerId || v.card_partner_id === partnerId)
     .filter((v) => {
       if (!q) return true;
-      const hay = [partnerName.get(v.partner_id ?? -1), v.memo, ...(linesByVoucher.get(v.id) ?? [])].join(" ");
-      return hay.toLowerCase().includes(q.toLowerCase());
+      const hay = [
+        partnerName.get(v.partner_id ?? -1),
+        partnerName.get(v.card_partner_id ?? -1),
+        v.memo,
+        ...(linesByVoucher.get(v.id) ?? []),
+      ];
+      // 거래처·품목 이름은 초성(ㅅㅇㄷ)으로도 찾을 수 있게
+      return hay.some((h) => h && matchesKoreanSearch(h, q));
     })
     .sort((a, b) =>
       a.voucher_date === b.voucher_date ? b.voucher_no - a.voucher_no : a.voucher_date < b.voucher_date ? 1 : -1
@@ -107,17 +115,24 @@ export default async function VoucherListPage({ searchParams }: { searchParams: 
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">거래처</span>
-          <select name="partner" defaultValue={partnerId ?? ""} className="h-9 max-w-48 rounded-md border bg-background px-2 text-base sm:text-sm">
-            <option value="">전체</option>
-            {[...data.partners].sort((a, b) => a.name.localeCompare(b.name, "ko")).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+          <PartnerFilter
+            defaultValue={partnerId ? String(partnerId) : ""}
+            options={[...data.partners]
+              .sort((a, b) => a.name.localeCompare(b.name, "ko"))
+              .map((p) => ({
+                value: String(p.id),
+                label: p.name,
+                description: [PARTNER_KIND_LABEL[p.kind], p.rep_name && `대표 ${p.rep_name}`, p.contact && `담당 ${p.contact}`]
+                  .filter(Boolean)
+                  .join(" · "),
+                keywords: [p.rep_name, p.contact, p.tel, p.mobile].filter(Boolean).join(" "),
+              }))}
+          />
+        </div>
         <label className="flex min-w-40 flex-1 flex-col gap-1">
-          <span className="text-muted-foreground">검색(품목·적요)</span>
+          <span className="text-muted-foreground">검색(거래처·품목·적요)</span>
           <input name="q" defaultValue={q} className="h-9 rounded-md border px-2 text-base sm:text-sm" />
         </label>
         <button className="h-9 rounded-md bg-primary px-4 font-medium text-primary-foreground">조회</button>
