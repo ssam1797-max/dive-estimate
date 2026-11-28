@@ -122,12 +122,12 @@ export function VoucherForm({
       [...partners]
         .filter((p) => p.active || p.id === partnerId)
         .sort((a, b) => a.name.localeCompare(b.name, "ko"))
-        .map((p) => ({ value: String(p.id), label: p.name, description: PARTNER_KIND_LABEL[p.kind] })),
+        .map((p) => partnerOption(p)),
     [partners, partnerId]
   );
   const cardOptions = partners
     .filter((p) => p.kind === "card")
-    .map((p) => ({ value: String(p.id), label: p.name }));
+    .map((p) => partnerOption(p));
   const itemOptions = React.useMemo(
     () =>
       items
@@ -782,3 +782,14 @@ function NumInput({
 }
 
 export type { Partner };
+
+/** 거래처 선택 목록: 회사명·대표자명·담당자명(·전화)으로 찾을 수 있게 */
+function partnerOption(p: PartnerWithBalance) {
+  const people = [p.rep_name && `대표 ${p.rep_name}`, p.contact && `담당 ${p.contact}`].filter(Boolean).join(" · ");
+  return {
+    value: String(p.id),
+    label: p.name,
+    description: [PARTNER_KIND_LABEL[p.kind], people].filter(Boolean).join(" · "),
+    keywords: [p.rep_name, p.contact, p.tel, p.mobile].filter(Boolean).join(" "),
+  };
+}
