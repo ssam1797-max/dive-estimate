@@ -1,3 +1,4 @@
+import { matchesKoreanSearch } from "@/lib/hangul";
 import Link from "next/link";
 import { loadErpData } from "@/lib/erp/repo";
 import { partnersWithBalance } from "@/lib/erp/compute";
@@ -18,7 +19,7 @@ export default async function PartnersPage({
   const rows = partnersWithBalance(data)
     .filter((p) => sp.all || p.active)
     .filter((p) => !kind || p.kind === kind)
-    .filter((p) => !q || [p.name, p.rep_name, p.tel, p.mobile, p.biz_no].join(" ").toLowerCase().includes(q))
+    .filter((p) => !q || matchesKoreanSearch([p.name, p.rep_name, p.contact, p.tel, p.mobile, p.biz_no].filter(Boolean).join(" "), q))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
   const tab = (k: PartnerKind | null, label: string) => {
@@ -52,7 +53,7 @@ export default async function PartnersPage({
         </nav>
         <form method="get" className="ml-auto flex gap-2">
           {kind && <input type="hidden" name="kind" value={kind} />}
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="이름·전화 검색" className="h-9 w-48 rounded-md border px-2 text-base sm:text-sm" />
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="회사·대표·담당·전화 (초성 가능)" className="h-9 w-64 rounded-md border px-2 text-base sm:text-sm" />
           <button className="h-9 rounded-md border px-3 text-sm hover:bg-accent">검색</button>
         </form>
       </div>

@@ -10,6 +10,8 @@ export interface ComboboxOption {
   value: string;
   label: string;
   description?: string;
+  /** 화면에는 안 보이지만 검색에 함께 쓰는 말 (예: 거래처의 대표자·담당자 이름) */
+  keywords?: string;
 }
 
 interface ComboboxProps {
@@ -70,7 +72,8 @@ export function Combobox({
     return options.filter(
       (option) =>
         matchesKoreanSearch(option.label, query) ||
-        (option.description ? matchesKoreanSearch(option.description, query) : false)
+        (option.description ? matchesKoreanSearch(option.description, query) : false) ||
+        (option.keywords ? matchesKoreanSearch(option.keywords, query) : false)
     );
   }, [options, query]);
 
