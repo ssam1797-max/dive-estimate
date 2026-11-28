@@ -3,6 +3,7 @@ import "server-only";
 import { isMockMode } from "@/lib/db/is-mock";
 import { mockStore } from "@/lib/db/mock-store";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
+import { normalizeOptionSoldOut, type OptionSoldOut } from "@/lib/equipment/optionStock";
 import type {
   ParsedEquipmentItem,
   EquipmentImportItemResult,
@@ -88,6 +89,7 @@ export async function getAllEquipment(
         price_retail: e.price_retail,
         colors: e.colors,
         sizes: e.sizes,
+        option_sold_out: normalizeOptionSoldOut(e.option_sold_out),
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
         is_sold_out: e.is_sold_out ?? false,
@@ -108,6 +110,7 @@ export async function getAllEquipment(
       price_retail: number | string;
       colors: string[] | null;
       sizes: string[] | null;
+      option_sold_out: unknown;
       override_discount_rate: number | string | null;
       image_url: string | null;
       is_sold_out: boolean | null;
@@ -119,7 +122,7 @@ export async function getAllEquipment(
       let q = supabase
         .from("equipment")
         .select(
-          "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
+          "id, brand, category, name, price_retail, colors, sizes, option_sold_out, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
           { count: "exact" }
         );
       // 품절(is_sold_out=true) 품목은 삭제하지 않고 DB에 남겨둔다. 관리자가
@@ -136,6 +139,7 @@ export async function getAllEquipment(
       price_retail: Number(row.price_retail),
       colors: row.colors ?? [],
       sizes: row.sizes ?? [],
+      option_sold_out: normalizeOptionSoldOut(row.option_sold_out),
       override_discount_rate:
         row.override_discount_rate == null ? null : Number(row.override_discount_rate),
       image_url: row.image_url ?? null,
@@ -273,6 +277,7 @@ export async function searchEquipment(
         price_retail: e.price_retail,
         colors: e.colors,
         sizes: e.sizes,
+        option_sold_out: normalizeOptionSoldOut(e.option_sold_out),
         override_discount_rate: e.override_discount_rate ?? null,
         image_url: e.image_url ?? null,
         is_sold_out: e.is_sold_out ?? false,
@@ -296,6 +301,7 @@ export async function searchEquipment(
     price_retail: number | string;
     colors: string[] | null;
     sizes: string[] | null;
+    option_sold_out: unknown;
     override_discount_rate: number | string | null;
     image_url: string | null;
     is_sold_out: boolean | null;
@@ -323,7 +329,7 @@ export async function searchEquipment(
     let q = supabase
       .from("equipment")
       .select(
-        "id, brand, category, name, price_retail, colors, sizes, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
+        "id, brand, category, name, price_retail, colors, sizes, option_sold_out, override_discount_rate, image_url, is_sold_out, price_instructor, price_center, price_center_overridden, price_cost",
         { count: "exact" }
       )
       .or(orFilter);
@@ -351,6 +357,7 @@ export async function searchEquipment(
     price_retail: Number(row.price_retail),
     colors: row.colors ?? [],
     sizes: row.sizes ?? [],
+    option_sold_out: normalizeOptionSoldOut(row.option_sold_out),
     override_discount_rate:
       row.override_discount_rate == null ? null : Number(row.override_discount_rate),
     image_url: row.image_url ?? null,
@@ -851,7 +858,8 @@ export async function getOptionBackfillTargets(
 export async function saveOptionBackfillResult(
   id: string,
   checkedAtIso: string,
-  options?: { colors: string[]; sizes: string[] }
+  options?: { colors: string[]; sizes: string[] },
+  soldOut?: OptionSoldOut
 ): Promise<void> {
   if (isMockMode()) {
     const item = mockStore.equipment.find((e) => e.id === id);
@@ -861,6 +869,7 @@ export async function saveOptionBackfillResult(
         item.colors = options.colors;
         item.sizes = options.sizes;
       }
+      if (soldOut) item.option_sold_out = soldOut;
     }
     return;
   }
@@ -872,6 +881,7 @@ export async function saveOptionBackfillResult(
     .update({
       option_checked_at: checkedAtIso,
       ...(options && { colors: options.colors, sizes: options.sizes }),
+      ...(soldOut && { option_sold_out: soldOut }),
     })
     .eq("id", id);
   if (error) throw error;

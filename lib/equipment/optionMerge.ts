@@ -19,18 +19,12 @@ export interface StoredEquipmentOptions extends EquipmentOptions {
   option_checked_at?: string | null;
 }
 
-export type DetailOptionAxis = "color" | "size" | null;
-
 function realColors(colors: string[]): string[] {
   return colors.filter((color) => color !== NO_OPTION_LABEL);
 }
 
 function hasRealOptions(options: EquipmentOptions): boolean {
   return realColors(options.colors).length > 0 || options.sizes.length > 0;
-}
-
-function sortedUnique(values: string[]): string[] {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, "ko"));
 }
 
 /**
@@ -50,20 +44,21 @@ export function mergeListedOptions(
 }
 
 /**
- * 상세페이지에서 읽은 옵션을 저장된 옵션에 반영한다. 읽은 축(색상 또는
- * 사이즈)은 통째로 교체해서 사라진 옵션도 함께 빠지게 하고, 다른 축은
- * 그대로 둔다. 옵션을 읽지 못했으면(단일 상품, 렌즈 도수 등 다른 축)
- * 저장된 값을 유지한다.
+ * 상세페이지에서 읽은 옵션을 저장된 옵션에 반영한다. 읽은 축(색상/사이즈)은
+ * 통째로 교체해서 사라진 옵션도 함께 빠지게 하고, 읽지 못한 축(null)은
+ * 저장된 값을 그대로 둔다. 둘 다 못 읽었으면(단일 상품, 렌즈 도수 등 다른
+ * 축) 저장된 값을 유지한다.
  */
 export function applyDetailOptions(
   stored: EquipmentOptions,
-  axis: DetailOptionAxis,
-  labels: string[]
+  detail: { colors: string[] | null; sizes: string[] | null }
 ): EquipmentOptions {
-  if (axis === null || labels.length === 0) return stored;
+  const colors = detail.colors && detail.colors.length > 0 ? detail.colors : null;
+  const sizes = detail.sizes && detail.sizes.length > 0 ? detail.sizes : null;
+  if (!colors && !sizes) return stored;
 
-  if (axis === "color") {
-    return { colors: sortedUnique(labels), sizes: stored.sizes };
-  }
-  return { colors: realColors(stored.colors), sizes: sortedUnique(labels) };
+  return {
+    colors: colors ?? (sizes ? realColors(stored.colors) : stored.colors),
+    sizes: sizes ?? stored.sizes,
+  };
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import type { OptionSoldOut } from "@/lib/equipment/optionStock";
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ export interface MockEquipment {
    *  null/undefined면 한 번도 확인된 적 없음 — 옵션 보완 작업이 이 값이
    *  가장 오래된 품목부터 확인한다(getOptionBackfillTargets). */
   option_checked_at?: string | null;
+  /** 옵션별 품절 정보(lib/equipment/optionStock.ts). */
+  option_sold_out?: OptionSoldOut;
   /** 퐁당닷컴 상품 번호(/goods/view?no=). */
   pongdang_goods_id?: string | null;
   /** 퐁당닷컴 샵 계정 로그인으로 수집한 실제 샵가(INSTRUCTOR 등급). */

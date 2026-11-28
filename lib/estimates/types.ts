@@ -1,3 +1,4 @@
+import type { OptionSoldOut } from "@/lib/equipment/optionStock";
 /**
  * 견적서 작성 화면에서 공통으로 쓰는 타입 정의.
  */
@@ -24,6 +25,9 @@ export interface EquipmentCatalogItem {
   price_retail: number;
   colors: string[];
   sizes: string[];
+  /** 퐁당닷컴 기준 품절인 색상/사이즈/조합. 품절이어도 선택은 할 수 있고,
+   *  선택 목록에 "(품절)" 표시만 붙인다. 없으면 품절 옵션 없음으로 본다. */
+  option_sold_out?: OptionSoldOut;
   /** 품목별 예외 할인율(%). 없으면(null) 브랜드 기본 할인율을 그대로 쓴다. */
   override_discount_rate: number | null;
   /** 상품 썸네일 이미지 URL(외부 링크). 없으면 null — UI에서 기본 아이콘으로 대체한다. */

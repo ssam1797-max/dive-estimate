@@ -3,6 +3,7 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import type { ParsedEquipmentItem } from "@/lib/equipment/types";
 import { NO_OPTION_LABEL } from "@/lib/equipment/optionMerge";
+import { EMPTY_OPTION_SOLD_OUT, comboKey, type OptionSoldOut } from "@/lib/equipment/optionStock";
 import type { PongdangCategoryCode } from "@/lib/equipment/pongdangCategories";
 
 const BASE_URL = "https://pongdang.com";
@@ -867,69 +868,239 @@ function stripSoldOutSuffix(label: string): string {
   return label.replace(/\s*\(품절\)\s*$/, "").trim();
 }
 
-export interface DetailPageOptions {
-  /** 이 select가 담고 있는 옵션 종류. 첫 번째(안내용) <option>의 문구
-   *  ("- 색상 선택 -", "- 사이즈 선택 -" 등)로 판별한다 — "- 렌즈 선택 -"처럼
-   *  색상도 사이즈도 아닌 축이면 null(이 상품은 보완 대상에서 건너뜀). */
-  axis: "color" | "size" | null;
-  labels: string[];
+type OptionAxis = "color" | "size";
+
+/** 안내용 첫 <option> 문구("- 색상 선택 -", "- 사이즈 선택 -")로 select 의 옵션
+ *  종류를 판별한다. "- 렌즈 선택 -"처럼 색상도 사이즈도 아니면 null. */
+function detectAxis(placeholder: string): OptionAxis | null {
+  if (placeholder.includes("색상")) return "color";
+  if (placeholder.includes("사이즈")) return "size";
+  return null;
+}
+
+/** "[재입고 미정]" 옵션은 다시 들어올 계획이 없다는 뜻이라 아예 제외한다
+ *  (isOutOfStockIndefinitely 와 같은 판정 기준). */
+function isDiscontinuedOption(text: string): boolean {
+  return text.replace(/\s+/g, "").includes(OUT_OF_STOCK_INDEFINITELY_MARK_NO_SPACE);
+}
+
+interface FirstAxisOption {
+  /** 화면에 보이는 이름에서 "(품절)"만 뗀 값. 우리 DB에 저장하는 옵션 이름. */
+  label: string;
+  /** 두 번째 옵션을 물어볼 때 퐁당닷컴에 보내는 값(<option value>). */
+  value: string;
+  soldOut: boolean;
+}
+
+interface ParsedDetailPage {
+  firstAxis: OptionAxis | null;
+  firstOptions: FirstAxisOption[];
+  /** 색상을 고른 뒤에야 채워지는 두 번째 select 의 옵션 종류. 없으면 null. */
+  secondAxis: OptionAxis | null;
+  /** 옵션 select 개수. /goods/option 요청의 max 값으로 쓴다. */
+  selectCount: number;
 }
 
 /**
- * 상세페이지의 첫 번째 옵션 select(`id="0"`)에서 옵션들의 표시 텍스트를
- * 뽑는다. 품절(class="soldout"/disabled) 여부와 무관하게 전부 포함한다
- * — 구매 가능 여부와 별개로 "이 상품에 어떤 옵션이 존재하는지"를 빠짐없이
- * 보여주는 게 목적이라, 품절 표시(" (품절)" 접미사)만 라벨에서 떼어내고
- * 옵션 값 자체는 그대로 살린다.
- *
- * 색상/사이즈 구분은 라벨 텍스트를 색상 키워드 사전과 대조하는 방식(목록
- * 페이지의 자유 형식 item_variant 파싱에 쓰는 classifyVariantSegment)이
- * 아니라, select 자체의 안내 문구("- 색상 선택 -" 등)로 판별한다 — 퐁당
- * 사이트가 이미 "이 select는 색상 축이다/사이즈 축이다"를 명시해주므로
- * 이쪽이 훨씬 정확하다(키워드 사전에 없는 색상명 — 예: "코랄", "터키" —
- * 도 전부 포함된다).
- *
- * 이 select 는 1차원(색상만 또는 사이즈만 있는) 상품이면 전체 옵션이
- * 정적 HTML에 그대로 내려오지만, 2차원(색상+사이즈 두 단계) 상품의 두
- * 번째 select(`id="1"`)는 1차원 값을 고른 뒤 AJAX로만 채워지는 빈
- * 셀렉트라 정적 요청 1번으로는 가져올 수 없다(상품당 1+N번 요청이
- * 필요해 비용이 크다) — 그런 상품은 첫 번째 축만 상세페이지 값으로 채우고,
- * 두 번째 축은 목록 페이지에서 뽑힌 값만 그대로 쓴다.
+ * 상세페이지의 옵션 select 들을 읽는다. 첫 번째 select(`id="0"`)는 정적
+ * HTML에 옵션이 모두 들어 있고, 품절 옵션은 class="soldout"/disabled 와
+ * " (품절)" 접미사로 표시된다. 두 번째 select(`id="1"`)는 첫 번째 값을
+ * 고른 뒤 /goods/option 요청으로 채워지는 빈 select 라 여기서는 옵션
+ * 종류만 읽는다.
  */
-function extractDetailPageOptions(html: string): DetailPageOptions {
+function parseDetailPage(html: string): ParsedDetailPage {
   const $ = cheerio.load(html);
-  const select = $('select[name="viewOptions[]"][id="0"]').first();
-  if (select.length === 0) return { axis: null, labels: [] };
+  const selects = $('select[name="viewOptions[]"]');
+  const first = selects.filter('[id="0"]').first();
+  if (first.length === 0) {
+    return { firstAxis: null, firstOptions: [], secondAxis: null, selectCount: 0 };
+  }
 
-  const placeholder = select.find("option").first().text();
-  const axis: DetailPageOptions["axis"] = placeholder.includes("색상")
-    ? "color"
-    : placeholder.includes("사이즈")
-      ? "size"
-      : null;
-
-  const labels: string[] = [];
-  select.find("option").each((_, el) => {
+  const firstAxis = detectAxis(first.find("option").first().text());
+  const firstOptions: FirstAxisOption[] = [];
+  first.find("option").each((_, el) => {
     const $opt = $(el);
     const value = $opt.attr("value") ?? "";
-    if (!value) return; // "- 색상 선택 -" 같은 안내용 첫 옵션
+    if (!value) return; // 안내용 첫 옵션
     const rawText = $opt.text().trim();
-    // "[재입고 미정]"은 다시 입고될 계획 자체가 없다는 뜻이라(단순
-    // 일시 품절과 다름) 이 옵션은 아예 제외한다(isOutOfStockIndefinitely
-    // 와 동일한 "재입고미정" 판정 기준 재사용). 그 외의 품절 표시
-    // ("(품절)" 접미사 — 다시 입고될 수 있는 일시 품절)는 표시만 떼어내고
-    // 옵션 자체는 그대로 남긴다.
-    if (rawText.replace(/\s+/g, "").includes(OUT_OF_STOCK_INDEFINITELY_MARK_NO_SPACE)) return;
-    const text = stripSoldOutSuffix(rawText);
-    if (text) labels.push(text);
+    if (isDiscontinuedOption(rawText)) return;
+    const label = stripSoldOutSuffix(rawText);
+    if (!label) return;
+    const soldOut =
+      $opt.hasClass("soldout") || $opt.attr("disabled") !== undefined || /\(품절\)\s*$/.test(rawText);
+    firstOptions.push({ label, value, soldOut });
   });
-  return { axis, labels };
+
+  const second = selects.filter('[id="1"]').first();
+  const secondAxis = second.length > 0 ? detectAxis(second.find("option").first().text()) : null;
+
+  return { firstAxis, firstOptions, secondAxis, selectCount: selects.length };
 }
 
-/** 상세페이지 1건을 열어 옵션 목록을 읽는다. 호출부는 lib/equipment/optionMerge.ts 의
- *  applyDetailOptions 로 저장할 값을 정한다. */
+interface PongdangOptionResponseItem {
+  opt?: unknown;
+  chk_stock?: unknown;
+}
+
+/**
+ * 첫 번째 옵션 값 하나에 딸린 두 번째 옵션 목록을 받는다. 상세페이지에서
+ * 색상을 고를 때 브라우저가 보내는 것과 같은 요청이다(2026-11-28 실측:
+ * /goods/option?no=59774&max=2&member_seq=0&options[]=파라다이소 레드 →
+ * [{opt:"S", chk_stock:false}, ..., {opt:"XL", chk_stock:true}]).
+ * 쿠키 없이도 같은 응답이 온다. chk_stock=false 가 품절이다.
+ */
+async function fetchSecondAxisOptions(
+  goodsId: string,
+  selectCount: number,
+  firstValue: string
+): Promise<{ label: string; soldOut: boolean }[]> {
+  const response = await axios.get<string>(`${BASE_URL}/goods/option`, {
+    params: { no: goodsId, max: selectCount, member_seq: 0, "options[]": firstValue },
+    headers: {
+      "User-Agent": USER_AGENT,
+      "Accept-Language": "ko-KR,ko;q=0.9",
+      Referer: `${BASE_URL}${DETAIL_PATH}?no=${goodsId}`,
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    timeout: REQUEST_TIMEOUT_MS,
+    responseType: "text",
+    validateStatus: () => true,
+  });
+  if (response.status !== 200) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response.data);
+  } catch {
+    throw new Error("두 번째 옵션 응답을 해석하지 못했습니다(JSON 아님).");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("두 번째 옵션 응답 형식이 예상과 다릅니다.");
+  }
+
+  const result: { label: string; soldOut: boolean }[] = [];
+  for (const entry of parsed as PongdangOptionResponseItem[]) {
+    const raw = typeof entry?.opt === "string" ? entry.opt.trim() : "";
+    if (!raw || isDiscontinuedOption(raw)) continue;
+    const label = stripSoldOutSuffix(raw);
+    if (!label) continue;
+    result.push({ label, soldOut: entry.chk_stock === false || /\(품절\)\s*$/.test(raw) });
+  }
+  return result;
+}
+
+/**
+ * 상세페이지에서 읽은 옵션. 읽지 못한 축은 null 이라 저장된 값을 그대로 둔다
+ * (lib/equipment/optionMerge.ts 의 applyDetailOptions 참고).
+ */
+export interface DetailPageOptions {
+  colors: string[] | null;
+  sizes: string[] | null;
+  soldOut: OptionSoldOut;
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+/**
+ * 상세페이지 1건(+ 2단 옵션 상품은 첫 번째 옵션 개수만큼 /goods/option)을
+ * 열어 옵션과 품절 정보를 읽는다. 옵션 순서는 퐁당닷컴에 보이는 순서를
+ * 그대로 쓴다(S, M, L, XL).
+ *
+ * 2단 옵션(색상→사이즈)은 예전에는 첫 번째 축만 읽고 두 번째 축은 목록
+ * 페이지 값(첫 옵션 1개뿐)에 맡겨서, 걸 바라쿠다 같은 핀의 사이즈가 "S"
+ * 하나로만 저장되는 문제가 있었다.
+ */
 export async function fetchDetailPageOptions(goodsId: string): Promise<DetailPageOptions> {
-  return extractDetailPageOptions(await fetchDetailPage(goodsId));
+  const page = parseDetailPage(await fetchDetailPage(goodsId));
+  const empty: DetailPageOptions = { colors: null, sizes: null, soldOut: EMPTY_OPTION_SOLD_OUT };
+  if (page.firstAxis === null || page.firstOptions.length === 0) return empty;
+
+  const firstLabels = uniqueInOrder(page.firstOptions.map((o) => o.label));
+  const firstSoldOut = uniqueInOrder(page.firstOptions.filter((o) => o.soldOut).map((o) => o.label));
+
+  // 1단 옵션 상품(또는 3단 이상이라 따라가지 않는 상품): 첫 번째 축만 반영한다.
+  const followSecond =
+    page.selectCount === 2 && page.secondAxis !== null && page.secondAxis !== page.firstAxis;
+  if (!followSecond) {
+    if (page.firstAxis === "color") {
+      return { colors: firstLabels, sizes: null, soldOut: { ...EMPTY_OPTION_SOLD_OUT, colors: firstSoldOut } };
+    }
+    return { colors: null, sizes: firstLabels, soldOut: { ...EMPTY_OPTION_SOLD_OUT, sizes: firstSoldOut } };
+  }
+
+  // 2단 옵션: 첫 번째 옵션마다 두 번째 옵션 목록과 재고를 받는다.
+  const secondLabels: string[] = [];
+  /** 첫 번째 옵션 라벨 → 품절인 두 번째 옵션 라벨 목록 */
+  const soldOutPairs = new Map<string, Set<string>>();
+  /** 첫 번째 옵션 라벨 → 받아온 두 번째 옵션 라벨 목록 */
+  const offered = new Map<string, Set<string>>();
+
+  for (const [index, option] of page.firstOptions.entries()) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS));
+    const seconds = await fetchSecondAxisOptions(goodsId, page.selectCount, option.value);
+    const offeredSet = offered.get(option.label) ?? new Set<string>();
+    const soldSet = soldOutPairs.get(option.label) ?? new Set<string>();
+    for (const second of seconds) {
+      secondLabels.push(second.label);
+      offeredSet.add(second.label);
+      if (second.soldOut || option.soldOut) soldSet.add(second.label);
+    }
+    offered.set(option.label, offeredSet);
+    soldOutPairs.set(option.label, soldSet);
+  }
+
+  const allSecond = uniqueInOrder(secondLabels);
+  // 두 번째 옵션을 하나도 못 받았으면(사이트 변경 등) 첫 번째 축만 반영한다.
+  if (allSecond.length === 0) {
+    if (page.firstAxis === "color") {
+      return { colors: firstLabels, sizes: null, soldOut: { ...EMPTY_OPTION_SOLD_OUT, colors: firstSoldOut } };
+    }
+    return { colors: null, sizes: firstLabels, soldOut: { ...EMPTY_OPTION_SOLD_OUT, sizes: firstSoldOut } };
+  }
+
+  // 첫 번째 옵션이 품절이거나, 딸린 두 번째 옵션이 전부 품절이면 그 첫 번째 옵션은 품절.
+  const firstFullySoldOut = firstLabels.filter((label) => {
+    const offeredSet = offered.get(label);
+    const soldSet = soldOutPairs.get(label);
+    return (
+      firstSoldOut.includes(label) ||
+      (offeredSet !== undefined && offeredSet.size > 0 && soldSet !== undefined && soldSet.size === offeredSet.size)
+    );
+  });
+  // 두 번째 옵션이 그것을 가진 모든 첫 번째 옵션에서 품절이면 그 두 번째 옵션은 품절.
+  const secondFullySoldOut = allSecond.filter((second) =>
+    firstLabels.every((first) => {
+      const offeredSet = offered.get(first);
+      if (!offeredSet?.has(second)) return true;
+      return soldOutPairs.get(first)?.has(second) ?? false;
+    })
+  );
+
+  const combos: string[] = [];
+  for (const first of firstLabels) {
+    if (firstFullySoldOut.includes(first)) continue;
+    for (const second of soldOutPairs.get(first) ?? []) {
+      if (secondFullySoldOut.includes(second)) continue;
+      combos.push(page.firstAxis === "color" ? comboKey(first, second) : comboKey(second, first));
+    }
+  }
+
+  if (page.firstAxis === "color") {
+    return {
+      colors: firstLabels,
+      sizes: allSecond,
+      soldOut: { colors: firstFullySoldOut, sizes: secondFullySoldOut, combos },
+    };
+  }
+  return {
+    colors: allSecond,
+    sizes: firstLabels,
+    soldOut: { colors: secondFullySoldOut, sizes: firstFullySoldOut, combos },
+  };
 }
 
 /**

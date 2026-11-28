@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { SoldOutOptionHint } from "@/components/estimates/sold-out-option-hint";
+import { isColorSoldOut, isSizeSoldOut, withSoldOutMark } from "@/lib/equipment/optionStock";
 import { EquipmentThumbnail } from "@/components/equipment/equipment-thumbnail";
 import type { EquipmentCatalogItem } from "@/lib/estimates/types";
 import {
@@ -127,7 +129,7 @@ export function EquipmentAddConfirmDialog({
                     </option>
                     {colorOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {withSoldOutMark(option, isColorSoldOut(item.option_sold_out, option))}
                       </option>
                     ))}
                   </Select>
@@ -149,13 +151,15 @@ export function EquipmentAddConfirmDialog({
                     </option>
                     {sizeOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {withSoldOutMark(option, isSizeSoldOut(item.option_sold_out, option, color || undefined))}
                       </option>
                     ))}
                   </Select>
                 </div>
               )}
             </div>
+
+            <SoldOutOptionHint soldOut={item.option_sold_out} color={color} size={size} />
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="confirm-quantity">수량</Label>

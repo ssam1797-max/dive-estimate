@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { InlineToast, type ToastState } from "@/components/ui/inline-toast";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { SoldOutOptionHint } from "@/components/estimates/sold-out-option-hint";
+import { isColorSoldOut, isSizeSoldOut, withSoldOutMark } from "@/lib/equipment/optionStock";
 import type { EquipmentCatalogItem, EstimateItemDraft } from "@/lib/estimates/types";
 import {
   calculateEffectiveUnitPrice,
@@ -360,7 +362,7 @@ export function EquipmentPicker({
               </option>
               {colorOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {withSoldOutMark(option, isColorSoldOut(selectedEquipment?.option_sold_out, option))}
                 </option>
               ))}
             </Select>
@@ -383,7 +385,7 @@ export function EquipmentPicker({
               </option>
               {sizeOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {withSoldOutMark(option, isSizeSoldOut(selectedEquipment?.option_sold_out, option, color || undefined))}
                 </option>
               ))}
             </Select>
@@ -415,6 +417,8 @@ export function EquipmentPicker({
             />
           </div>
         </div>
+
+        <SoldOutOptionHint soldOut={selectedEquipment?.option_sold_out} color={color} size={size} />
 
         <Button
           type="button"

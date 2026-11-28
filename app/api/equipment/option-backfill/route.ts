@@ -12,8 +12,15 @@ import { requireAdminOrCronSecret } from "@/lib/auth/admin-session";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** 호출 1번에 확인할 품목 수. 목록 크롤링이 없어 30초 제한 안에 충분히 끝난다. */
+/** 호출 1번에 확인할 최대 품목 수. */
 const ITEMS_PER_CALL = 12;
+/**
+ * 이 시간이 지나면 남은 품목은 다음 호출로 넘긴다. 색상→사이즈 2단 옵션
+ * 상품은 색상 수만큼 요청이 더 들어서(색상 6개 핀이면 7번) 12건을 다 못
+ * 끝낼 수 있기 때문이다. 넘긴 품목은 확인 기록이 남지 않아 다음 호출에서
+ * 다시 맨 앞에 온다.
+ */
+const CALL_BUDGET_MS = 30 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 확인한 지 이만큼 지난 품목은 옵션이 바뀌었을 수 있어 다시 확인한다. */
 const RECHECK_AFTER_MS = 7 * DAY_MS;
@@ -45,7 +52,11 @@ export async function POST(request: Request) {
     let blocked = false;
     const retryAtIso = new Date(now - RECHECK_AFTER_MS + RETRY_AFTER_MS).toISOString();
 
-    for (let i = 0; i < targets.length && !blocked; i += DETAIL_FETCH_CONCURRENCY) {
+    for (
+      let i = 0;
+      i < targets.length && !blocked && Date.now() - now < CALL_BUDGET_MS;
+      i += DETAIL_FETCH_CONCURRENCY
+    ) {
       const batch = targets.slice(i, i + DETAIL_FETCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map((target) => fetchDetailPageOptions(target.goodsId))
@@ -65,8 +76,8 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const options = applyDetailOptions(target, result.value.axis, result.value.labels);
-        await saveOptionBackfillResult(target.id, nowIso, options);
+        const options = applyDetailOptions(target, result.value);
+        await saveOptionBackfillResult(target.id, nowIso, options, result.value.soldOut);
         checkedCount += 1;
         if (options !== target) updatedCount += 1;
       }
