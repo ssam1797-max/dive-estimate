@@ -87,12 +87,32 @@ export function Combobox({
 
   const showCreateNew = !!onCreateNew && trimmedQuery.length > 0 && filteredOptions.length === 0;
 
+  // 키보드로 고를 항목. 검색어가 바뀌면 맨 위(0)로 돌아간다.
+  // Enter 를 누르면 이 항목이 바로 입력된다 — 결과가 하나면 그것, 여러 개면 맨 위.
+  // ("새로 추가" 줄이 보이면 그게 맨 위라 index -1 로 친다.)
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const firstIndex = showCreateOption ? -1 : 0;
+  const lastIndex = filteredOptions.length - 1;
+  const [prevQuery, setPrevQuery] = React.useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
+    setActiveIndex(firstIndex);
+  }
+  const listRef = React.useRef<HTMLUListElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
   // 드롭다운을 닫을 때는 항상 이 함수를 통해서 닫아, 검색어도 함께 초기화합니다.
   // (useEffect 안에서 open 변화에 반응해 setQuery 를 호출하는 대신, 닫는 동작이
   // 일어나는 이벤트 핸들러 시점에 바로 초기화합니다.)
   const closeDropdown = React.useCallback(() => {
     setOpen(false);
     setQuery("");
+    setActiveIndex(0);
   }, []);
 
   React.useEffect(() => {
@@ -153,9 +173,34 @@ export function Combobox({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.nativeEvent.isComposing && showCreateNew) {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "ArrowDown") {
                   event.preventDefault();
+                  setActiveIndex((i) => Math.min(Math.max(i, firstIndex) + 1, lastIndex));
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setActiveIndex((i) => Math.max(i - 1, firstIndex));
+                  return;
+                }
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                if (showCreateNew) {
                   onCreateNew?.(trimmedQuery);
+                  closeDropdown();
+                  return;
+                }
+                // 검색어가 없으면 Enter 로 아무것도 고르지 않는다(실수 방지).
+                if (!trimmedQuery) return;
+                if (activeIndex === -1 && showCreateOption) {
+                  onChange(trimmedQuery);
+                  closeDropdown();
+                  return;
+                }
+                const picked = filteredOptions[Math.min(Math.max(activeIndex, 0), lastIndex)];
+                if (picked) {
+                  onChange(picked.value);
                   closeDropdown();
                 }
               }}
@@ -163,7 +208,7 @@ export function Combobox({
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <ul className="max-h-56 overflow-y-auto p-1" role="listbox">
+          <ul ref={listRef} className="max-h-56 overflow-y-auto p-1" role="listbox">
             {showCreateNew && (
               <li className="flex flex-col items-center gap-2 px-2 py-3 text-center text-sm">
                 <span>
@@ -187,22 +232,26 @@ export function Combobox({
               </li>
             )}
             {showCreateOption && (
-              <li>
+              <li data-index={-1}>
                 <button
                   type="button"
                   onClick={() => {
                     onChange(trimmedQuery);
                     closeDropdown();
                   }}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-accent"
+                  onMouseEnter={() => setActiveIndex(-1)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-accent",
+                    trimmedQuery && activeIndex === -1 && "bg-accent"
+                  )}
                 >
                   <Plus className="size-4 shrink-0" />
                   <span className="truncate">&quot;{trimmedQuery}&quot; 새로 추가</span>
                 </button>
               </li>
             )}
-            {filteredOptions.map((option) => (
-              <li key={option.value}>
+            {filteredOptions.map((option, index) => (
+              <li key={option.value} data-index={index}>
                 <button
                   type="button"
                   role="option"
@@ -211,9 +260,11 @@ export function Combobox({
                     onChange(option.value);
                     closeDropdown();
                   }}
+                  onMouseEnter={() => setActiveIndex(index)}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
-                    option.value === value && "bg-accent/60"
+                    option.value === value && "bg-accent/60",
+                    trimmedQuery && activeIndex === index && "bg-accent text-accent-foreground"
                   )}
                 >
                   <Check

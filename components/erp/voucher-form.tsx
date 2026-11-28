@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EMPTY_ITEM, ItemForm } from "@/components/erp/item-manager";
 import { PartnerForm } from "@/components/erp/partner-form";
+import { CopyFromRecent, type CopiedLine } from "@/components/erp/copy-from-recent";
 import { cn } from "@/lib/utils";
 import { convertEstimateAction, deleteVoucherAction, saveVoucherAction } from "@/lib/erp/actions";
 import { partnerDelta, salePriceFor, vatFor } from "@/lib/erp/compute";
@@ -27,7 +28,7 @@ import {
   type VoucherInput,
   type VoucherKind,
 } from "@/lib/erp/types";
-import type { ItemWithStock, PartnerWithBalance, RecentPrices } from "@/lib/erp/compute";
+import type { ItemWithStock, PartnerWithBalance, RecentPrices, RecentVoucher } from "@/lib/erp/compute";
 
 /** priceManual: 단가를 직접 고쳤으면 true — 거래처를 바꿔도 단가를 다시 매기지 않는다 */
 type Line = VoucherInput["lines"][number] & { key: number; vatManual: boolean; priceManual: boolean };
@@ -38,6 +39,8 @@ export type VoucherFormProps = {
   groups: ItemGroup[];
   /** 거래처·품목별 최근 단가 */
   recent?: RecentPrices;
+  /** 매출↔매입 가져오기용 최근 전표 */
+  recentVouchers?: RecentVoucher[];
   initial?: VoucherInput & { id: number; voucher_no: number; source_voucher_id: number | null };
   /** 이 견적에서 전환된 전표들(견적 화면에서 링크로 보여준다) */
   derived?: { id: number; kind: VoucherKind; voucher_date: string }[];
@@ -64,6 +67,7 @@ export function VoucherForm({
   items: itemsProp,
   groups,
   recent = {},
+  recentVouchers = [],
   initial,
   derived = [],
   defaultDate,
@@ -185,6 +189,34 @@ export function VoucherForm({
       return next[next.length - 1].key === key ? [...next, emptyLine()] : next;
     });
   };
+
+  /** 최근 매출(매입) 전표에서 체크한 줄을 지금 전표 끝(빈 줄 자리)에 붙인다 */
+  const copyLines = (picked: CopiedLine[]) => {
+    const added: Line[] = picked.map((src) => {
+      const item = src.item_id ? itemById.get(src.item_id) : undefined;
+      if (!item) {
+        // 품목 없이 적요만 있던 줄은 금액까지 그대로
+        return { ...emptyLine(), ...src, item_id: src.item_id, vatManual: true, priceManual: true };
+      }
+      const qty = src.qty || 1;
+      const unit_price = unitPriceFor(item, kind, partner);
+      const amount = Math.round(qty * unit_price);
+      return {
+        ...emptyLine(),
+        item_id: item.id,
+        description: src.description,
+        qty,
+        unit_price,
+        amount,
+        vat: vatFor(item.vat_type, amount),
+      };
+    });
+    setLines((prev) => {
+      const filled = prev.filter((l) => l.item_id != null || l.amount !== 0 || l.description.trim() !== "");
+      return [...filled, ...added, emptyLine()];
+    });
+  };
+  const copyFrom: "sale" | "purchase" | null = kind === "purchase" ? "sale" : kind === "sale" ? "purchase" : null;
 
   /** 거래처를 바꾸면 직접 고치지 않은 줄의 단가를 새 거래처 등급에 맞춰 다시 매긴다 */
   const changePartner = (id: number | null) => changePartnerTo(partners.find((p) => p.id === id) ?? null);
@@ -332,7 +364,8 @@ export function VoucherForm({
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className={cn("grid gap-6", copyFrom && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
+    <div className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-2 text-2xl font-semibold">
           {initial ? `${VOUCHER_KIND_LABEL[initial.kind]} 전표` : "전표 입력"}
@@ -632,6 +665,17 @@ export function VoucherForm({
           {saving ? "저장 중…" : initial ? "수정 저장" : "저장"}
         </Button>
       </div>
+    </div>
+
+      {copyFrom && (
+        <CopyFromRecent
+          from={copyFrom}
+          vouchers={recentVouchers}
+          itemById={itemById}
+          onCopy={copyLines}
+          className="xl:sticky xl:top-4 xl:self-start"
+        />
+      )}
 
       <Dialog open={newPartner != null} onOpenChange={(o) => !o && setNewPartner(null)} widthClassName="max-w-2xl">
         {newPartner && (
