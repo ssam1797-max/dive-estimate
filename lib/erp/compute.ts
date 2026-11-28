@@ -1,4 +1,4 @@
-import type { ErpData, Item, Partner, PriceGrade, Voucher, VoucherKind } from "@/lib/erp/types";
+import type { ErpData, Item, Partner, PriceGrade, Voucher, VoucherKind, VoucherLine } from "@/lib/erp/types";
 
 /**
  * 파생 값 계산. DB 뷰(acct_voucher_totals / acct_partner_movements /
@@ -190,6 +190,54 @@ export function recentPrices(data: ErpData, excludeVoucherId?: number): RecentPr
     const key = `${v.kind}:${v.partner_id}:${l.item_id}`;
     const prev = out[key];
     if (!prev || v.voucher_date >= prev.date) out[key] = { price: l.unit_price, date: v.voucher_date };
+  }
+  return out;
+}
+
+/** 매출↔매입 가져오기용: 최근에 입력한 매출·매입 전표와 그 품목 줄 */
+export type RecentVoucher = {
+  id: number;
+  kind: "sale" | "purchase";
+  voucher_date: string;
+  voucher_no: number;
+  partner_name: string | null;
+  lines: { item_id: number | null; description: string; qty: number; unit_price: number; amount: number; vat: number }[];
+};
+
+/** 종류별로 가장 최근에 입력한(id 가 큰) 전표부터 perKind 개씩 */
+export function recentVouchers(data: ErpData, perKind = 15, excludeVoucherId?: number): RecentVoucher[] {
+  const partnerName = new Map(data.partners.map((p) => [p.id, p.name]));
+  const linesBy = new Map<number, VoucherLine[]>();
+  for (const l of data.lines) {
+    const arr = linesBy.get(l.voucher_id);
+    if (arr) arr.push(l);
+    else linesBy.set(l.voucher_id, [l]);
+  }
+  const out: RecentVoucher[] = [];
+  for (const kind of ["sale", "purchase"] as const) {
+    const picked = data.vouchers
+      .filter((v) => v.kind === kind && v.id !== excludeVoucherId && linesBy.has(v.id))
+      .sort((a, b) => b.id - a.id)
+      .slice(0, perKind);
+    for (const v of picked) {
+      out.push({
+        id: v.id,
+        kind,
+        voucher_date: v.voucher_date,
+        voucher_no: v.voucher_no,
+        partner_name: v.partner_id != null ? (partnerName.get(v.partner_id) ?? null) : null,
+        lines: (linesBy.get(v.id) ?? [])
+          .sort((a, b) => a.line_no - b.line_no)
+          .map((l) => ({
+            item_id: l.item_id,
+            description: l.description ?? "",
+            qty: l.qty,
+            unit_price: l.unit_price,
+            amount: l.amount,
+            vat: l.vat,
+          })),
+      });
+    }
   }
   return out;
 }

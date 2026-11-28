@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { loadErpData } from "@/lib/erp/repo";
-import { itemsWithStock, partnersWithBalance, recentPrices } from "@/lib/erp/compute";
+import { itemsWithStock, partnersWithBalance, recentPrices, recentVouchers } from "@/lib/erp/compute";
 import { todayKST } from "@/lib/erp/format";
 import { VoucherForm } from "@/components/erp/voucher-form";
 
@@ -34,6 +34,7 @@ export default async function VoucherDetailPage({
         partners={partnersWithBalance(data)}
         items={itemsWithStock(data)}
         recent={recentPrices(data, id)}
+        recentVouchers={recentVouchers(data, 15, id)}
         groups={data.groups}
         defaultDate={todayKST()}
         derived={derived}
